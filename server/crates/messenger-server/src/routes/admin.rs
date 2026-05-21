@@ -1,14 +1,14 @@
-//! Admin endpoints для управления инвайт-токенами.
+//! Admin endpoints для управления инвайт-токенами и пользователями.
 //!
 //! Все эндпоинты требуют аутентификации и роли `admin`.
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use axum::body::Bytes;
 use base64::Engine;
 use rand::RngCore;
-use sea_orm::ActiveModelTrait;
+use sea_orm::{ActiveModelTrait, EntityTrait, PaginatorTrait, QueryOrder, QuerySelect};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -221,4 +221,126 @@ pub async fn revoke_invite(
     active.update(&state.db).await?;
 
     Ok(typed_response(&headers, StatusCode::OK, &serde_json::json!({})))
+}
+
+// ──────────────────────────────────────────────
+// Admin User Management
+// ──────────────────────────────────────────────
+
+/// `POST /v1/admin/users/:id/suspend` — заморозить пользователя.
+pub async fn suspend_user(
+    CurrentAuth(_ctx): CurrentAuth,
+    RequireAdmin(_): RequireAdmin,
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(user_id): Path<Uuid>,
+) -> Result<Response, AppError> {
+    use messenger_entity::users::{self, Entity as Users};
+
+    let user = Users::find_by_id(user_id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    let mut active: users::ActiveModel = user.into();
+    active.status = sea_orm::Set("suspended".to_string());
+    active.update(&state.db).await?;
+
+    Ok(typed_response::<()>(&headers, StatusCode::NO_CONTENT, &()))
+}
+
+/// `POST /v1/admin/users/:id/unsuspend` — разморозить пользователя.
+pub async fn unsuspend_user(
+    CurrentAuth(_ctx): CurrentAuth,
+    RequireAdmin(_): RequireAdmin,
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(user_id): Path<Uuid>,
+) -> Result<Response, AppError> {
+    use messenger_entity::users::{self, Entity as Users};
+
+    let user = Users::find_by_id(user_id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    let mut active: users::ActiveModel = user.into();
+    active.status = sea_orm::Set("active".to_string());
+    active.update(&state.db).await?;
+
+    Ok(typed_response::<()>(&headers, StatusCode::NO_CONTENT, &()))
+}
+
+/// Query параметры для пагинированного списка пользователей.
+#[derive(Deserialize)]
+pub struct ListUsersQuery {
+    #[serde(default = "default_offset")]
+    pub offset: u64,
+    #[serde(default = "default_limit")]
+    pub limit: u64,
+}
+
+fn default_offset() -> u64 {
+    0
+}
+fn default_limit() -> u64 {
+    50
+}
+
+/// Информация о пользователе для админ-списка.
+#[derive(Serialize)]
+pub struct AdminUserInfo {
+    pub id: Uuid,
+    pub role: String,
+    pub status: String,
+    pub created_at: i64,
+}
+
+/// Ответ на `GET /v1/admin/users`.
+#[derive(Serialize)]
+pub struct ListUsersResponse {
+    pub users: Vec<AdminUserInfo>,
+    pub total: u64,
+}
+
+/// `GET /v1/admin/users` — пагинированный список пользователей (без blind_index).
+pub async fn list_users(
+    CurrentAuth(_ctx): CurrentAuth,
+    RequireAdmin(_): RequireAdmin,
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ListUsersQuery>,
+) -> Result<Response, AppError> {
+    use messenger_entity::users::{self, Entity as Users};
+
+
+    // Общее количество
+    let total = Users::find().count(&state.db).await?;
+
+    // Пагинированный список (без blind_index)
+    let users = Users::find()
+        .order_by_asc(users::Column::CreatedAt)
+        .offset(query.offset)
+        .limit(query.limit)
+        .all(&state.db)
+        .await?;
+
+    let info: Vec<AdminUserInfo> = users
+        .into_iter()
+        .map(|u| AdminUserInfo {
+            id: u.id,
+            role: u.role,
+            status: u.status,
+            created_at: u.created_at,
+        })
+        .collect();
+
+    Ok(typed_response(
+        &headers,
+        StatusCode::OK,
+        &ListUsersResponse {
+            users: info,
+            total,
+        },
+    ))
 }

@@ -130,19 +130,30 @@ async fn test_valid_signature_passes() {
     });
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-    let header = sign_request("GET", "/v1/users/me/test", b"", &sk, device_id);
+    let header = sign_request("GET", "/v1/devices/me", b"", &sk, device_id);
     let client = reqwest::Client::new();
     let resp = client
-        .get(format!("http://{addr}/v1/users/me/test"))
+        .get(format!("http://{addr}/v1/devices/me"))
         .header("X-Auth-Signature", &header)
         .send()
         .await
         .unwrap();
 
     assert_eq!(resp.status(), StatusCode::OK);
-    let body: serde_json::Value = resp.json().await.unwrap();
-    assert!(body.get("user_id").is_some());
-    assert!(body.get("device_id").is_some());
+    // Verify response is valid msgpack with a devices array
+    let bytes = resp.bytes().await.unwrap();
+    #[derive(serde::Deserialize)]
+    struct TestDevicesResp {
+        devices: Vec<TestDeviceInfo>,
+    }
+    #[derive(serde::Deserialize)]
+    struct TestDeviceInfo {
+        id: Uuid,
+        is_current: bool,
+    }
+    let parsed: TestDevicesResp = rmp_serde::from_slice(&bytes).unwrap();
+    assert_eq!(parsed.devices.len(), 1);
+    assert!(parsed.devices[0].is_current);
 }
 
 #[tokio::test]
@@ -160,7 +171,7 @@ async fn test_missing_header_rejected() {
 
     let client = reqwest::Client::new();
     let resp = client
-        .get(format!("http://{addr}/v1/users/me/test"))
+        .get(format!("http://{addr}/v1/devices/me"))
         .send()
         .await
         .unwrap();
@@ -183,10 +194,10 @@ async fn test_invalid_signature_rejected() {
 
     // Подпись с неправильным ключом
     let wrong_sk = SigningKey::generate(&mut OsRng);
-    let header = sign_request("GET", "/v1/users/me/test", b"", &wrong_sk, device_id);
+    let header = sign_request("GET", "/v1/devices/me", b"", &wrong_sk, device_id);
     let client = reqwest::Client::new();
     let resp = client
-        .get(format!("http://{addr}/v1/users/me/test"))
+        .get(format!("http://{addr}/v1/devices/me"))
         .header("X-Auth-Signature", &header)
         .send()
         .await
@@ -213,7 +224,7 @@ async fn test_stale_timestamp_rejected() {
     let nonce: Vec<u8> = (0..16).map(|_| rand::random::<u8>()).collect();
     let canonical = messenger_crypto::canonical::build_signed_message(
         "GET",
-        "/v1/users/me/test",
+        "/v1/devices/me",
         old_ts,
         &nonce,
         b"",
@@ -230,7 +241,7 @@ async fn test_stale_timestamp_rejected() {
 
     let client = reqwest::Client::new();
     let resp = client
-        .get(format!("http://{addr}/v1/users/me/test"))
+        .get(format!("http://{addr}/v1/devices/me"))
         .header("X-Auth-Signature", &header)
         .send()
         .await
@@ -257,7 +268,7 @@ async fn test_future_timestamp_rejected() {
     let nonce: Vec<u8> = (0..16).map(|_| rand::random::<u8>()).collect();
     let canonical = messenger_crypto::canonical::build_signed_message(
         "GET",
-        "/v1/users/me/test",
+        "/v1/devices/me",
         future_ts,
         &nonce,
         b"",
@@ -274,7 +285,7 @@ async fn test_future_timestamp_rejected() {
 
     let client = reqwest::Client::new();
     let resp = client
-        .get(format!("http://{addr}/v1/users/me/test"))
+        .get(format!("http://{addr}/v1/devices/me"))
         .header("X-Auth-Signature", &header)
         .send()
         .await
@@ -301,7 +312,7 @@ async fn test_nonce_replay_rejected() {
     let nonce: Vec<u8> = (0..16).map(|_| rand::random::<u8>()).collect();
     let canonical = messenger_crypto::canonical::build_signed_message(
         "GET",
-        "/v1/users/me/test",
+        "/v1/devices/me",
         ts,
         &nonce,
         b"",
@@ -320,7 +331,7 @@ async fn test_nonce_replay_rejected() {
 
     // Первый запрос — OK
     let resp1 = client
-        .get(format!("http://{addr}/v1/users/me/test"))
+        .get(format!("http://{addr}/v1/devices/me"))
         .header("X-Auth-Signature", &header)
         .send()
         .await
@@ -329,7 +340,7 @@ async fn test_nonce_replay_rejected() {
 
     // Второй запрос с тем же nonce — replay
     let resp2 = client
-        .get(format!("http://{addr}/v1/users/me/test"))
+        .get(format!("http://{addr}/v1/devices/me"))
         .header("X-Auth-Signature", &header)
         .send()
         .await
@@ -379,10 +390,10 @@ async fn test_revoked_device_rejected() {
     });
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-    let header = sign_request("GET", "/v1/users/me/test", b"", &sk, device_id);
+    let header = sign_request("GET", "/v1/devices/me", b"", &sk, device_id);
     let client = reqwest::Client::new();
     let resp = client
-        .get(format!("http://{addr}/v1/users/me/test"))
+        .get(format!("http://{addr}/v1/devices/me"))
         .header("X-Auth-Signature", &header)
         .send()
         .await
@@ -413,7 +424,7 @@ async fn test_wrong_body_signature_rejected() {
     // Подпись для body_a
     let canonical = messenger_crypto::canonical::build_signed_message(
         "POST",
-        "/v1/users/me/test",
+        "/v1/devices/me",
         ts,
         &nonce,
         body_a,
@@ -430,7 +441,7 @@ async fn test_wrong_body_signature_rejected() {
 
     let client = reqwest::Client::new();
     let resp = client
-        .post(format!("http://{addr}/v1/users/me/test"))
+        .post(format!("http://{addr}/v1/devices/me"))
         .header("X-Auth-Signature", &header)
         .body(body_b.to_vec())
         .send()
@@ -458,7 +469,7 @@ async fn test_method_mismatch_rejected() {
     let nonce: Vec<u8> = (0..16).map(|_| rand::random::<u8>()).collect();
     let canonical = messenger_crypto::canonical::build_signed_message(
         "POST",
-        "/v1/users/me/test",
+        "/v1/devices/me",
         ts,
         &nonce,
         b"",
@@ -475,7 +486,7 @@ async fn test_method_mismatch_rejected() {
 
     let client = reqwest::Client::new();
     let resp = client
-        .get(format!("http://{addr}/v1/users/me/test"))
+        .get(format!("http://{addr}/v1/devices/me"))
         .header("X-Auth-Signature", &header)
         .send()
         .await
@@ -497,7 +508,7 @@ async fn test_path_mismatch_rejected() {
     });
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-    // Подписываем для /wrong, отправляем на /v1/users/me/test
+    // Подписываем для /wrong, отправляем на /v1/devices/me
     let ts = chrono::Utc::now().timestamp();
     let nonce: Vec<u8> = (0..16).map(|_| rand::random::<u8>()).collect();
     let canonical = messenger_crypto::canonical::build_signed_message(
@@ -519,7 +530,7 @@ async fn test_path_mismatch_rejected() {
 
     let client = reqwest::Client::new();
     let resp = client
-        .get(format!("http://{addr}/v1/users/me/test"))
+        .get(format!("http://{addr}/v1/devices/me"))
         .header("X-Auth-Signature", &header)
         .send()
         .await
@@ -541,10 +552,10 @@ async fn test_suspended_user_rejected() {
     });
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-    let header = sign_request("GET", "/v1/users/me/test", b"", &sk, device_id);
+    let header = sign_request("GET", "/v1/devices/me", b"", &sk, device_id);
     let client = reqwest::Client::new();
     let resp = client
-        .get(format!("http://{addr}/v1/users/me/test"))
+        .get(format!("http://{addr}/v1/devices/me"))
         .header("X-Auth-Signature", &header)
         .send()
         .await
@@ -614,7 +625,7 @@ async fn test_garbage_header_rejected() {
 
     let client = reqwest::Client::new();
     let resp = client
-        .get(format!("http://{addr}/v1/users/me/test"))
+        .get(format!("http://{addr}/v1/devices/me"))
         .header("X-Auth-Signature", "garbage")
         .send()
         .await

@@ -720,22 +720,4 @@ async fn test_bootstrap_token_can_be_validated() {
     assert!(tokens[0].created_by_user_id.is_none());
 }
 
-// ─── Redeem Stub ───
 
-#[tokio::test]
-async fn test_redeem_stub_returns_501() {
-    let db = fresh_db().await;
-    let handle = create_admin_handle(&db).await;
-    let base_url = start_server(handle.state.clone()).await;
-    let client = reqwest::Client::new();
-
-    let resp = client
-        .post(format!("{base_url}/v1/invite/redeem"))
-        .header("Content-Type", "application/msgpack")
-        .body(rmp_serde::to_vec_named(&serde_json::json!({"token": "test"})).unwrap())
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(resp.status(), StatusCode::NOT_IMPLEMENTED);
-}
