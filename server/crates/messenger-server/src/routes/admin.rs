@@ -1,0 +1,224 @@
+//! Admin endpoints для управления инвайт-токенами.
+//!
+//! Все эндпоинты требуют аутентификации и роли `admin`.
+
+use axum::extract::{Path, State};
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::Response;
+use axum::body::Bytes;
+use base64::Engine;
+use rand::RngCore;
+use sea_orm::ActiveModelTrait;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use crate::auth::middleware::{CurrentAuth, RequireAdmin};
+use crate::error::{decode_body, typed_response, AppError};
+use crate::services::invite::now_secs;
+use crate::state::AppState;
+use messenger_entity::invitation_tokens;
+
+/// Максимальный TTL для invite token: 365 дней в секундах.
+const MAX_TTL_SECONDS: i64 = 365 * 24 * 3600;
+
+// ─── Create Invite ───
+
+#[derive(Deserialize)]
+pub struct CreateInviteRequest {
+    pub role_to_grant: String, // "admin" | "user"
+    pub max_uses: i32,         // ≥ 1
+    pub ttl_seconds: i64,      // ≥ 60, ≤ 365*24*3600
+}
+
+#[derive(Serialize)]
+pub struct CreateInviteResponse {
+    pub id: Uuid,
+    /// Токен (32 байта raw). Клиент может base64'ить для UI.
+    #[serde(with = "serde_bytes")]
+    pub token: Vec<u8>,
+    /// Токен в base64url-no-pad для прямого копирования.
+    pub token_display: String,
+    pub expires_at: i64,
+}
+
+/// `POST /v1/admin/invites` — создать новый инвайт-токен.
+///
+/// # Errors
+///
+/// - `400 BadRequest` — невалидные параметры (`role_to_grant`, `max_uses`, `ttl_seconds`).
+/// - `401 Unauthorized` — отсутствует auth context.
+/// - `403 Forbidden` — пользователь не admin.
+/// - `500` — внутренняя ошибка.
+pub async fn create_invite(
+    CurrentAuth(ctx): CurrentAuth,
+    RequireAdmin(_): RequireAdmin,
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Response, AppError> {
+    let req: CreateInviteRequest = decode_body(&headers, &body)?;
+
+    // Валидация
+    if req.role_to_grant != "admin" && req.role_to_grant != "user" {
+        return Err(AppError::BadRequest(
+            "role_to_grant must be 'admin' or 'user'".into(),
+        ));
+    }
+    if req.max_uses < 1 {
+        return Err(AppError::BadRequest("max_uses must be >= 1".into()));
+    }
+    if req.ttl_seconds < 60 {
+        return Err(AppError::BadRequest("ttl_seconds must be >= 60".into()));
+    }
+    if req.ttl_seconds > MAX_TTL_SECONDS {
+        return Err(AppError::BadRequest(format!(
+            "ttl_seconds must be <= {MAX_TTL_SECONDS}"
+        )));
+    }
+
+    // Генерируем 32 случайных байта
+    let mut token_bytes = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut token_bytes);
+
+    // Хэшируем от base64url-no-pad представления (см. S06 spec).
+    // Это позволяет клиенту послать base64 строку как «токен».
+    let token_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(token_bytes);
+    let token_hash = blake3::hash(token_b64.as_bytes()).as_bytes().to_vec();
+
+    let now = now_secs();
+    let expires_at = now + req.ttl_seconds;
+    let token_id = Uuid::now_v7();
+
+    invitation_tokens::ActiveModel {
+        id: sea_orm::Set(token_id),
+        token_hash: sea_orm::Set(token_hash),
+        created_by_user_id: sea_orm::Set(Some(ctx.user.id)),
+        role_to_grant: sea_orm::Set(req.role_to_grant),
+        max_uses: sea_orm::Set(req.max_uses),
+        uses_count: sea_orm::Set(0),
+        expires_at: sea_orm::Set(expires_at),
+        revoked_at: sea_orm::Set(None),
+        created_at: sea_orm::Set(now),
+    }
+    .insert(&state.db)
+    .await?;
+
+    let resp = CreateInviteResponse {
+        id: token_id,
+        token: token_bytes.to_vec(),
+        token_display: token_b64,
+        expires_at,
+    };
+
+    Ok(typed_response(&headers, StatusCode::CREATED, &resp))
+}
+
+// ─── List Invites ───
+
+#[derive(Serialize)]
+pub struct InviteSummary {
+    pub id: Uuid,
+    pub role_to_grant: String,
+    pub max_uses: i32,
+    pub uses_count: i32,
+    pub expires_at: i64,
+    pub created_at: i64,
+    pub created_by_user_id: Option<Uuid>,
+}
+
+#[derive(Serialize)]
+pub struct ListInvitesResponse {
+    pub invites: Vec<InviteSummary>,
+}
+
+/// `GET /v1/admin/invites` — список активных инвайт-токенов.
+///
+/// Активным считается токен у которого:
+/// - `revoked_at IS NULL`
+/// - `expires_at > now`
+/// - `uses_count < max_uses`
+///
+/// # Errors
+///
+/// - `401 Unauthorized` — отсутствует auth context.
+/// - `403 Forbidden` — пользователь не admin.
+/// - `500` — внутренняя ошибка.
+pub async fn list_invites(
+    CurrentAuth(_ctx): CurrentAuth,
+    RequireAdmin(_): RequireAdmin,
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    use messenger_entity::invitation_tokens::{self, Entity as InvitationTokens};
+    use sea_orm::sea_query::Expr;
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+
+    let now = now_secs();
+
+    let active = InvitationTokens::find()
+        .filter(invitation_tokens::Column::RevokedAt.is_null())
+        .filter(invitation_tokens::Column::ExpiresAt.gt(now))
+        .filter(Expr::col(invitation_tokens::Column::UsesCount).lt(Expr::col(
+            invitation_tokens::Column::MaxUses,
+        )))
+        .all(&state.db)
+        .await?;
+
+    let invites = active
+        .into_iter()
+        .map(|m| InviteSummary {
+            id: m.id,
+            role_to_grant: m.role_to_grant,
+            max_uses: m.max_uses,
+            uses_count: m.uses_count,
+            expires_at: m.expires_at,
+            created_at: m.created_at,
+            created_by_user_id: m.created_by_user_id,
+        })
+        .collect();
+
+    Ok(typed_response(
+        &headers,
+        StatusCode::OK,
+        &ListInvitesResponse { invites },
+    ))
+}
+
+// ─── Revoke Invite ───
+
+/// `DELETE /v1/admin/invites/:id` — отзыв инвайт-токена.
+///
+/// Помечает `revoked_at = now`. Идемпотентен: если уже отозван → 200 OK.
+///
+/// # Errors
+///
+/// - `404 Not Found` — токен не существует.
+/// - `401 Unauthorized` — отсутствует auth context.
+/// - `403 Forbidden` — пользователь не admin.
+/// - `500` — внутренняя ошибка.
+pub async fn revoke_invite(
+    CurrentAuth(_ctx): CurrentAuth,
+    RequireAdmin(_): RequireAdmin,
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<Response, AppError> {
+    use messenger_entity::invitation_tokens::{self, Entity as InvitationTokens};
+    use sea_orm::{EntityTrait, Set};
+
+    let row = InvitationTokens::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    if row.revoked_at.is_some() {
+        // Уже отозван — идемпотентно
+        return Ok(typed_response(&headers, StatusCode::OK, &serde_json::json!({})));
+    }
+
+    let mut active: invitation_tokens::ActiveModel = row.into();
+    active.revoked_at = Set(Some(now_secs()));
+    active.update(&state.db).await?;
+
+    Ok(typed_response(&headers, StatusCode::OK, &serde_json::json!({})))
+}

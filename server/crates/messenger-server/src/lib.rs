@@ -8,5 +8,6 @@ pub mod db;
 pub mod error;
 pub mod identity;
 pub mod routes;
+pub mod services;
 pub mod state;
 pub mod telemetry;

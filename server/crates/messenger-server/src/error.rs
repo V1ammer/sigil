@@ -1,5 +1,6 @@
 use std::convert::Infallible;
 
+use axum::body::Bytes;
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 
@@ -205,5 +206,29 @@ pub fn typed_response<T: serde::Serialize>(
             .header(header::CONTENT_TYPE, "application/msgpack")
             .body(bytes.into())
             .expect("static response builder")
+    }
+}
+
+/// Декодирует тело запроса из `MessagePack` или `JSON` в зависимости от `Content-Type` header.
+///
+/// - `Content-Type: application/json` → JSON deserialization
+/// - иначе → `MessagePack` deserialization
+///
+/// # Errors
+///
+/// Возвращает `AppError::BadRequest` если десериализация не удалась.
+pub fn decode_body<T: serde::de::DeserializeOwned>(
+    headers: &HeaderMap,
+    body: &Bytes,
+) -> Result<T, AppError> {
+    let content_type = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    if content_type.contains("json") {
+        serde_json::from_slice(body).map_err(|e| AppError::BadRequest(e.to_string()))
+    } else {
+        rmp_serde::from_slice(body).map_err(|e| AppError::BadRequest(e.to_string()))
     }
 }
