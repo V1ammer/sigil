@@ -11,6 +11,9 @@ leptos = { workspace = true }
 leptos_router = { workspace = true }
 leptos_meta = { workspace = true }
 wasm-bindgen = { workspace = true }
+js-sys = { workspace = true }
+web-sys = { workspace = true }
+gloo-timers = { workspace = true }
 console_error_panic_hook = "0.1"
 tracing.workspace = true
 tracing-wasm.workspace = true

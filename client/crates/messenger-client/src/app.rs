@@ -1,14 +1,20 @@
 use leptos::prelude::*;
+use crate::routes::AppRoutes;
+use crate::theme::provide_theme;
+use crate::i18n::Language;
 
-/// Root application component.
+#[must_use]
 #[component]
-#[allow(clippy::must_use_candidate)]
 pub fn App() -> impl IntoView {
+    // Provide theme signal as context
+    let _theme = provide_theme();
+    // Provide language signal as context
+    let lang = RwSignal::new(Language::Ru);
+    provide_context(lang);
+
     view! {
-        <main class="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-900">
-            <h1 class="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
-                "messenger — bootstrap OK"
-            </h1>
+        <main class="h-full bg-background text-foreground">
+            <AppRoutes/>
         </main>
     }
 }
