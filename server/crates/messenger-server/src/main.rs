@@ -11,6 +11,7 @@ use messenger_server::routes::build_router;
 use messenger_server::state::{AppState, NonceCache};
 use messenger_server::tasks;
 use messenger_server::telemetry;
+use messenger_server::ws_registry::WsRegistry;
 use tower_http::limit::RequestBodyLimitLayer;
 
 #[tokio::main]
@@ -48,6 +49,7 @@ async fn main() -> anyhow::Result<()> {
         nonce_cache,
         server_identity: Arc::new(identity),
         storage,
+        ws_registry: WsRegistry::new(),
     };
 
     // Запуск GC задач

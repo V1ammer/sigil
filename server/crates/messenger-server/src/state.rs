@@ -6,6 +6,7 @@ use sea_orm::DatabaseConnection;
 use crate::attachments::StorageBackend;
 use crate::config::AppConfig;
 pub use crate::identity::ServerIdentity;
+pub use crate::ws_registry::WsRegistry;
 
 /// LRU-кеш для nonce (защита от replay-attacks).
 ///
@@ -47,4 +48,5 @@ pub struct AppState {
     pub nonce_cache: Arc<NonceCache>,
     pub server_identity: Arc<ServerIdentity>,
     pub storage: StorageBackend,
+    pub ws_registry: WsRegistry,
 }

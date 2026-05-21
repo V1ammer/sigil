@@ -88,6 +88,7 @@ fn make_state(db: DatabaseConnection, data_dir: Option<&std::path::Path>) -> App
         nonce_cache: Arc::new(NonceCache::new(100)),
         server_identity: Arc::new(messenger_server::state::ServerIdentity::placeholder()),
         storage,
+        ws_registry: messenger_server::ws_registry::WsRegistry::new(),
     }
 }
 
@@ -416,6 +417,7 @@ async fn test_upload_large_on_disk() {
         nonce_cache: Arc::new(NonceCache::new(100)),
         server_identity: Arc::new(messenger_server::state::ServerIdentity::placeholder()),
         storage,
+        ws_registry: messenger_server::ws_registry::WsRegistry::new(),
     };
     let (user_id, device_id, sk) = create_user_with_device(&db).await;
     let addr = start_server(state.clone()).await;
@@ -779,6 +781,7 @@ async fn test_max_size_enforced() {
         nonce_cache: Arc::new(NonceCache::new(100)),
         server_identity: Arc::new(messenger_server::state::ServerIdentity::placeholder()),
         storage: StorageBackend::InDatabase,
+        ws_registry: messenger_server::ws_registry::WsRegistry::new(),
     };
     let (user_id, device_id, sk) = create_user_with_device(&db).await;
     let addr = start_server(state.clone()).await;

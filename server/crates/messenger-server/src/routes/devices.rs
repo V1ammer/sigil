@@ -4,20 +4,24 @@
 //! - `POST /v1/devices/me/:device_id/revoke` — отозвать устройство.
 //! - `GET /v1/users/:user_id/devices` — список активных устройств пользователя.
 
+use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
-use axum::body::Bytes;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, NotSet, QueryFilter, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, Condition, EntityTrait, NotSet, QueryFilter, QuerySelect, Set,
+};
 use uuid::Uuid;
 
 use crate::auth::middleware::CurrentAuth;
 use crate::error::{decode_body, typed_response, AppError};
+use crate::routes::ws::notify_key_change;
 use crate::services::invite::now_secs;
 use crate::state::AppState;
 use messenger_entity::devices::{self, Entity as Devices};
 use messenger_entity::key_change_events;
+use messenger_entity::mls_group_members;
 use messenger_entity::user_identity_credentials::{self, Entity as UserIdentityCredentials};
 
 // ──────────────────────────────────────────────
@@ -107,6 +111,7 @@ pub struct RevokeDeviceRequest {
 /// - `404 Not Found` — устройство не найдено.
 /// - `422 SignatureInvalid` — неверная подпись.
 /// - `500` — внутренняя ошибка.
+#[allow(clippy::too_many_lines)]
 pub async fn revoke_device(
     CurrentAuth(ctx): CurrentAuth,
     State(state): State<AppState>,
@@ -193,6 +198,21 @@ pub async fn revoke_device(
     .insert(&state.db)
     .await?;
 
+    // WS уведомление: найти контакты (users в общих группах)
+    let state_clone = state.clone();
+    let user_id = ctx.user.id;
+    tokio::spawn(async move {
+        let contacts = find_contacts(&state_clone, user_id).await;
+        notify_key_change(
+            &state_clone,
+            &contacts,
+            user_id,
+            target_device_id,
+            "revoked",
+        )
+        .await;
+    });
+
     Ok(typed_response::<()>(&headers, StatusCode::NO_CONTENT, &()))
 }
 
@@ -241,4 +261,45 @@ pub async fn list_user_devices(
         .collect();
 
     Ok(typed_response(&headers, StatusCode::OK, &info))
+}
+
+// ─── Helpers ───
+
+/// Находит пользователей, которые имеют общие группы с `user_id`.
+async fn find_contacts(state: &AppState, user_id: Uuid) -> Vec<Uuid> {
+    // Найти все group_id, где user_id — активный member
+    let Ok(group_ids) = mls_group_members::Entity::find()
+        .select_only()
+        .column(mls_group_members::Column::GroupId)
+        .filter(
+            Condition::all()
+                .add(mls_group_members::Column::UserId.eq(user_id))
+                .add(mls_group_members::Column::LeftAtEpoch.is_null()),
+        )
+        .into_tuple::<Uuid>()
+        .all(&state.db)
+        .await
+    else {
+        return Vec::new();
+    };
+
+    if group_ids.is_empty() {
+        return Vec::new();
+    }
+
+    // Найти всех active members в этих группах, исключая user_id
+    mls_group_members::Entity::find()
+        .select_only()
+        .column(mls_group_members::Column::UserId)
+        .filter(
+            Condition::all()
+                .add(mls_group_members::Column::GroupId.is_in(group_ids))
+                .add(mls_group_members::Column::UserId.ne(user_id))
+                .add(mls_group_members::Column::LeftAtEpoch.is_null()),
+        )
+        .distinct()
+        .into_tuple::<Uuid>()
+        .all(&state.db)
+        .await
+        .unwrap_or_default()
 }

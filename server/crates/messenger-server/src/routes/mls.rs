@@ -43,6 +43,7 @@ use axum::response::IntoResponse;
 
 use crate::auth::middleware::CurrentAuth;
 use crate::error::{decode_body, typed_response, AppError};
+use crate::routes::ws::{notify_message_to_group, notify_welcome};
 use crate::services::invite::now_secs;
 use crate::state::AppState;
 
@@ -418,10 +419,22 @@ pub async fn create_group(
         .await?;
     }
 
-    // 5. INSERT welcomes
+    // 5. INSERT welcomes — сохраняем ID для нотификаций
+    let mut inserted_welcomes: Vec<(Uuid, Uuid, Uuid)> = Vec::new(); // (welcome_id, recipient_device_id, recipient_user_id)
     for w in &req.welcomes {
+        let welcome_id = Uuid::now_v7();
+        // Найти user_id владельца recipient_device_id
+        let recipient_user_id = if let Ok(Some(dev)) = messenger_entity::devices::Entity::find_by_id(w.recipient_device_id)
+            .one(&txn)
+            .await
+        {
+            dev.user_id
+        } else {
+            continue;
+        };
+
         mls_welcomes::ActiveModel {
-            id: Set(Uuid::now_v7()),
+            id: Set(welcome_id),
             group_id: Set(group_id),
             recipient_device_id: Set(w.recipient_device_id),
             epoch: Set(0),
@@ -431,9 +444,26 @@ pub async fn create_group(
         }
         .insert(&txn)
         .await?;
+
+        inserted_welcomes.push((welcome_id, w.recipient_device_id, recipient_user_id));
     }
 
     txn.commit().await?;
+
+    // WS уведомления после commit
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        for (welcome_id, recipient_device_id, recipient_user_id) in inserted_welcomes {
+            notify_welcome(
+                &state_clone,
+                recipient_user_id,
+                recipient_device_id,
+                welcome_id,
+                group_id,
+            )
+            .await;
+        }
+    });
 
     Ok(typed_response(
         &headers,
@@ -694,10 +724,22 @@ pub async fn post_commit(
     group_active.current_epoch = Set(new_epoch);
     group_active.update(&txn).await?;
 
-    // 7. INSERT welcomes
+    // 7. INSERT welcomes — сохраняем ID для нотификаций
+    let mut inserted_welcomes: Vec<(Uuid, Uuid, Uuid)> = Vec::new();
     for w in &req.welcomes {
+        let welcome_id = Uuid::now_v7();
+        // Найти user_id владельца recipient_device_id
+        let recipient_user_id = if let Ok(Some(dev)) = messenger_entity::devices::Entity::find_by_id(w.recipient_device_id)
+            .one(&txn)
+            .await
+        {
+            dev.user_id
+        } else {
+            continue;
+        };
+
         mls_welcomes::ActiveModel {
-            id: Set(Uuid::now_v7()),
+            id: Set(welcome_id),
             group_id: Set(group_id),
             recipient_device_id: Set(w.recipient_device_id),
             epoch: Set(new_epoch),
@@ -707,6 +749,8 @@ pub async fn post_commit(
         }
         .insert(&txn)
         .await?;
+
+        inserted_welcomes.push((welcome_id, w.recipient_device_id, recipient_user_id));
     }
 
     // 8. Применить member_changes
@@ -857,6 +901,25 @@ pub async fn post_commit(
     }
 
     txn.commit().await?;
+
+    // WS уведомления после commit (в background, не блокируем ответ)
+    let state_clone = state.clone();
+    let gid = group_id;
+    let mid = message_id;
+    let nep = new_epoch;
+    tokio::spawn(async move {
+        notify_message_to_group(&state_clone, gid, mid, nep).await;
+        for (welcome_id, recipient_device_id, recipient_user_id) in inserted_welcomes {
+            notify_welcome(
+                &state_clone,
+                recipient_user_id,
+                recipient_device_id,
+                welcome_id,
+                gid,
+            )
+            .await;
+        }
+    });
 
     Ok(typed_response(
         &headers,
@@ -1065,6 +1128,12 @@ pub async fn post_message(
     }
     .insert(&state.db)
     .await?;
+
+    // WS уведомление о новом сообщении (в background)
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        notify_message_to_group(&state_clone, group_id, message_id, req.expected_epoch).await;
+    });
 
     Ok(typed_response(
         &headers,

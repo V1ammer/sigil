@@ -69,6 +69,7 @@ async fn bootstrapped_state() -> AppState {
         nonce_cache: Arc::new(NonceCache::new(100)),
         server_identity: Arc::new(identity),
         storage: messenger_server::attachments::StorageBackend::InDatabase,
+        ws_registry: messenger_server::ws_registry::WsRegistry::new(),
     }
 }
 
@@ -127,6 +128,7 @@ async fn create_admin_handle(db: &DatabaseConnection) -> AdminHandle {
         nonce_cache: Arc::new(NonceCache::new(100)),
         server_identity: Arc::new(ServerIdentity::placeholder()),
         storage: messenger_server::attachments::StorageBackend::InDatabase,
+        ws_registry: messenger_server::ws_registry::WsRegistry::new(),
     };
 
     AdminHandle {

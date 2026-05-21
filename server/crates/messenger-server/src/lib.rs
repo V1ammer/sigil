@@ -13,3 +13,4 @@ pub mod services;
 pub mod state;
 pub mod tasks;
 pub mod telemetry;
+pub mod ws_registry;

@@ -35,6 +35,7 @@ ed25519-dalek.workspace = true
 rand.workspace = true
 blake3.workspace = true
 futures-util.workspace = true
+dashmap.workspace = true
 
 messenger-migration = { path = "../messenger-migration" }
 messenger-crypto = { path = "../messenger-crypto" }
@@ -43,6 +44,7 @@ messenger-entity = { path = "../messenger-entity" }
 [dev-dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 sea-orm-migration.workspace = true
+tokio-tungstenite = "0.24"
 
 [lints]
 workspace = true

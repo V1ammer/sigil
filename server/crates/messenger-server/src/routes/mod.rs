@@ -14,6 +14,7 @@ pub mod mls;
 pub mod provisioning;
 pub mod server_info;
 pub mod users;
+pub mod ws;
 
 /// Строит роутер со всеми маршрутами.
 ///
@@ -56,7 +57,8 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/v1/provisioning/requests/:id/bootstrap",
             get(provisioning::get_provisioning_bootstrap),
-        );
+        )
+        .route("/v1/ws", get(ws::ws_handler));
 
     let admin = Router::new()
         .route("/v1/admin/invites", post(admin::create_invite))
