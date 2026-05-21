@@ -1,0 +1,23 @@
+[package]
+name = "messenger-migration"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+sea-orm.workspace = true
+sea-orm-migration.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+messenger-entity = { path = "../messenger-entity" }
+
+[features]
+default = ["sqlite"]
+sqlite = ["sea-orm/sqlx-sqlite"]
+postgres = ["sea-orm/sqlx-postgres"]
+
+[lints]
+workspace = true

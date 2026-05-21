@@ -1,0 +1,28 @@
+# Rust
+target/
+
+# Nix / direnv
+.direnv/
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# Environment
+.env
+
+# Docs and prompts — tracked separately
+/docs/
+/prompts/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
