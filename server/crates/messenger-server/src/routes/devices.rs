@@ -16,6 +16,9 @@ use crate::auth::middleware::CurrentAuth;
 use crate::error::{decode_body, typed_response, AppError};
 use crate::services::invite::now_secs;
 use crate::state::AppState;
+use messenger_entity::devices::{self, Entity as Devices};
+use messenger_entity::key_change_events;
+use messenger_entity::user_identity_credentials::{self, Entity as UserIdentityCredentials};
 
 // ──────────────────────────────────────────────
 // GET /v1/devices/me
@@ -42,13 +45,16 @@ pub struct ListMyDevicesResponse {
 }
 
 /// `GET /v1/devices/me`
+///
+/// # Errors
+///
+/// - `401 Unauthorized` — отсутствует auth context.
+/// - `500` — внутренняя ошибка.
 pub async fn list_my_devices(
     CurrentAuth(ctx): CurrentAuth,
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
-    use messenger_entity::devices::{self, Entity as Devices};
-
     let devices = Devices::find()
         .filter(devices::Column::UserId.eq(ctx.user.id))
         .all(&state.db)
@@ -93,6 +99,14 @@ pub struct RevokeDeviceRequest {
 }
 
 /// `POST /v1/devices/me/:device_id/revoke`
+///
+/// # Errors
+///
+/// - `400 BadRequest` — невалидные параметры запроса.
+/// - `401 Unauthorized` — отсутствует auth context.
+/// - `404 Not Found` — устройство не найдено.
+/// - `422 SignatureInvalid` — неверная подпись.
+/// - `500` — внутренняя ошибка.
 pub async fn revoke_device(
     CurrentAuth(ctx): CurrentAuth,
     State(state): State<AppState>,
@@ -112,8 +126,6 @@ pub async fn revoke_device(
     }
 
     // Найти целевое устройство
-    use messenger_entity::devices::{self, Entity as Devices};
-
     let target_device = Devices::find_by_id(target_device_id)
         .one(&state.db)
         .await?
@@ -134,7 +146,6 @@ pub async fn revoke_device(
     }
 
     // Получить identity key пользователя
-    use messenger_entity::user_identity_credentials::{self, Entity as UserIdentityCredentials};
     let identity = UserIdentityCredentials::find()
         .filter(user_identity_credentials::Column::UserId.eq(ctx.user.id))
         .one(&state.db)
@@ -172,7 +183,6 @@ pub async fn revoke_device(
     active.update(&state.db).await?;
 
     // INSERT key_change_event
-    use messenger_entity::key_change_events;
     key_change_events::ActiveModel {
         id: NotSet,
         user_id: Set(ctx.user.id),
@@ -202,14 +212,17 @@ pub struct PublicDeviceInfo {
 }
 
 /// `GET /v1/users/:user_id/devices`
+///
+/// # Errors
+///
+/// - `401 Unauthorized` — отсутствует auth context.
+/// - `500` — внутренняя ошибка.
 pub async fn list_user_devices(
     CurrentAuth(_ctx): CurrentAuth,
     State(state): State<AppState>,
     Path(user_id): Path<Uuid>,
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
-    use messenger_entity::devices::{self, Entity as Devices};
-
     // Только активные (revoked_at IS NULL)
     let devices = Devices::find()
         .filter(devices::Column::UserId.eq(user_id))

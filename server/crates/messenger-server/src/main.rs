@@ -8,6 +8,7 @@ use messenger_server::config::AppConfig;
 use messenger_server::db;
 use messenger_server::routes::build_router;
 use messenger_server::state::{AppState, NonceCache};
+use messenger_server::tasks;
 use messenger_server::telemetry;
 use tower_http::limit::RequestBodyLimitLayer;
 
@@ -31,6 +32,9 @@ async fn main() -> anyhow::Result<()> {
         nonce_cache,
         server_identity: Arc::new(identity),
     };
+
+    // Запуск GC для provisioning-запросов
+    tokio::spawn(tasks::provisioning_gc::run_provisioning_gc(state.db.clone()));
 
     let app = build_router(state.clone())
         .layer(telemetry::trace_layer())

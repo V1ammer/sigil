@@ -119,6 +119,16 @@ async fn test_state_with_data(
 
 #[tokio::test]
 async fn test_valid_signature_passes() {
+    #[derive(serde::Deserialize)]
+    struct TestDevicesResp {
+        devices: Vec<TestDeviceInfo>,
+    }
+    #[derive(serde::Deserialize)]
+    #[allow(dead_code)]
+    struct TestDeviceInfo {
+        id: Uuid,
+        is_current: bool,
+    }
     let (state, sk, device_id) = test_state_with_data("user", "active").await;
     let app = build_router(state);
 
@@ -142,15 +152,6 @@ async fn test_valid_signature_passes() {
     assert_eq!(resp.status(), StatusCode::OK);
     // Verify response is valid msgpack with a devices array
     let bytes = resp.bytes().await.unwrap();
-    #[derive(serde::Deserialize)]
-    struct TestDevicesResp {
-        devices: Vec<TestDeviceInfo>,
-    }
-    #[derive(serde::Deserialize)]
-    struct TestDeviceInfo {
-        id: Uuid,
-        is_current: bool,
-    }
     let parsed: TestDevicesResp = rmp_serde::from_slice(&bytes).unwrap();
     assert_eq!(parsed.devices.len(), 1);
     assert!(parsed.devices[0].is_current);

@@ -22,6 +22,7 @@ mod m20260601_000016_create_attachments;
 mod m20260601_000017_create_reactions;
 mod m20260601_000018_create_message_delivery_receipts;
 mod m20260601_000019_create_push_tokens;
+mod m20260601_000020_add_provisioning_signing_key;
 
 pub struct Migrator;
 
@@ -48,6 +49,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260601_000017_create_reactions::Migration),
             Box::new(m20260601_000018_create_message_delivery_receipts::Migration),
             Box::new(m20260601_000019_create_push_tokens::Migration),
+            Box::new(m20260601_000020_add_provisioning_signing_key::Migration),
         ]
     }
 }

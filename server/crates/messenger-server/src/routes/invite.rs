@@ -1,7 +1,7 @@
 //! Публичный endpoint `POST /v1/invite/redeem`.
 //!
-//! Регистрирует нового пользователя (NewUser) или добавляет устройство
-//! существующему пользователю (NewDevice) по инвайт-токену.
+//! Регистрирует нового пользователя (`NewUser`) или добавляет устройство
+//! существующему пользователю (`NewDevice`) по инвайт-токену.
 
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
@@ -14,6 +14,10 @@ use uuid::Uuid;
 use crate::error::{decode_body, typed_response, AppError};
 use crate::services::invite::{begin_immediate, consume_token, now_secs, validate_token};
 use crate::state::AppState;
+use messenger_entity::users::{self, Entity as Users};
+use messenger_entity::user_identity_credentials::{self, Entity as UserIdentityCredentials};
+use sea_orm::ColumnTrait;
+use sea_orm::QueryFilter;
 
 /// Тип redeem-запроса.
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
@@ -32,8 +36,8 @@ pub struct RedeemRequest {
     /// Тип регистрации.
     pub kind: RedeemKind,
 
-    // ── NewUser поля ──
-    /// MLS BasicCredential (сериализованный).
+    // ── `NewUser` поля ──
+    /// MLS `BasicCredential` (сериализованный).
     #[serde(default)]
     pub identity_credential: Option<Vec<u8>>,
 
@@ -41,11 +45,11 @@ pub struct RedeemRequest {
     #[serde(default)]
     pub signature_public_key: Option<Vec<u8>>,
 
-    /// Plaintext username (только для NewUser).
+    /// Plaintext username (только для `NewUser`).
     pub username: Option<String>,
 
-    // ── NewDevice поля ──
-    /// Подпись challenge'а identity-ключом пользователя (только для NewDevice).
+    // ── `NewDevice` поля ──
+    /// Подпись challenge'а identity-ключом пользователя (только для `NewDevice`).
     #[serde(default)]
     pub existing_identity_proof: Option<Vec<u8>>,
 
@@ -63,7 +67,7 @@ pub struct RedeemRequest {
     #[serde(with = "serde_bytes")]
     pub device_authorization_signature: Vec<u8>,
 
-    /// Timestamp в секундах (для проверки device_authorization_signature).
+    /// Timestamp в секундах (для проверки `device_authorization_signature`).
     /// Должен быть в пределах ±300 секунд от now.
     pub device_authorization_timestamp: i64,
 }
@@ -79,6 +83,12 @@ pub struct RedeemResponse {
 /// `POST /v1/invite/redeem`
 ///
 /// Регистрирует нового пользователя или добавляет устройство.
+///
+/// # Errors
+///
+/// - `400 BadRequest` — невалидные параметры запроса.
+/// - `409 Conflict` — username занят.
+/// - `500` — внутренняя ошибка.
 pub async fn redeem(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -150,7 +160,6 @@ async fn handle_new_user(
     let device_id = Uuid::now_v7();
 
     // INSERT users
-    use messenger_entity::users;
     users::ActiveModel {
         id: Set(user_id),
         username_blind_index: Set(blind_index.clone()),
@@ -162,10 +171,9 @@ async fn handle_new_user(
     }
     .insert(&txn)
     .await
-    .map_err(|e| map_unique_violation(e))?;
+    .map_err(map_unique_violation)?;
 
     // INSERT user_identity_credentials
-    use messenger_entity::user_identity_credentials;
     user_identity_credentials::ActiveModel {
         user_id: Set(user_id),
         signature_public_key: Set(signature_pk_bytes.to_vec()),
@@ -227,9 +235,6 @@ async fn handle_new_device(
     let token_row = validate_token(&txn, &req.token).await?;
 
     // Найти пользователя по identity key
-    use messenger_entity::user_identity_credentials::{self, Entity as UserIdentityCredentials};
-    use sea_orm::ColumnTrait;
-    use sea_orm::QueryFilter;
     let identity_row = UserIdentityCredentials::find()
         .filter(user_identity_credentials::Column::SignaturePublicKey.eq(signature_pk_bytes.to_vec()))
         .one(&txn)
@@ -266,7 +271,6 @@ async fn handle_new_device(
     insert_key_change_event(&txn, user_id, device_id, "device_added", now).await?;
 
     // Загрузить пользователя для получения роли
-    use messenger_entity::users::Entity as Users;
     let user = Users::find_by_id(user_id)
         .one(&txn)
         .await?

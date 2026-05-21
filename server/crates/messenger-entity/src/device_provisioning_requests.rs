@@ -8,6 +8,7 @@ pub struct Model {
 
     pub user_id: Uuid,
     pub new_device_temp_public_key: Vec<u8>,
+    pub new_device_temp_signing_public_key: Vec<u8>,
     pub nonce: Vec<u8>,
     pub status: String,           // "pending" | "approved" | "expired" | "consumed"
     pub expires_at: i64,

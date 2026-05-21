@@ -1,5 +1,6 @@
 #![warn(clippy::all, clippy::pedantic)]
 #![forbid(unsafe_code)]
+#![allow(clippy::similar_names)]
 
 use std::net::SocketAddr;
 use std::str::FromStr;
@@ -16,6 +17,13 @@ use messenger_server::routes::build_router;
 use messenger_server::services::invite::now_secs;
 use messenger_server::state::{AppState, NonceCache};
 use messenger_migration::MigratorTrait;
+use messenger_entity::devices::Entity as Devices;
+use messenger_entity::invitation_tokens;
+use messenger_entity::key_change_events::Entity as KeyChangeEvents;
+use messenger_entity::user_identity_credentials::Entity as UserIdentityCredentials;
+use messenger_entity::users::Entity as Users;
+use sea_orm::ColumnTrait;
+use sea_orm::QueryFilter;
 use sea_orm::{ActiveModelTrait, Database, DatabaseConnection, EntityTrait, Set};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -37,7 +45,7 @@ struct UserKeyMaterial {
     identity_credential: Vec<u8>,
 }
 
-/// Creates an in-memory SQLite DB with migrations applied.
+/// Creates an in-memory `SQLite` DB with migrations applied.
 async fn fresh_db() -> DatabaseConnection {
     let db = Database::connect("sqlite::memory:").await.unwrap();
     messenger_migration::Migrator::up(&db, None).await.unwrap();
@@ -64,7 +72,7 @@ async fn bootstrapped_state() -> AppState {
 }
 
 /// Creates an admin user + device in the DB, returns handle.
-/// The identity is ServerIdentity::placeholder().
+/// The identity is `ServerIdentity::placeholder()`.
 async fn create_admin_handle(db: &DatabaseConnection) -> AdminHandle {
     let mut rng = rand::thread_rng();
     let signing_key = SigningKey::generate(&mut rng);
@@ -144,7 +152,7 @@ fn generate_user_keypairs() -> UserKeyMaterial {
 }
 
 /// Signs the device authorization message and returns the signature bytes.
-/// msg = device_signing_pk || device_init_pk || ts_le
+/// msg = `device_signing_pk` || `device_init_pk` || `ts_le`
 fn sign_device_authorization(
     identity_sk: &SigningKey,
     device_signing_pk: &[u8],
@@ -159,8 +167,8 @@ fn sign_device_authorization(
     identity_sk.sign(&msg).to_bytes().to_vec()
 }
 
-/// Signs the provisioning challenge for NewDevice.
-/// challenge = "messenger-provisioning-v1:" || token_str || ":" || ts_le
+/// Signs the provisioning challenge for `NewDevice`.
+/// challenge = "messenger-provisioning-v1:" || `token_str` || ":" || `ts_le`
 fn sign_provisioning_challenge(
     identity_sk: &SigningKey,
     token_str: &str,
@@ -176,7 +184,7 @@ fn sign_provisioning_challenge(
 }
 
 /// Signs the revocation message.
-/// msg = "revoke:" || device_id_bytes || ":" || ts_string
+/// msg = "revoke:" || `device_id_bytes` || ":" || `ts_string`
 fn sign_revocation(identity_sk: &SigningKey, device_id: &Uuid, ts: i64) -> Vec<u8> {
     let ts_str = ts.to_string();
     let mut msg = Vec::new();
@@ -508,13 +516,11 @@ async fn test_redeem_creates_user_identity_device() {
     assert_eq!(parsed.role, "user");
 
     // Verify user was created in DB
-    use messenger_entity::users::Entity as Users;
     let user = Users::find_by_id(parsed.user_id).one(&db).await.unwrap().unwrap();
     assert_eq!(user.role, "user");
     assert_eq!(user.status, "active");
 
     // Verify identity credential
-    use messenger_entity::user_identity_credentials::Entity as UserIdentityCredentials;
     let identity = UserIdentityCredentials::find_by_id(parsed.user_id)
         .one(&db)
         .await
@@ -523,7 +529,6 @@ async fn test_redeem_creates_user_identity_device() {
     assert_eq!(identity.credential, mat.identity_credential);
 
     // Verify device
-    use messenger_entity::devices::Entity as Devices;
     let device = Devices::find_by_id(parsed.device_id)
         .one(&db)
         .await
@@ -535,7 +540,6 @@ async fn test_redeem_creates_user_identity_device() {
     assert!(device.revoked_at.is_none());
 
     // Verify key change event
-    use messenger_entity::key_change_events::Entity as KeyChangeEvents;
     let events = KeyChangeEvents::find()
         .all(&db)
         .await
@@ -607,7 +611,6 @@ async fn test_redeem_with_expired_token_rejected() {
         base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(token_bytes);
     let token_hash = blake3::hash(token_b64.as_bytes()).as_bytes().to_vec();
 
-    use messenger_entity::invitation_tokens;
     invitation_tokens::ActiveModel {
         id: Set(Uuid::now_v7()),
         token_hash: Set(token_hash),
@@ -1345,6 +1348,7 @@ async fn test_list_my_devices() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn test_revoke_device_marks_revoked() {
     let db = fresh_db().await;
     let admin = create_admin_handle(&db).await;
@@ -1460,9 +1464,6 @@ async fn test_revoke_device_marks_revoked() {
     assert!(dev_b.revoked_at.is_none());
 
     // Key change event should exist
-    use messenger_entity::key_change_events::Entity as KeyChangeEvents;
-    use sea_orm::ColumnTrait;
-    use sea_orm::QueryFilter;
     let events = KeyChangeEvents::find()
         .filter(messenger_entity::key_change_events::Column::EventType.eq("device_revoked"))
         .all(&db)
@@ -1730,7 +1731,6 @@ async fn test_admin_suspend_user() {
     assert_eq!(suspend_resp.status(), StatusCode::NO_CONTENT);
 
     // Verify user is suspended in DB
-    use messenger_entity::users::Entity as Users;
     let user = Users::find_by_id(redeem_resp.user_id)
         .one(&db)
         .await
@@ -2016,7 +2016,6 @@ async fn test_admin_unsuspend_user() {
     assert_eq!(unsuspend_resp.status(), StatusCode::NO_CONTENT);
 
     // Verify active again
-    use messenger_entity::users::Entity as Users;
     let user = Users::find_by_id(redeem_resp.user_id)
         .one(&db)
         .await

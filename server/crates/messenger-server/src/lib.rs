@@ -10,4 +10,5 @@ pub mod identity;
 pub mod routes;
 pub mod services;
 pub mod state;
+pub mod tasks;
 pub mod telemetry;

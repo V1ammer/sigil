@@ -228,6 +228,13 @@ pub async fn revoke_invite(
 // ──────────────────────────────────────────────
 
 /// `POST /v1/admin/users/:id/suspend` — заморозить пользователя.
+///
+/// # Errors
+///
+/// - `404 Not Found` — пользователь не существует.
+/// - `401 Unauthorized` — отсутствует auth context.
+/// - `403 Forbidden` — пользователь не admin.
+/// - `500` — внутренняя ошибка.
 pub async fn suspend_user(
     CurrentAuth(_ctx): CurrentAuth,
     RequireAdmin(_): RequireAdmin,
@@ -250,6 +257,13 @@ pub async fn suspend_user(
 }
 
 /// `POST /v1/admin/users/:id/unsuspend` — разморозить пользователя.
+///
+/// # Errors
+///
+/// - `404 Not Found` — пользователь не существует.
+/// - `401 Unauthorized` — отсутствует auth context.
+/// - `403 Forbidden` — пользователь не admin.
+/// - `500` — внутренняя ошибка.
 pub async fn unsuspend_user(
     CurrentAuth(_ctx): CurrentAuth,
     RequireAdmin(_): RequireAdmin,
@@ -303,7 +317,13 @@ pub struct ListUsersResponse {
     pub total: u64,
 }
 
-/// `GET /v1/admin/users` — пагинированный список пользователей (без blind_index).
+/// `GET /v1/admin/users` — пагинированный список пользователей (без `blind_index`).
+///
+/// # Errors
+///
+/// - `401 Unauthorized` — отсутствует auth context.
+/// - `403 Forbidden` — пользователь не admin.
+/// - `500` — внутренняя ошибка.
 pub async fn list_users(
     CurrentAuth(_ctx): CurrentAuth,
     RequireAdmin(_): RequireAdmin,

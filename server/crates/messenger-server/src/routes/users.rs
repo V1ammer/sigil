@@ -1,8 +1,8 @@
 //! Endpoints для работы с пользователями.
 //!
-//! - `GET /v1/users/lookup?blind_index=<hex>` — поиск по blind_index.
+//! - `GET /v1/users/lookup?blind_index=<hex>` — поиск по `blind_index`.
 //! - `GET /v1/users/:id/identity` — identity credential пользователя.
-//! - `PATCH /v1/users/me/username` — смена username (пересчёт blind_index).
+//! - `PATCH /v1/users/me/username` — смена username (пересчёт `blind_index`).
 
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -14,6 +14,8 @@ use uuid::Uuid;
 use crate::auth::middleware::CurrentAuth;
 use crate::error::{decode_body, typed_response, AppError};
 use crate::state::AppState;
+use messenger_entity::users::{self, Entity as Users};
+use messenger_entity::user_identity_credentials::{self, Entity as UserIdentityCredentials};
 
 // ──────────────────────────────────────────────
 // GET /v1/users/lookup?blind_index=<hex>
@@ -36,6 +38,13 @@ pub struct LookupResponse {
 }
 
 /// `GET /v1/users/lookup?blind_index=<hex>`
+///
+/// # Errors
+///
+/// - `400 BadRequest` — невалидный hex в `blind_index`.
+/// - `401 Unauthorized` — отсутствует auth context.
+/// - `404 Not Found` — пользователь не найден.
+/// - `500` — внутренняя ошибка.
 pub async fn lookup(
     CurrentAuth(_ctx): CurrentAuth,
     State(state): State<AppState>,
@@ -44,9 +53,6 @@ pub async fn lookup(
 ) -> Result<Response, AppError> {
     let blind_index = hex::decode(&query.blind_index)
         .map_err(|_| AppError::BadRequest("invalid hex in blind_index".into()))?;
-
-    use messenger_entity::users::{self, Entity as Users};
-    use messenger_entity::user_identity_credentials::{self, Entity as UserIdentityCredentials};
 
     let user = Users::find()
         .filter(users::Column::UsernameBlindIndex.eq(blind_index))
@@ -76,14 +82,18 @@ pub async fn lookup(
 // ──────────────────────────────────────────────
 
 /// `GET /v1/users/:id/identity`
+///
+/// # Errors
+///
+/// - `401 Unauthorized` — отсутствует auth context.
+/// - `404 Not Found` — пользователь не найден.
+/// - `500` — внутренняя ошибка.
 pub async fn identity(
     CurrentAuth(_ctx): CurrentAuth,
     State(state): State<AppState>,
     Path(user_id): Path<Uuid>,
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
-    use messenger_entity::user_identity_credentials::{self, Entity as UserIdentityCredentials};
-
     let identity = UserIdentityCredentials::find()
         .filter(user_identity_credentials::Column::UserId.eq(user_id))
         .one(&state.db)
@@ -113,6 +123,14 @@ pub struct ChangeUsernameRequest {
 }
 
 /// `PATCH /v1/users/me/username`
+///
+/// # Errors
+///
+/// - `400 BadRequest` — пустой username.
+/// - `401 Unauthorized` — отсутствует auth context.
+/// - `404 Not Found` — пользователь не найден.
+/// - `409 Conflict` — username занят.
+/// - `500` — внутренняя ошибка.
 pub async fn change_username(
     CurrentAuth(ctx): CurrentAuth,
     State(state): State<AppState>,
@@ -126,8 +144,6 @@ pub async fn change_username(
     }
 
     let new_blind_index = state.server_identity.blind_index(&req.new_username);
-
-    use messenger_entity::users::{self, Entity as Users};
 
     let user = Users::find_by_id(ctx.user.id)
         .one(&state.db)
