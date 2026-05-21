@@ -9,6 +9,7 @@ pub mod admin;
 pub mod keypackages;
 pub mod devices;
 pub mod invite;
+pub mod mls;
 pub mod provisioning;
 pub mod server_info;
 pub mod users;
@@ -100,6 +101,22 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/v1/users/:user_id/devices/:device_id/keypackage/claim",
             post(keypackages::claim_keypackage),
+        )
+        // S10 — MLS Messaging
+        .route("/v1/groups", post(mls::create_group))
+        .route("/v1/groups/me", get(mls::list_my_groups))
+        .route("/v1/groups/:id/members", get(mls::get_group_members))
+        .route("/v1/groups/:id/commit", post(mls::post_commit))
+        .route("/v1/groups/:id/messages", get(mls::pull_messages))
+        .route("/v1/groups/:id/messages", post(mls::post_message))
+        .route("/v1/messages/:id/state", post(mls::update_message_state))
+        .route("/v1/messages/:id/delivery", get(mls::get_delivery_status))
+        .route("/v1/welcomes/me", get(mls::list_welcomes))
+        .route("/v1/welcomes/:id/ack", post(mls::ack_welcome))
+        .route("/v1/messages/:id/reactions", post(mls::add_reaction))
+        .route(
+            "/v1/messages/:id/reactions/:blind_index_hex",
+            delete(mls::remove_reaction),
         )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
