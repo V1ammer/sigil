@@ -53,6 +53,23 @@ pub struct AppConfig {
     #[serde(default = "default_attachment_ttl_unfinalized_secs")]
     pub attachment_ttl_unfinalized_secs: u64,
 
+    /// Порог для inline-хранения attachment'ов в БД (байты).
+    /// Файлы меньше этого значения хранятся в `payload_ciphertext`, иначе на диске.
+    #[serde(default = "default_attachment_inline_threshold_bytes")]
+    pub attachment_inline_threshold_bytes: u64,
+
+    /// Максимальный размер attachment'а.
+    #[serde(default = "default_max_attachment_bytes")]
+    pub max_attachment_bytes: u64,
+
+    /// Максимальное количество незафинализированных attachment'ов на устройство.
+    #[serde(default = "default_attachment_max_unfinalized_per_device")]
+    pub attachment_max_unfinalized_per_device: u32,
+
+    /// Потоковая передача для файлов больше этого порога.
+    #[serde(default = "default_attachment_stream_threshold_bytes")]
+    pub attachment_stream_threshold_bytes: u64,
+
     /// Lifetime `KeyPackage` по умолчанию.
     #[serde(default = "default_keypackage_lifetime_secs")]
     pub keypackage_default_lifetime_secs: u64,
@@ -88,6 +105,22 @@ fn default_log_level() -> String {
 
 fn default_attachment_ttl_unfinalized_secs() -> u64 {
     3600
+}
+
+fn default_attachment_inline_threshold_bytes() -> u64 {
+    1024 * 1024 // 1 MB
+}
+
+fn default_max_attachment_bytes() -> u64 {
+    100 * 1024 * 1024 // 100 MB
+}
+
+fn default_attachment_max_unfinalized_per_device() -> u32 {
+    10
+}
+
+fn default_attachment_stream_threshold_bytes() -> u64 {
+    1024 * 1024 // 1 MB
 }
 
 fn default_keypackage_lifetime_secs() -> u64 {
@@ -155,6 +188,10 @@ impl Default for AppConfig {
             log_format: LogFormat::Json,
             log_level: default_log_level(),
             attachment_ttl_unfinalized_secs: default_attachment_ttl_unfinalized_secs(),
+            attachment_inline_threshold_bytes: default_attachment_inline_threshold_bytes(),
+            max_attachment_bytes: default_max_attachment_bytes(),
+            attachment_max_unfinalized_per_device: default_attachment_max_unfinalized_per_device(),
+            attachment_stream_threshold_bytes: default_attachment_stream_threshold_bytes(),
             keypackage_default_lifetime_secs: default_keypackage_lifetime_secs(),
         }
     }

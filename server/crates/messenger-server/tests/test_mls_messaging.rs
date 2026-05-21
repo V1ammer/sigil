@@ -73,6 +73,7 @@ fn make_state(db: DatabaseConnection) -> AppState {
         config: std::sync::Arc::new(config),
         nonce_cache: std::sync::Arc::new(NonceCache::new(100)),
         server_identity: std::sync::Arc::new(messenger_server::state::ServerIdentity::placeholder()),
+        storage: messenger_server::attachments::StorageBackend::InDatabase,
     }
 }
 

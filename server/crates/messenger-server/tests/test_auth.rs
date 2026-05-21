@@ -110,6 +110,7 @@ async fn test_state_with_data(
         config: std::sync::Arc::new(config),
         nonce_cache: std::sync::Arc::new(NonceCache::new(100)),
         server_identity: std::sync::Arc::new(ServerIdentity::placeholder()),
+        storage: messenger_server::attachments::StorageBackend::InDatabase,
     };
 
     (state, sk, device_id)
@@ -379,6 +380,7 @@ async fn test_revoked_device_rejected() {
         config: std::sync::Arc::new(config),
         nonce_cache: std::sync::Arc::new(NonceCache::new(100)),
         server_identity: std::sync::Arc::new(ServerIdentity::placeholder()),
+        storage: messenger_server::attachments::StorageBackend::InDatabase,
     };
 
     let app = build_router(state);

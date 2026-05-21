@@ -92,6 +92,7 @@ async fn create_admin_handle(db: &DatabaseConnection) -> AdminHandle {
         config: Arc::new(config),
         nonce_cache: Arc::new(NonceCache::new(100)),
         server_identity: Arc::new(ServerIdentity::placeholder()),
+        storage: messenger_server::attachments::StorageBackend::InDatabase,
     };
 
     AdminHandle {
@@ -155,6 +156,7 @@ async fn create_user_handle(db: &DatabaseConnection) -> AdminHandle {
         config: Arc::new(config),
         nonce_cache: Arc::new(NonceCache::new(100)),
         server_identity: Arc::new(ServerIdentity::placeholder()),
+        storage: messenger_server::attachments::StorageBackend::InDatabase,
     };
 
     AdminHandle {

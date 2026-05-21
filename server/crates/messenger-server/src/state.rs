@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use sea_orm::DatabaseConnection;
 
+use crate::attachments::StorageBackend;
 use crate::config::AppConfig;
 pub use crate::identity::ServerIdentity;
 
@@ -45,4 +46,5 @@ pub struct AppState {
     pub config: Arc<AppConfig>,
     pub nonce_cache: Arc<NonceCache>,
     pub server_identity: Arc<ServerIdentity>,
+    pub storage: StorageBackend,
 }

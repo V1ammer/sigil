@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use messenger_server::attachments::StorageBackend;
 use messenger_server::bootstrap;
 use messenger_server::config::AppConfig;
 use messenger_server::db;
@@ -26,16 +27,36 @@ async fn main() -> anyhow::Result<()> {
     let identity = bootstrap::load_or_init(&db).await?;
     let nonce_cache = Arc::new(NonceCache::new(config.nonce_cache_capacity));
 
+    let storage = if config.data_dir.join("att").exists() || config.attachment_inline_threshold_bytes == 0 {
+        // Если data_dir/att существует — on-disk режим
+        StorageBackend::FileSystem {
+            root: config.data_dir.clone(),
+            inline_threshold: config.attachment_inline_threshold_bytes,
+        }
+    } else {
+        StorageBackend::FileSystem {
+            root: config.data_dir.clone(),
+            inline_threshold: config.attachment_inline_threshold_bytes,
+        }
+    };
+    // Создаём att-директорию
+    let _ = tokio::fs::create_dir_all(config.data_dir.join("att")).await;
+
     let state = AppState {
         db,
         config: Arc::new(config.clone()),
         nonce_cache,
         server_identity: Arc::new(identity),
+        storage,
     };
 
     // Запуск GC задач
     tokio::spawn(tasks::provisioning_gc::run_provisioning_gc(state.db.clone()));
     tokio::spawn(tasks::keypackage_gc::run_keypackage_gc(state.db.clone()));
+    tokio::spawn(tasks::attachment_gc::run_attachment_gc(
+        state.db.clone(),
+        state.storage.clone(),
+    ));
 
     let app = build_router(state.clone())
         .layer(telemetry::trace_layer())

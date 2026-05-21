@@ -6,6 +6,7 @@ use crate::auth::middleware::require_auth;
 use crate::state::AppState;
 
 pub mod admin;
+pub mod attachments;
 pub mod keypackages;
 pub mod devices;
 pub mod invite;
@@ -118,6 +119,10 @@ pub fn build_router(state: AppState) -> Router {
             "/v1/messages/:id/reactions/:blind_index_hex",
             delete(mls::remove_reaction),
         )
+        // S11 — Attachments
+        .route("/v1/attachments", post(attachments::upload_attachment))
+        .route("/v1/attachments/:id/finalize", post(attachments::finalize_attachment))
+        .route("/v1/attachments/:id", get(attachments::download_attachment))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             require_auth,
