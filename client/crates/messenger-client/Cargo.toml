@@ -1,0 +1,22 @@
+[package]
+name = "messenger-client"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+leptos = { workspace = true }
+leptos_router = { workspace = true }
+leptos_meta = { workspace = true }
+wasm-bindgen = { workspace = true }
+console_error_panic_hook = "0.1"
+tracing.workspace = true
+tracing-wasm.workspace = true
+messenger-core = { path = "../messenger-core" }
+messenger-storage = { path = "../messenger-storage" }
+messenger-proto = { path = "../messenger-proto" }
+
+[lints]
+workspace = true

@@ -1,0 +1,6 @@
+target/
+.direnv/
+dist/
+src-tauri/target/
+gen/
+.DS_Store

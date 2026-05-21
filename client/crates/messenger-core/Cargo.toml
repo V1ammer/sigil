@@ -1,0 +1,21 @@
+[package]
+name = "messenger-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_bytes = { workspace = true }
+rmp-serde = { workspace = true }
+uuid = { workspace = true }
+blake3 = { workspace = true }
+ed25519-dalek = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+messenger-proto = { path = "../messenger-proto" }
+
+[features]
+# crypto-base подключается всегда; openmls-зависимое — отдельно (наполним в C04)
+
+[lints]
+workspace = true

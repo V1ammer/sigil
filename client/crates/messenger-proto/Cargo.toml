@@ -1,0 +1,12 @@
+[package]
+name = "messenger-proto"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_bytes = { workspace = true }
+uuid = { workspace = true }
+
+[lints]
+workspace = true

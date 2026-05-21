@@ -1,0 +1,27 @@
+[package]
+name = "messenger-tauri"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "messenger_tauri_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "messenger-tauri"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { workspace = true, features = [] }
+
+[dependencies]
+tauri = { workspace = true, features = [] }
+tauri-plugin-shell = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+messenger-core = { path = "../crates/messenger-core" }
+messenger-storage = { path = "../crates/messenger-storage" }
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
