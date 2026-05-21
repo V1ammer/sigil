@@ -4,8 +4,10 @@ use std::time::Duration;
 use sea_orm::DatabaseConnection;
 
 use crate::config::AppConfig;
+pub use crate::identity::ServerIdentity;
 
 /// LRU-кеш для nonce (защита от replay-attacks).
+///
 /// Nonce хранятся 180 секунд — чуть больше окна `clock_skew` (60s),
 /// чтобы старые nonce ещё были в кэше, когда таймстамп уже отвергнется отдельно.
 pub struct NonceCache {
@@ -33,22 +35,6 @@ impl NonceCache {
         }
         self.inner.insert(key, ());
         false
-    }
-}
-
-/// Заглушка для `ServerIdentity`. Полная реализация в S05.
-pub struct ServerIdentity {
-    /// Публичный ключ сервера (заполняется в S05).
-    pub public_key: Vec<u8>,
-}
-
-impl ServerIdentity {
-    /// Создаёт placeholder до полноценной инициализации.
-    #[must_use]
-    pub fn placeholder() -> Self {
-        Self {
-            public_key: Vec::new(),
-        }
     }
 }
 

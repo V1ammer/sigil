@@ -3,10 +3,11 @@
 
 use std::sync::Arc;
 
+use messenger_server::bootstrap;
 use messenger_server::config::AppConfig;
 use messenger_server::db;
 use messenger_server::routes::build_router;
-use messenger_server::state::{AppState, NonceCache, ServerIdentity};
+use messenger_server::state::{AppState, NonceCache};
 use messenger_server::telemetry;
 use tower_http::limit::RequestBodyLimitLayer;
 
@@ -21,14 +22,14 @@ async fn main() -> anyhow::Result<()> {
     let db = db::connect(&config).await?;
     db::run_migrations(&db).await?;
 
+    let identity = bootstrap::load_or_init(&db).await?;
     let nonce_cache = Arc::new(NonceCache::new(config.nonce_cache_capacity));
-    let server_identity = Arc::new(ServerIdentity::placeholder());
 
     let state = AppState {
         db,
         config: Arc::new(config.clone()),
         nonce_cache,
-        server_identity,
+        server_identity: Arc::new(identity),
     };
 
     let app = build_router(state.clone())

@@ -1,8 +1,7 @@
 use std::convert::Infallible;
 
-use axum::http::{header, StatusCode};
+use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use serde::Serialize;
 
 /// Общий тип ошибки приложения. Маппится в HTTP-ответ с msgpack-телом.
 #[derive(Debug, thiserror::Error)]
@@ -67,7 +66,7 @@ pub enum AppError {
 }
 
 /// Тело ошибки в msgpack-формате.
-#[derive(Serialize)]
+#[derive(serde::Serialize)]
 struct ErrorBody {
     code: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -168,5 +167,43 @@ impl From<sea_orm::DbErr> for AppError {
 impl From<Infallible> for AppError {
     fn from(_: Infallible) -> Self {
         unreachable!()
+    }
+}
+
+/// Формирует успешный ответ в JSON или `MessagePack` в зависимости от `Accept` header.
+///
+/// - `Accept: application/json` → JSON (`application/json`)
+/// - иначе → `MessagePack` (`application/msgpack`)
+///
+/// Ошибки всегда возвращаются в `MessagePack` (см. `AppError::into_response`).
+///
+/// # Panics
+///
+/// Паникует если сериализация или построение ответа невозможны — это
+/// указывает на баг в коде (все нормальные типы сериализуемы).
+pub fn typed_response<T: serde::Serialize>(
+    headers: &HeaderMap,
+    status: StatusCode,
+    body: &T,
+) -> Response {
+    let prefer_json = headers
+        .get(header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|s| s.contains("application/json"));
+
+    if prefer_json {
+        let bytes = serde_json::to_vec(body).expect("JSON serialization of response");
+        Response::builder()
+            .status(status)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(bytes.into())
+            .expect("static response builder")
+    } else {
+        let bytes = rmp_serde::to_vec_named(body).expect("msgpack serialization of response");
+        Response::builder()
+            .status(status)
+            .header(header::CONTENT_TYPE, "application/msgpack")
+            .body(bytes.into())
+            .expect("static response builder")
     }
 }

@@ -26,6 +26,13 @@ moka.workspace = true
 chrono.workspace = true
 serde_json.workspace = true
 hex.workspace = true
+base64.workspace = true
+hmac.workspace = true
+sha2.workspace = true
+unicode-normalization.workspace = true
+ed25519-dalek.workspace = true
+rand.workspace = true
+blake3.workspace = true
 
 messenger-migration = { path = "../messenger-migration" }
 messenger-crypto = { path = "../messenger-crypto" }
@@ -34,8 +41,6 @@ messenger-entity = { path = "../messenger-entity" }
 [dev-dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 sea-orm-migration.workspace = true
-rand.workspace = true
-ed25519-dalek.workspace = true
 
 [lints]
 workspace = true
