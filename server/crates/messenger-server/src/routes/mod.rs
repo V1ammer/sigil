@@ -6,6 +6,7 @@ use crate::auth::middleware::require_auth;
 use crate::state::AppState;
 
 pub mod admin;
+pub mod keypackages;
 pub mod devices;
 pub mod invite;
 pub mod provisioning;
@@ -38,6 +39,9 @@ pub mod users;
 /// - `GET   /v1/users/:user_id/devices` — список активных устройств.
 /// - `GET   /v1/provisioning/requests/:id` — детали запроса.
 /// - `POST  /v1/provisioning/requests/:id/approve` — одобрить запрос.
+/// - `POST  /v1/keypackages` — публикация `KeyPackages`.
+/// - `GET   /v1/keypackages/me/count` — статистика пула.
+/// - `POST  /v1/users/:user_id/devices/:device_id/keypackage/claim` — атомарный claim.
 pub fn build_router(state: AppState) -> Router {
     let public = Router::new()
         .route("/health", get(health))
@@ -87,6 +91,15 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/v1/provisioning/requests/:id/approve",
             post(provisioning::approve_request),
+        )
+        .route("/v1/keypackages", post(keypackages::publish_keypackages))
+        .route(
+            "/v1/keypackages/me/count",
+            get(keypackages::get_pool_stats),
+        )
+        .route(
+            "/v1/users/:user_id/devices/:device_id/keypackage/claim",
+            post(keypackages::claim_keypackage),
         )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),

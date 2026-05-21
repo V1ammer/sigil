@@ -33,8 +33,9 @@ async fn main() -> anyhow::Result<()> {
         server_identity: Arc::new(identity),
     };
 
-    // Запуск GC для provisioning-запросов
+    // Запуск GC задач
     tokio::spawn(tasks::provisioning_gc::run_provisioning_gc(state.db.clone()));
+    tokio::spawn(tasks::keypackage_gc::run_keypackage_gc(state.db.clone()));
 
     let app = build_router(state.clone())
         .layer(telemetry::trace_layer())
