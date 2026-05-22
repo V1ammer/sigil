@@ -11,7 +11,13 @@
   outputs = { nixpkgs, flake-utils, fenix, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = nixpkgs.legacyPackages.${system};
+        pkgs = import nixpkgs {
+          inherit system;
+          config = {
+            android_sdk.accept_license = true;
+            allowUnfree = true;
+          };
+        };
         toolchain = fenix.packages.${system}.combine [
           fenix.packages.${system}.stable.toolchain
           fenix.packages.${system}.targets.wasm32-unknown-unknown.stable.rust-std
