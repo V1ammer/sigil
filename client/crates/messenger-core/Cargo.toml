@@ -18,6 +18,8 @@ base64 = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 async-trait = "0.1"
+futures-channel = "0.3"
+futures-util = { version = "0.3", features = ["sink"] }
 
 # MLS (native only — openmls does not compile for wasm32)
 openmls = { workspace = true, optional = true }
@@ -32,8 +34,22 @@ age = { workspace = true, optional = true }
 hmac = { version = "0.12", optional = true }
 sha2 = { version = "0.10", optional = true }
 
+# Proto types
+messenger-proto = { path = "../messenger-proto" }
+
 # Storage trait
 messenger-storage = { path = "../messenger-storage", default-features = false }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+tokio = { workspace = true, features = ["rt", "time", "sync"] }
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+gloo-net = { workspace = true }
+gloo-timers = { workspace = true }
+js-sys = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros", "time"] }

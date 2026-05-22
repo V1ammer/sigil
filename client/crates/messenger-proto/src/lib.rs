@@ -3,6 +3,14 @@
 #![warn(clippy::all, clippy::pedantic)]
 #![forbid(unsafe_code)]
 
-/// Placeholder — will be populated in C02/C04.
-#[must_use]
-pub fn placeholder() -> bool { true }
+pub mod auth;
+pub mod attachments;
+pub mod error;
+pub mod invites;
+pub mod keypackages;
+pub mod mls;
+pub mod provisioning;
+pub mod reactions;
+pub mod server;
+pub mod users;
+pub mod ws;

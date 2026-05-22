@@ -4,6 +4,7 @@
 #![warn(clippy::all, clippy::pedantic)]
 #![forbid(unsafe_code)]
 
+pub mod api;
 pub mod canonical;
 pub mod ed25519;
 pub mod error;
