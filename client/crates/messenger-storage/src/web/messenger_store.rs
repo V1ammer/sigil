@@ -65,6 +65,7 @@ impl MessengerLocalStore for IndexedDbMessengerStore {
     // ------------------------------------------------------------------
     async fn save_mls_group_state(
         &self,
+        device_id: Uuid,
         group_id: Uuid,
         state: &[u8],
     ) -> Result<(), StorageError> {
@@ -74,8 +75,12 @@ impl MessengerLocalStore for IndexedDbMessengerStore {
             .map_err(js_err)?;
         let store = tx.object_store("mls_groups").map_err(js_err)?;
         let arr = js_sys::Uint8Array::from(state);
+        let key = js_sys::Array::of2(
+            &JsValue::from_str(&device_id.to_string()),
+            &JsValue::from_str(&group_id.to_string()),
+        );
         store
-            .put(&arr.into(), Some(&JsValue::from_str(&group_id.to_string())))
+            .put(&arr.into(), Some(&key.into()))
             .map_err(js_err)?
             .await
             .map_err(js_err)?;
@@ -85,6 +90,7 @@ impl MessengerLocalStore for IndexedDbMessengerStore {
 
     async fn load_mls_group_state(
         &self,
+        device_id: Uuid,
         group_id: Uuid,
     ) -> Result<Option<Vec<u8>>, StorageError> {
         let tx = self
@@ -92,8 +98,12 @@ impl MessengerLocalStore for IndexedDbMessengerStore {
             .transaction(&["mls_groups"], TransactionMode::ReadOnly)
             .map_err(js_err)?;
         let store = tx.object_store("mls_groups").map_err(js_err)?;
+        let key = js_sys::Array::of2(
+            &JsValue::from_str(&device_id.to_string()),
+            &JsValue::from_str(&group_id.to_string()),
+        );
         let val = store
-            .get(JsValue::from_str(&group_id.to_string()))
+            .get(JsValue::from(key))
             .map_err(js_err)?
             .await
             .map_err(js_err)?;
@@ -102,7 +112,7 @@ impl MessengerLocalStore for IndexedDbMessengerStore {
         }))
     }
 
-    async fn list_mls_group_ids(&self) -> Result<Vec<Uuid>, StorageError> {
+    async fn list_mls_group_ids(&self, device_id: Uuid) -> Result<Vec<Uuid>, StorageError> {
         let tx = self
             .db
             .transaction(&["mls_groups"], TransactionMode::ReadOnly)
@@ -115,9 +125,17 @@ impl MessengerLocalStore for IndexedDbMessengerStore {
             .map_err(js_err)?;
         let mut result = Vec::new();
         for key in keys {
-            if let Some(s) = key.as_string() {
-                if let Ok(u) = Uuid::parse_str(&s) {
-                    result.push(u);
+            if let Ok(arr) = key.dyn_into::<js_sys::Array>() {
+                if arr.length() == 2 {
+                    let dev = arr.get(0).as_string();
+                    let grp = arr.get(1).as_string();
+                    if dev.as_deref() == Some(&device_id.to_string()) {
+                        if let Some(s) = grp {
+                            if let Ok(u) = Uuid::parse_str(&s) {
+                                result.push(u);
+                            }
+                        }
+                    }
                 }
             }
         }

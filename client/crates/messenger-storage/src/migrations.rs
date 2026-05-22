@@ -13,9 +13,11 @@ pub fn schema_v1() -> Vec<&'static str> {
             device_hpke_public_key BLOB NOT NULL
         )",
         "CREATE TABLE IF NOT EXISTS mls_groups (
-            group_id BLOB PRIMARY KEY NOT NULL,
+            device_id BLOB NOT NULL,
+            group_id BLOB NOT NULL,
             state_blob BLOB NOT NULL,
-            updated_at INTEGER NOT NULL
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (device_id, group_id)
         )",
         "CREATE TABLE IF NOT EXISTS chats (
             group_id BLOB PRIMARY KEY NOT NULL,

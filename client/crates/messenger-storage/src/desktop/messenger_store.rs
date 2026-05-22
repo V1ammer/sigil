@@ -84,18 +84,20 @@ impl MessengerLocalStore for SqlcipherMessengerStore {
     // ------------------------------------------------------------------
     async fn save_mls_group_state(
         &self,
+        device_id: Uuid,
         group_id: Uuid,
         state: &[u8],
     ) -> Result<(), StorageError> {
         let now = now_ms();
         self.db
             .execute(
-                "INSERT INTO mls_groups (group_id, state_blob, updated_at)
-                 VALUES (?, ?, ?)
-                 ON CONFLICT(group_id) DO UPDATE SET
+                "INSERT INTO mls_groups (device_id, group_id, state_blob, updated_at)
+                 VALUES (?, ?, ?, ?)
+                 ON CONFLICT(device_id, group_id) DO UPDATE SET
                      state_blob=excluded.state_blob,
                      updated_at=excluded.updated_at",
                 &[
+                    uuid_blob(device_id),
                     uuid_blob(group_id),
                     StorageValue::Blob(state.to_vec()),
                     StorageValue::Int(now),
@@ -107,13 +109,14 @@ impl MessengerLocalStore for SqlcipherMessengerStore {
 
     async fn load_mls_group_state(
         &self,
+        device_id: Uuid,
         group_id: Uuid,
     ) -> Result<Option<Vec<u8>>, StorageError> {
         let rows = self
             .db
             .query(
-                "SELECT state_blob FROM mls_groups WHERE group_id = ?",
-                &[uuid_blob(group_id)],
+                "SELECT state_blob FROM mls_groups WHERE device_id = ? AND group_id = ?",
+                &[uuid_blob(device_id), uuid_blob(group_id)],
             )
             .await?;
         Ok(rows
@@ -126,10 +129,10 @@ impl MessengerLocalStore for SqlcipherMessengerStore {
             }))
     }
 
-    async fn list_mls_group_ids(&self) -> Result<Vec<Uuid>, StorageError> {
+    async fn list_mls_group_ids(&self, device_id: Uuid) -> Result<Vec<Uuid>, StorageError> {
         let rows = self
             .db
-            .query("SELECT group_id FROM mls_groups", &[])
+            .query("SELECT group_id FROM mls_groups WHERE device_id = ?", &[uuid_blob(device_id)])
             .await?;
         rows.into_iter()
             .map(|r| {

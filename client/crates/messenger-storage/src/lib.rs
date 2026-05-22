@@ -19,7 +19,7 @@ pub mod desktop;
 #[cfg(target_os = "android")]
 pub mod android;
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "web"))]
 pub mod web;
 
 pub use error::*;

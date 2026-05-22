@@ -43,19 +43,21 @@ pub trait MessengerLocalStore {
     ) -> Result<Option<EncryptedIdentity>, StorageError>;
 
     // MLS group state
-    /// Save MLS group state blob.
+    /// Save MLS group state blob for a device.
     async fn save_mls_group_state(
         &self,
+        device_id: Uuid,
         group_id: Uuid,
         state: &[u8],
     ) -> Result<(), StorageError>;
-    /// Load MLS group state blob.
+    /// Load MLS group state blob for a device.
     async fn load_mls_group_state(
         &self,
+        device_id: Uuid,
         group_id: Uuid,
     ) -> Result<Option<Vec<u8>>, StorageError>;
-    /// List all MLS group IDs.
-    async fn list_mls_group_ids(&self) -> Result<Vec<Uuid>, StorageError>;
+    /// List all MLS group IDs for a device.
+    async fn list_mls_group_ids(&self, device_id: Uuid) -> Result<Vec<Uuid>, StorageError>;
 
     // Chats / messages cache
     /// Save or update chat metadata.
