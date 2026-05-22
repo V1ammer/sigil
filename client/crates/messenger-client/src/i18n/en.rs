@@ -347,11 +347,24 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("time.hours", "h");
     m.insert("time.days", "d");
 
-    // Scan
+    // Scan / Provisioning
     m.insert("scan.title", "Scan QR on new device");
     m.insert("scan.manual", "Enter manually");
+    m.insert("scan.placeholder", "Paste QR content here");
+    m.insert("scan.apply", "Apply");
+    m.insert("scan.unavailable", "Scanner not available. Paste the QR code manually.");
     m.insert("scan.confirm.title", "Confirm device addition");
     m.insert("scan.confirm", "Confirm");
+    m.insert("scan.nonce", "QR nonce");
+    m.insert("scan.cancel", "Cancel");
+    m.insert("scan.error.wrongServer", "QR is from a different server");
+    m.insert("scan.error.wrongUser", "QR is for another user");
+    m.insert("scan.error.expired", "Provisioning request expired");
+    m.insert("scan.progress.approve", "Approving...");
+    m.insert("scan.progress.groups", "Adding to groups");
+    m.insert("scan.success", "Device added successfully");
+    m.insert("settings.devices.scan", "Scan QR");
+    m.insert("settings.devices.manualEntry", "Enter manually");
 
     // Settings sub-sections
     m.insert("settings.account.save", "Save");
@@ -393,6 +406,81 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("error.invite_expired", "Invite token has expired");
     m.insert("error.invite_exhausted", "Invite token has been exhausted");
     m.insert("error.username_taken", "Username is already taken");
+
+    // C11 — Account
+    m.insert("settings.account.changeUsername", "Change username");
+    m.insert("settings.account.changeUsernameDesc", "Enter new username. Only letters, numbers and underscore.");
+    m.insert("settings.account.usernameTaken", "This username is already taken");
+    m.insert("settings.account.usernameChanged", "Username changed");
+    m.insert("settings.account.logout", "Sign out");
+    m.insert("settings.account.logoutConfirm", "Sign out?");
+    m.insert("settings.account.logoutDesc", "All local data will be deleted. You will need an invite token to sign in again.");
+
+    // C11 — Devices
+    m.insert("settings.devices.revokeTitle", "Revoke device");
+    m.insert("settings.devices.revokeDesc", "Are you sure you want to revoke this device? It will be disconnected immediately.");
+    m.insert("settings.devices.revoking", "Revoking device...");
+    m.insert("settings.devices.revoked", "Device revoked");
+    m.insert("settings.devices.removingFromGroups", "Removing from groups...");
+
+    // C11 — Notifications
+    m.insert("settings.notifications.vibration", "Vibration");
+    m.insert("settings.notifications.vibrationDesc", "Vibrate on new messages");
+    m.insert("settings.notifications.filter", "Notifications for");
+    m.insert("settings.notifications.filterAll", "All");
+    m.insert("settings.notifications.filterMentions", "Mentions only");
+    m.insert("settings.notifications.filterNone", "None");
+    m.insert("settings.notifications.quietHours", "Quiet hours");
+    m.insert("settings.notifications.quietHoursDesc", "Do not disturb during certain hours");
+
+    // C11 — Privacy
+    m.insert("settings.privacy.readReceipts", "Read receipts");
+    m.insert("settings.privacy.readReceiptsDesc", "Let others see when you read their messages");
+    m.insert("settings.privacy.typingIndicators", "Typing indicators");
+    m.insert("settings.privacy.typingIndicatorsDesc", "Show when you're typing");
+    m.insert("settings.privacy.blockList", "Block list");
+    m.insert("settings.privacy.blockListDesc", "Blocked users");
+    m.insert("settings.privacy.clearCache", "Clear local cache");
+    m.insert("settings.privacy.clearCacheDesc", "Delete all local data and sign out");
+    m.insert("settings.privacy.clearCacheConfirm", "Clear cache?");
+    m.insert("settings.privacy.clearCacheWarning", "All local data will be permanently deleted. You will need to sign in again.");
+
+    // C11 — About
+    m.insert("settings.about.mlsVersion", "MLS protocol version");
+    m.insert("settings.about.serverPubkey", "Server public key");
+    m.insert("settings.about.docs", "Documentation");
+    m.insert("settings.about.source", "Source code");
+    m.insert("settings.about.bugTracker", "Bug tracker");
+    m.insert("settings.about.licenseDesc", "AGPL-3.0 — Free software");
+
+    // C11 — Admin
+    m.insert("settings.admin.invites", "Invitations");
+    m.insert("settings.admin.users", "Users");
+    m.insert("settings.adminInvites.ttl", "Expiry");
+    m.insert("settings.adminInvites.ttl1h", "1 hour");
+    m.insert("settings.adminInvites.ttl24h", "24 hours");
+    m.insert("settings.adminInvites.ttl7d", "7 days");
+    m.insert("settings.adminInvites.ttl30d", "30 days");
+    m.insert("settings.adminInvites.copyToken", "Copy token");
+    m.insert("settings.adminInvites.tokenCopied", "Token copied");
+    m.insert("settings.adminInvites.onceWarning", "This token is shown only once. Save it now.");
+    m.insert("settings.adminInvites.revokeConfirm", "Revoke invitation?");
+    m.insert("settings.adminInvites.revokeDesc", "This invitation will become invalid.");
+    m.insert("settings.adminInvites.noInvites", "No active invitations");
+    m.insert("settings.adminInvites.created", "Invitation created");
+    m.insert("settings.adminInvites.createFailed", "Failed to create invitation");
+    m.insert("settings.adminUsers.userId", "User ID");
+    m.insert("settings.adminUsers.devicesCount", "Devices");
+    m.insert("settings.adminUsers.suspendConfirm", "Suspend user?");
+    m.insert("settings.adminUsers.suspendDesc", "The user will not be able to send messages until unsuspended.");
+    m.insert("settings.adminUsers.unsuspendConfirm", "Unsuspend user?");
+    m.insert("settings.adminUsers.unsuspendDesc", "The user will regain access to the messenger.");
+    m.insert("settings.adminUsers.noUsers", "No users found");
+
+    // C11 — Common
+    m.insert("common.ok", "OK");
+    m.insert("common.yes", "Yes");
+    m.insert("common.no", "No");
 
     m
 }

@@ -1,6 +1,5 @@
 use leptos::prelude::*;
 use leptos_router::hooks::use_navigate;
-use gloo_timers::callback::Timeout;
 use crate::i18n::I18n;
 use crate::t;
 
@@ -9,7 +8,6 @@ use crate::t;
 pub fn LoginTokenScreen() -> impl IntoView {
     let _i18n = use_context::<I18n>().expect("I18n must be provided");
     let token = RwSignal::new(String::new());
-    let is_loading = RwSignal::new(false);
     let error = RwSignal::new(Option::<String>::None);
     let navigate = use_navigate();
 
@@ -30,31 +28,20 @@ pub fn LoginTokenScreen() -> impl IntoView {
         parts.join("-")
     };
 
-    let navigate_for_submit = navigate.clone();
-    let on_submit = std::sync::Arc::new(move || {
-        let navigate = navigate_for_submit.clone();
-        let tok = token.get();
-        if tok.len() < 19 {
-            error.set(Some(t!("token.error.invalid")));
-            return;
-        }
-        is_loading.set(true);
-        error.set(None);
-
-        let nav = navigate.clone();
-        Timeout::new(1500, move || {
-            if tok.contains("EXPIRED") {
-                error.set(Some(t!("token.error.expired")));
-                is_loading.set(false);
-            } else if tok.contains("USED") {
-                error.set(Some(t!("token.error.exhausted")));
-                is_loading.set(false);
-            } else {
-                nav("/register", Default::default());
+    let on_submit = {
+        let navigate = navigate.clone();
+        move || {
+            let tok = token.get();
+            if tok.len() < 19 {
+                error.set(Some(t!("token.error.invalid")));
+                return;
             }
-        })
-        .forget();
-    });
+            error.set(None);
+
+            let raw_token: String = tok.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+            navigate(&format!("/register?token={raw_token}"), Default::default());
+        }
+    };
 
     let is_valid = move || token.get().len() == 19;
 
@@ -85,7 +72,6 @@ pub fn LoginTokenScreen() -> impl IntoView {
                                 placeholder={t!("token.placeholder")}
                                 maxlength=19u32
                                 class="flex h-14 w-full rounded-md border border-input bg-background px-3 py-2 text-center font-mono text-lg tracking-wider ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                disabled=is_loading
                                 prop:value=token
                                 on:input=move |ev| {
                                     let formatted = format_token(&event_target_value(&ev));
@@ -95,7 +81,7 @@ pub fn LoginTokenScreen() -> impl IntoView {
                                 on:keydown={
                                     let os = on_submit.clone();
                                     move |ev| {
-                                        if ev.key() == "Enter" && !is_loading.get() && is_valid() {
+                                        if ev.key() == "Enter" && is_valid() {
                                             os();
                                         }
                                     }
@@ -122,13 +108,13 @@ pub fn LoginTokenScreen() -> impl IntoView {
 
                         <button
                             class="inline-flex h-12 w-full items-center justify-center rounded-md bg-primary text-sm font-medium text-primary-foreground ring-offset-background transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
-                            disabled={move || is_loading.get() || !is_valid()}
+                            disabled=move || !is_valid()
                             on:click={
                                 let os = on_submit.clone();
                                 move |_| os()
                             }
                         >
-                            {move || if is_loading.get() { t!("loading") } else { t!("token.continue") }}
+                            {t!("token.continue")}
                         </button>
                     </div>
                 </div>

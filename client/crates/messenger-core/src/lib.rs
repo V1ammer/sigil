@@ -12,14 +12,17 @@ pub mod identity;
 
 #[cfg(feature = "native")]
 pub mod age_wrap;
-#[cfg(feature = "native")]
 pub mod blind_index;
 #[cfg(feature = "native")]
 pub mod bootstrap;
 #[cfg(feature = "native")]
 pub mod mls;
-#[cfg(feature = "native")]
 pub mod prov;
+
+pub mod attachment_crypto;
+
+#[cfg(target_arch = "wasm32")]
+pub mod voice;
 
 #[must_use]
 pub fn version() -> &'static str {

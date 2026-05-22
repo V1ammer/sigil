@@ -41,6 +41,49 @@ pub fn decrypt_with_x25519(
     Ok(out)
 }
 
+/// Construct an `age::x25519::Identity` from raw 32-byte secret key material.
+///
+/// The secret is encoded into the AGE bech32 secret-key format and then parsed
+/// back, producing a valid `Identity` that can be used with `decrypt_with_x25519`.
+///
+/// # Panics
+///
+/// Panics if the internal bech32 encoding/decoding fails (should not happen
+/// with valid 32-byte input).
+pub fn identity_from_raw_secret(secret: &[u8; 32]) -> age::x25519::Identity {
+    use bech32::{ToBase32, Variant};
+
+    let base32 = secret.to_base32();
+    let encoded =
+        bech32::encode("age-secret-key-", base32, Variant::Bech32).expect("valid bech32 HRP");
+    encoded
+        .to_uppercase()
+        .parse::<age::x25519::Identity>()
+        .expect("valid age secret key")
+}
+
+/// Construct an `age::x25519::Recipient` from raw 32-byte X25519 public key
+/// material.
+///
+/// The public key is encoded into the AGE bech32 recipient format and then
+/// parsed back, producing a valid `Recipient` that can be used with
+/// `encrypt_to_x25519`.
+///
+/// # Panics
+///
+/// Panics if the internal bech32 encoding/decoding fails (should not happen
+/// with valid 32-byte input).
+pub fn recipient_from_raw_public(pubkey: &[u8; 32]) -> age::x25519::Recipient {
+    use bech32::{ToBase32, Variant};
+
+    let base32 = pubkey.to_base32();
+    let encoded =
+        bech32::encode("age", base32, Variant::Bech32).expect("valid bech32 HRP");
+    encoded
+        .parse::<age::x25519::Recipient>()
+        .expect("valid age recipient")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -64,5 +107,32 @@ mod tests {
         let encrypted = encrypt_to_x25519(&recipient, b"").unwrap();
         let decrypted = decrypt_with_x25519(&identity, &encrypted).unwrap();
         assert!(decrypted.is_empty());
+    }
+
+    #[test]
+    fn test_identity_from_raw_secret_roundtrip() {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        let mut secret = [0u8; 32];
+        rng.fill(&mut secret);
+
+        let identity = identity_from_raw_secret(&secret);
+        let recipient = identity.to_public();
+
+        let plaintext = b"test from raw secret";
+        let encrypted = encrypt_to_x25519(&recipient, plaintext).unwrap();
+        let decrypted = decrypt_with_x25519(&identity, &encrypted).unwrap();
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn test_recipient_from_raw_public() {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        let mut pubkey = [0u8; 32];
+        rng.fill(&mut pubkey);
+        // Just verify that recipient_from_raw_public doesn't panic
+        // with valid 32-byte input (creates a valid age Recipient).
+        let _recipient = recipient_from_raw_public(&pubkey);
     }
 }

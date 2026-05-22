@@ -2,7 +2,11 @@ use leptos::prelude::*;
 use crate::components::switch::Switch;
 use crate::components::separator::Separator;
 use crate::components::label::Label;
-use crate::i18n::{Language, t};
+use crate::components::select::{Select, SelectOption};
+use crate::components::input::Input;
+use crate::i18n::I18n;
+use crate::state::settings::SettingsState;
+use crate::t;
 
 /// Notification setting row component.
 #[must_use]
@@ -26,46 +30,107 @@ fn NotificationRow(
     }
 }
 
-/// Notifications settings — enable, sound, preview, read receipts.
+/// Notifications settings — enable, sound, vibration, preview, filter, quiet hours.
 #[must_use]
 #[component]
 pub fn NotificationsSettings() -> impl IntoView {
-    let lang = use_context::<RwSignal<Language>>().unwrap_or_default();
-    let enable_notifications = RwSignal::new(true);
-    let sound_enabled = RwSignal::new(true);
-    let preview_enabled = RwSignal::new(true);
-    let read_receipts = RwSignal::new(true);
+    let settings = use_context::<SettingsState>().expect("SettingsState must be provided");
+
+    let enable_notifications = settings.notifications_enabled;
+    let sound_enabled = settings.notification_sound;
+    let vibration = settings.notification_vibration;
+    let preview_enabled = settings.message_preview;
+    let notification_filter = settings.notification_filter;
+    let quiet_hours_enabled = settings.quiet_hours_enabled;
+    let quiet_hours_from = settings.quiet_hours_from;
+    let quiet_hours_to = settings.quiet_hours_to;
 
     view! {
         <div class="space-y-6">
             <div>
-                <h3 class="text-lg font-medium text-foreground">{t(lang.get(), "settings.notifications.title")}</h3>
-                <p class="text-sm text-muted-foreground">{t(lang.get(), "settings.notifications.description")}</p>
+                <h3 class="text-lg font-medium text-foreground">{t!("settings.notifications.title")}</h3>
+                <p class="text-sm text-muted-foreground">{t!("settings.notifications.description")}</p>
             </div>
 
             <Separator />
 
             <div class="space-y-4">
                 <NotificationRow
-                    label={t(lang.get(), "settings.notifications.enable")}
-                    description={t(lang.get(), "settings.notifications.enableDesc")}
+                    label={t!("settings.notifications.enable")}
+                    description={t!("settings.notifications.enableDesc")}
                     checked=enable_notifications
                 />
                 <NotificationRow
-                    label={t(lang.get(), "settings.notifications.sound")}
-                    description={t(lang.get(), "settings.notifications.soundDesc")}
+                    label={t!("settings.notifications.sound")}
+                    description={t!("settings.notifications.soundDesc")}
                     checked=sound_enabled
                 />
                 <NotificationRow
-                    label={t(lang.get(), "settings.notifications.preview")}
-                    description={t(lang.get(), "settings.notifications.previewDesc")}
-                    checked=preview_enabled
+                    label={t!("settings.notifications.vibration")}
+                    description={t!("settings.notifications.vibrationDesc")}
+                    checked=vibration
                 />
                 <NotificationRow
-                    label={t(lang.get(), "settings.notifications.readReceipts")}
-                    description={t(lang.get(), "settings.notifications.readReceiptsDesc")}
-                    checked=read_receipts
+                    label={t!("settings.notifications.preview")}
+                    description={t!("settings.notifications.previewDesc")}
+                    checked=preview_enabled
                 />
+            </div>
+
+            <Separator />
+
+            // Notification filter
+            <div class="space-y-2">
+                <Label class="text-foreground">{t!("settings.notifications.filter")}</Label>
+                <Select
+                    on_change=Box::new(move |v| notification_filter.set(v))
+                    class="w-full max-w-xs"
+                >
+                    <SelectOption value=String::from("all")>{t!("settings.notifications.filterAll")}</SelectOption>
+                    <SelectOption value=String::from("mentions")>{t!("settings.notifications.filterMentions")}</SelectOption>
+                    <SelectOption value=String::from("none")>{t!("settings.notifications.filterNone")}</SelectOption>
+                </Select>
+            </div>
+
+            <Separator />
+
+            // Quiet hours
+            <div class="space-y-4">
+                <div class="flex items-center justify-between">
+                    <Label class="text-foreground">{t!("settings.notifications.quietHours")}</Label>
+                    <Switch
+                        checked=Signal::derive(move || quiet_hours_enabled.get())
+                        on_change=Box::new(move |v| quiet_hours_enabled.set(v))
+                    />
+                </div>
+
+                {move || if quiet_hours_enabled.get() {
+                    view! {
+                        <div class="flex gap-4">
+                            <div class="flex-1 space-y-1">
+                                <Label class="text-foreground">{t!("settings.notifications.quietFrom")}</Label>
+                                <input
+                                    type="time"
+                                    value=quiet_hours_from.get()
+                                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                    on:input=move |ev| quiet_hours_from.set(event_target_value(&ev))
+                                />
+                            </div>
+                            <div class="flex-1 space-y-1">
+                                <Label class="text-foreground">{t!("settings.notifications.quietTo")}</Label>
+                                <input
+                                    type="time"
+                                    value=quiet_hours_to.get()
+                                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                    on:input=move |ev| quiet_hours_to.set(event_target_value(&ev))
+                                />
+                            </div>
+                        </div>
+                    }
+                        .into_any()
+                } else {
+                    view! {}.into_any()
+                }}
             </div>
         </div>
     }

@@ -1,18 +1,52 @@
+use std::sync::Arc;
+
 use leptos::prelude::*;
-use leptos_router::hooks::use_navigate;
-use gloo_timers::callback::Timeout;
+use leptos::task::spawn_local;
+use leptos_router::hooks::{use_navigate, use_query};
+use leptos_router::params::Params;
+use rand::RngCore;
+use messenger_core::api::client::{ApiClient, AuthCredentials};
+use messenger_core::ed25519::Ed25519Pair;
+use messenger_core::identity::ClientIdentity;
+use messenger_core::blind_index::username_blind_index;
+use messenger_proto::auth::RedeemRequest;
+use messenger_proto::keypackages::PublishKeyPackagesRequest;
+use uuid::Uuid;
 use crate::i18n::I18n;
+use crate::session::restore::persist_session;
+use crate::state::notifications::{NotificationsState, ToastKind};
+use crate::state::session::{build_api_client, persist_auth_credentials, use_session, SessionState, UserRole};
 use crate::t;
+
+/// Query parameters for the register screen.
+#[derive(serde::Deserialize, Clone, Debug, PartialEq)]
+struct RegisterQuery {
+    token: Option<String>,
+}
+
+impl Params for RegisterQuery {
+    fn from_map(map: &leptos_router::params::ParamsMap) -> Result<Self, leptos_router::params::ParamsError> {
+        let token = map.get("token");
+        Ok(Self { token })
+    }
+}
 
 #[must_use]
 #[component]
 pub fn RegisterScreen() -> impl IntoView {
     let _i18n = use_context::<I18n>().expect("I18n must be provided");
+    let session = use_session();
+    let navigate = use_navigate();
+    let notifications = use_context::<NotificationsState>()
+        .expect("NotificationsState must be provided");
+
+    let query = use_query::<RegisterQuery>();
+
     let username = RwSignal::new(String::new());
     let display_name = RwSignal::new(String::new());
     let username_status = RwSignal::new("idle".to_string());
     let is_submitting = RwSignal::new(false);
-    let navigate = use_navigate();
+    let error = RwSignal::new(Option::<String>::None);
 
     let on_username_change = move |value: &str| {
         let cleaned: String = value
@@ -27,46 +61,202 @@ pub fn RegisterScreen() -> impl IntoView {
             return;
         }
         username_status.set("checking".to_string());
-
-        let u2 = u.clone();
-        Timeout::new(500, move || {
-            let taken = ["admin", "test", "user", "root"].contains(&u2.as_str());
-            username_status.set(if taken {
-                "taken".to_string()
-            } else {
-                "available".to_string()
-            });
-        })
-        .forget();
-    };
-
-    let navigate_on_submit = navigate.clone();
-    let on_submit = move || {
-        if username.get().len() < 3
-            || display_name.get().is_empty()
-            || username_status.get() != "available"
-        {
-            return;
-        }
-        is_submitting.set(true);
-        let nav = navigate_on_submit.clone();
-        Timeout::new(1500, move || {
-            nav("/chats", Default::default());
-        })
-        .forget();
     };
 
     let is_valid = move || {
-        username.get().len() >= 3 && !display_name.get().is_empty() && username_status.get() == "available"
+        let u = username.get();
+        let d = display_name.get();
+        u.len() >= 3 && u.len() <= 32 && !d.is_empty() && d.len() <= 64
+            && username_status.get() != "checking"
     };
 
+    let nav_for_view = navigate.clone();
+    let on_submit = move || {
+        let token_raw = query.with(|q| {
+            q.as_ref()
+                .ok()
+                .and_then(|q| q.token.clone())
+        });
+        let token = match token_raw {
+            Some(t) if !t.is_empty() => t,
+            _ => {
+                error.set(Some(t!("token.error.invalid").to_string()));
+                return;
+            }
+        };
+
+        let uname = username.get();
+        let dname = display_name.get();
+
+        if uname.len() < 3 || dname.is_empty() {
+            return;
+        }
+
+        is_submitting.set(true);
+        error.set(None);
+
+        let nav = navigate.clone();
+        let sess = session.clone();
+        let notif = notifications.clone();
+        spawn_local(async move {
+            let mut api = match build_api_client() {
+                Some(c) => c,
+                None => {
+                    notif.push(ToastKind::Error, t!("error.network"));
+                    is_submitting.set(false);
+                    return;
+                }
+            };
+
+            // Step 1: Generate key material
+            let identity_signing_key = Ed25519Pair::generate();
+            let device_signing_key = Ed25519Pair::generate();
+            let mut hpke_seed = [0u8; 32];
+            rand::thread_rng().fill_bytes(&mut hpke_seed);
+            let hpke_secret = x25519_dalek::StaticSecret::from(hpke_seed);
+            let hpke_public = x25519_dalek::PublicKey::from(&hpke_secret).to_bytes();
+
+            let identity_pub = identity_signing_key.public_bytes();
+            let device_signing_pub = device_signing_key.public_bytes();
+
+            // Step 2: Build device authorization signature
+            let ts = messenger_core::api::signing::now_secs();
+            let mut auth_msg = Vec::new();
+            auth_msg.extend_from_slice(&device_signing_pub);
+            auth_msg.extend_from_slice(&hpke_public);
+            auth_msg.extend_from_slice(&ts.to_le_bytes());
+            let device_auth_sig = identity_signing_key.sign(&auth_msg);
+
+            // Step 3: Build credential bytes (simple len-prefixed identity public key)
+            // Full MLS credential serialization (tls_codec) is deferred until MLS integration.
+            let credential_bytes: Vec<u8> = {
+                let mut buf = Vec::with_capacity(2 + identity_pub.len());
+                buf.extend_from_slice(&(identity_pub.len() as u16).to_be_bytes());
+                buf.extend_from_slice(&identity_pub);
+                buf
+            };
+
+            // Step 4: Compute username blind index
+            let blind_index_key = get_blind_index_key().await;
+            let username_bi = match blind_index_key {
+                Some(key) => {
+                    username_blind_index(&uname, &key).unwrap_or_else(|_| uname.as_bytes().to_vec())
+                }
+                None => uname.as_bytes().to_vec(),
+            };
+
+            // Step 5: Send redeem request
+            let token_bytes = hex::decode(&token).unwrap_or_else(|_| token.as_bytes().to_vec());
+            let req = RedeemRequest {
+                token: token_bytes,
+                kind: "new_user".to_string(),
+                identity_credential: credential_bytes,
+                signature_public_key: identity_pub.to_vec(),
+                username_blind_index: username_bi,
+                device_init_public_key: hpke_public.to_vec(),
+                device_signing_public_key: device_signing_pub.to_vec(),
+                device_authorization_signature: device_auth_sig.to_vec(),
+                existing_identity_proof: Vec::new(),
+            };
+
+            let resp = match api.redeem_invite(&req).await {
+                Ok(r) => r,
+                Err(e) => {
+                    let err_msg = match e.error_code() {
+                        Some("ERR_INVITE_INVALID") => t!("error.invite_invalid").to_string(),
+                        Some("ERR_INVITE_EXPIRED") => t!("error.invite_expired").to_string(),
+                        Some("ERR_INVITE_EXHAUSTED") => t!("error.invite_exhausted").to_string(),
+                        Some("ERR_USERNAME_TAKEN") => t!("error.username_taken").to_string(),
+                        _ => format!("{}: {e}", t!("error.network")),
+                    };
+                    notif.push(ToastKind::Error, &err_msg);
+                    error.set(Some(err_msg));
+                    is_submitting.set(false);
+                    return;
+                }
+            };
+
+            // Step 6: Create ClientIdentity with server-assigned IDs
+            // Extract device secret before moving into ClientIdentity
+            let device_secret = device_signing_key.secret_bytes();
+            let identity = ClientIdentity {
+                user_id: resp.user_id,
+                username: uname.clone(),
+                identity_signing_key,
+                device_id: resp.device_id,
+                device_signing_key,
+                device_hpke_seed: hpke_seed,
+                device_hpke_public: hpke_public,
+            };
+
+            // Step 7: Save identity to local storage
+            let server_url = sess.state.with(|s| match s {
+                SessionState::ServerConfigured { url } => Some(url.clone()),
+                _ => None,
+            });
+            let url = server_url.unwrap_or_default();
+
+            if let Ok(local) = messenger_storage::init_storage("default").await {
+                let encrypted = messenger_storage::EncryptedIdentity {
+                    identity_secret_key_wrapped: identity.identity_signing_key.secret_bytes().to_vec(),
+                    identity_public_key: identity.identity_signing_key.public_bytes().to_vec(),
+                    device_signing_secret_key_wrapped: identity.device_signing_key.secret_bytes().to_vec(),
+                    device_signing_public_key: identity.device_signing_key.public_bytes().to_vec(),
+                    device_hpke_secret_key_wrapped: identity.device_hpke_seed.to_vec(),
+                    device_hpke_public_key: identity.device_hpke_public.to_vec(),
+                };
+                let _ = local.save_identity(resp.user_id, &encrypted).await;
+                let _ = local.set_setting("current_user_id", &resp.user_id.to_string()).await;
+                let _ = local.set_setting("user_role", &resp.role).await;
+            }
+
+            // Persist to localStorage for session restore
+            let role = if resp.role == "admin" {
+                UserRole::Admin
+            } else {
+                UserRole::User
+            };
+            persist_session(
+                &url,
+                resp.user_id,
+                resp.device_id,
+                &encode_identity_for_blob(&identity),
+                role,
+            );
+
+            // Step 8: Configure ApiClient with auth
+            let auth = AuthCredentials {
+                device_id: resp.device_id,
+                device_signing_secret: device_secret,
+            };
+            api.set_auth(Some(auth));
+            persist_auth_credentials(resp.device_id, &device_secret);
+
+            // Step 9: Publish initial KeyPackages (placeholder — MLS KP generation
+            // is deferred to MLS integration phase)
+            let _ = api
+                .publish_keypackages(&PublishKeyPackagesRequest {
+                    key_packages: Vec::new(),
+                })
+                .await;
+
+            // Step 10: Update session state
+            sess.state.set(SessionState::Authenticated {
+                identity: Arc::new(identity),
+                role,
+            });
+
+            notif.push(ToastKind::Success, t!("register.success"));
+            nav("/chats", Default::default());
+        });
+    };
     view! {
         <div class="flex min-h-screen flex-col bg-background">
             <header class="flex items-center gap-4 border-b border-border p-4">
                 <button
                     class="h-10 w-10 inline-flex items-center justify-center rounded-md hover:bg-accent"
                     on:click={
-                        let nav = navigate.clone();
+                        let nav = nav_for_view.clone();
                         move |_| nav("/login/token", Default::default())
                     }
                 >
@@ -83,7 +273,7 @@ pub fn RegisterScreen() -> impl IntoView {
                     <div class="space-y-6">
                         <div class="flex flex-col items-center space-y-3">
                             <div class="flex h-24 w-24 cursor-pointer items-center justify-center rounded-full bg-muted">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="17"/></svg>
                             </div>
                             <p class="text-sm text-muted-foreground">{t!("register.avatar.hint")}</p>
                         </div>
@@ -103,17 +293,15 @@ pub fn RegisterScreen() -> impl IntoView {
                                 <div class="absolute right-3 top-1/2 -translate-y-1/2">
                                     {move || match username_status.get().as_str() {
                                         "checking" => view! { <span class="h-5 w-5 block rounded-full border-2 border-muted-foreground border-t-transparent animate-spin"/> }.into_any(),
-                                        "available" => view! { <svg class="h-5 w-5 text-green-500" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> }.into_any(),
-                                        "taken" => view! { <svg class="h-5 w-5 text-destructive" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg> }.into_any(),
                                         _ => view! {}.into_any(),
                                     }}
                                 </div>
                             </div>
                             <p class="text-xs text-muted-foreground">
                                 {move || match username_status.get().as_str() {
-                                    "taken" => t!("register.username.taken"),
-                                    "available" => t!("register.username.available"),
-                                    _ => t!("register.username.hint"),
+                                    "taken" => t!("register.username.taken").to_string(),
+                                    "available" => t!("register.username.available").to_string(),
+                                    _ => t!("register.username.hint").to_string(),
                                 }}
                             </p>
                         </div>
@@ -131,6 +319,14 @@ pub fn RegisterScreen() -> impl IntoView {
                             />
                         </div>
 
+                        {move || error.get().map(|e| {
+                            view! {
+                                <div class="relative w-full rounded-lg border border-destructive/50 p-4 bg-background text-destructive">
+                                    <p class="text-sm">{e}</p>
+                                </div>
+                            }
+                        })}
+
                         <button
                             class="inline-flex h-12 w-full items-center justify-center rounded-md bg-primary text-sm font-medium text-primary-foreground ring-offset-background transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
                             disabled={move || is_submitting.get() || !is_valid()}
@@ -145,4 +341,52 @@ pub fn RegisterScreen() -> impl IntoView {
             </main>
         </div>
     }
+}
+
+/// Try to retrieve the blind index key from local store.
+async fn get_blind_index_key() -> Option<[u8; 32]> {
+    if let Ok(local) = messenger_storage::init_storage("default").await {
+        if let Ok(Some(hex_key)) = local.get_setting("server_blind_index_key").await {
+            let bytes = hex::decode(&hex_key).ok()?;
+            if bytes.len() == 32 {
+                let mut key = [0u8; 32];
+                key.copy_from_slice(&bytes);
+                return Some(key);
+            }
+        }
+        if let Ok(Some(hex_key)) = local.get_setting("username_blind_index_key").await {
+            let bytes = hex::decode(&hex_key).ok()?;
+            if bytes.len() == 32 {
+                let mut key = [0u8; 32];
+                key.copy_from_slice(&bytes);
+                return Some(key);
+            }
+        }
+    }
+    None
+}
+
+/// Encode identity for blob storage (CBOR → base64).
+fn encode_identity_for_blob(identity: &ClientIdentity) -> Vec<u8> {
+    use serde::Serialize;
+    #[derive(Serialize)]
+    struct IdentityBlob<'a> {
+        user_id: Uuid,
+        username: &'a str,
+        identity_seed: [u8; 32],
+        device_id: Uuid,
+        device_signing_seed: [u8; 32],
+        device_hpke_seed: [u8; 32],
+        device_hpke_public: [u8; 32],
+    }
+    let blob = IdentityBlob {
+        user_id: identity.user_id,
+        username: &identity.username,
+        identity_seed: identity.identity_signing_key.secret_bytes(),
+        device_id: identity.device_id,
+        device_signing_seed: identity.device_signing_key.secret_bytes(),
+        device_hpke_seed: identity.device_hpke_seed,
+        device_hpke_public: identity.device_hpke_public,
+    };
+    rmp_serde::to_vec_named(&blob).unwrap_or_default()
 }

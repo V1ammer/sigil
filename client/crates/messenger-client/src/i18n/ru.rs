@@ -347,11 +347,24 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("time.hours", "ч");
     m.insert("time.days", "дн");
 
-    // Scan
+    // Scan / Provisioning
     m.insert("scan.title", "Отсканируйте QR на новом устройстве");
     m.insert("scan.manual", "Ввести вручную");
+    m.insert("scan.placeholder", "Вставьте содержимое QR сюда");
+    m.insert("scan.apply", "Применить");
+    m.insert("scan.unavailable", "Сканер недоступен. Вставьте QR-код вручную.");
     m.insert("scan.confirm.title", "Подтвердите добавление устройства");
     m.insert("scan.confirm", "Подтвердить");
+    m.insert("scan.nonce", "QR-нонс");
+    m.insert("scan.cancel", "Отменить");
+    m.insert("scan.error.wrongServer", "QR от другого сервера");
+    m.insert("scan.error.wrongUser", "QR другого пользователя");
+    m.insert("scan.error.expired", "Запрос на добавление просрочен");
+    m.insert("scan.progress.approve", "Подтверждение...");
+    m.insert("scan.progress.groups", "Добавление в группы");
+    m.insert("scan.success", "Устройство успешно добавлено");
+    m.insert("settings.devices.scan", "Сканировать QR");
+    m.insert("settings.devices.manualEntry", "Ввести вручную");
 
     // Settings sub-sections
     m.insert("settings.account.save", "Сохранить");
@@ -393,6 +406,81 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("error.invite_expired", "Срок действия инвайт-токена истёк");
     m.insert("error.invite_exhausted", "Инвайт-токен исчерпан");
     m.insert("error.username_taken", "Имя пользователя уже занято");
+
+    // C11 — Account
+    m.insert("settings.account.changeUsername", "Изменить username");
+    m.insert("settings.account.changeUsernameDesc", "Введите новый username. Только латинские буквы, цифры и подчёркивание.");
+    m.insert("settings.account.usernameTaken", "Это имя пользователя уже занято");
+    m.insert("settings.account.usernameChanged", "Имя пользователя изменено");
+    m.insert("settings.account.logout", "Выйти");
+    m.insert("settings.account.logoutConfirm", "Выйти из аккаунта?");
+    m.insert("settings.account.logoutDesc", "Все локальные данные будут удалены. Для входа потребуется токен приглашения.");
+
+    // C11 — Devices
+    m.insert("settings.devices.revokeTitle", "Отозвать устройство");
+    m.insert("settings.devices.revokeDesc", "Вы уверены, что хотите отозвать это устройство? Оно будет немедленно отключено.");
+    m.insert("settings.devices.revoking", "Отзыв устройства...");
+    m.insert("settings.devices.revoked", "Устройство отозвано");
+    m.insert("settings.devices.removingFromGroups", "Удаление из групп...");
+
+    // C11 — Notifications
+    m.insert("settings.notifications.vibration", "Вибрация");
+    m.insert("settings.notifications.vibrationDesc", "Вибрировать при получении сообщений");
+    m.insert("settings.notifications.filter", "Уведомления для");
+    m.insert("settings.notifications.filterAll", "Всех");
+    m.insert("settings.notifications.filterMentions", "Только упоминания");
+    m.insert("settings.notifications.filterNone", "Нет");
+    m.insert("settings.notifications.quietHours", "Тихие часы");
+    m.insert("settings.notifications.quietHoursDesc", "Не беспокоить в определённое время");
+
+    // C11 — Privacy
+    m.insert("settings.privacy.readReceipts", "Отметки о прочтении");
+    m.insert("settings.privacy.readReceiptsDesc", "Показывать другим, что вы прочитали их сообщения");
+    m.insert("settings.privacy.typingIndicators", "Индикаторы печати");
+    m.insert("settings.privacy.typingIndicatorsDesc", "Показывать другим, когда вы печатаете");
+    m.insert("settings.privacy.blockList", "Чёрный список");
+    m.insert("settings.privacy.blockListDesc", "Заблокированные пользователи");
+    m.insert("settings.privacy.clearCache", "Очистить локальный кэш");
+    m.insert("settings.privacy.clearCacheDesc", "Удалить все локальные данные и выйти из аккаунта");
+    m.insert("settings.privacy.clearCacheConfirm", "Очистить кэш?");
+    m.insert("settings.privacy.clearCacheWarning", "Все локальные данные будут безвозвратно удалены. Для продолжения потребуется повторный вход.");
+
+    // C11 — About
+    m.insert("settings.about.mlsVersion", "Версия протокола MLS");
+    m.insert("settings.about.serverPubkey", "Публичный ключ сервера");
+    m.insert("settings.about.docs", "Документация");
+    m.insert("settings.about.source", "Исходный код");
+    m.insert("settings.about.bugTracker", "Баги и предложения");
+    m.insert("settings.about.licenseDesc", "AGPL-3.0 — свободное программное обеспечение");
+
+    // C11 — Admin
+    m.insert("settings.admin.invites", "Приглашения");
+    m.insert("settings.admin.users", "Пользователи");
+    m.insert("settings.adminInvites.ttl", "Срок действия");
+    m.insert("settings.adminInvites.ttl1h", "1 час");
+    m.insert("settings.adminInvites.ttl24h", "24 часа");
+    m.insert("settings.adminInvites.ttl7d", "7 дней");
+    m.insert("settings.adminInvites.ttl30d", "30 дней");
+    m.insert("settings.adminInvites.copyToken", "Скопировать токен");
+    m.insert("settings.adminInvites.tokenCopied", "Токен скопирован");
+    m.insert("settings.adminInvites.onceWarning", "Этот токен показывается один раз. Сохраните его сейчас.");
+    m.insert("settings.adminInvites.revokeConfirm", "Отозвать приглашение?");
+    m.insert("settings.adminInvites.revokeDesc", "Это приглашение станет недействительным.");
+    m.insert("settings.adminInvites.noInvites", "Нет активных приглашений");
+    m.insert("settings.adminInvites.created", "Приглашение создано");
+    m.insert("settings.adminInvites.createFailed", "Не удалось создать приглашение");
+    m.insert("settings.adminUsers.userId", "ID пользователя");
+    m.insert("settings.adminUsers.devicesCount", "Устройств");
+    m.insert("settings.adminUsers.suspendConfirm", "Заблокировать пользователя?");
+    m.insert("settings.adminUsers.suspendDesc", "Пользователь не сможет отправлять сообщения до разблокировки.");
+    m.insert("settings.adminUsers.unsuspendConfirm", "Разблокировать пользователя?");
+    m.insert("settings.adminUsers.unsuspendDesc", "Пользователь снова сможет пользоваться мессенджером.");
+    m.insert("settings.adminUsers.noUsers", "Пользователи не найдены");
+
+    // C11 — Common
+    m.insert("common.ok", "OK");
+    m.insert("common.yes", "Да");
+    m.insert("common.no", "Нет");
 
     m
 }

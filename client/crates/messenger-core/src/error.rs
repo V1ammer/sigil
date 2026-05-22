@@ -53,6 +53,10 @@ pub enum CryptoError {
     /// General encoding error.
     #[error("encoding error: {0}")]
     Encoding(String),
+
+    /// Symmetric crypto error.
+    #[error("crypto error: {0}")]
+    Crypto(String),
 }
 
 impl From<messenger_storage::error::StorageError> for CryptoError {
@@ -68,14 +72,12 @@ impl From<tls_codec::Error> for CryptoError {
     }
 }
 
-#[cfg(feature = "native")]
 impl From<rmp_serde::encode::Error> for CryptoError {
     fn from(e: rmp_serde::encode::Error) -> Self {
         Self::Serialization(format!("msgpack encode: {e}"))
     }
 }
 
-#[cfg(feature = "native")]
 impl From<rmp_serde::decode::Error> for CryptoError {
     fn from(e: rmp_serde::decode::Error) -> Self {
         Self::Serialization(format!("msgpack decode: {e}"))

@@ -29,10 +29,14 @@ tls_codec = { version = "0.4", optional = true }
 
 # AGE (native only — age crate uses std::io)
 age = { workspace = true, optional = true }
+bech32 = { version = "0.9", optional = true }
+
+# Symmetric encryption for attachments
+aes-gcm = { workspace = true }
 
 # HMAC/SHA2 for blind index and reaction index
-hmac = { version = "0.12", optional = true }
-sha2 = { version = "0.10", optional = true }
+hmac = "0.12"
+sha2 = "0.10"
 
 # Proto types
 messenger-proto = { path = "../messenger-proto" }
@@ -57,7 +61,7 @@ messenger-storage = { path = "../messenger-storage", features = ["native"] }
 
 [features]
 default = ["native"]
-native = ["dep:openmls", "dep:openmls_rust_crypto", "dep:openmls_traits", "dep:tls_codec", "dep:age", "dep:hmac", "dep:sha2", "messenger-storage/native"]
+native = ["dep:openmls", "dep:openmls_rust_crypto", "dep:openmls_traits", "dep:tls_codec", "dep:age", "dep:bech32", "messenger-storage/native"]
 web = ["messenger-storage/web"]
 
 [lints]

@@ -33,7 +33,8 @@ pub fn SettingsScreen() -> impl IntoView {
             ("about", "settings.about"),
         ];
         if is_admin {
-            s.push(("admin-invites", "settings.admin"));
+            s.push(("admin-invites", "settings.admin.invites"));
+            s.push(("admin-users", "settings.admin.users"));
         }
         s
     };

@@ -13,8 +13,8 @@ pub struct AuthCredentials {
 
 /// High-level HTTP API client.
 pub struct ApiClient {
-    base_url: String,
-    transport: Box<dyn transport::HttpTransport>,
+    pub(crate) base_url: String,
+    pub(crate) transport: Box<dyn transport::HttpTransport>,
     auth: Option<AuthCredentials>,
 }
 

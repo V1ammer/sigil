@@ -1,7 +1,6 @@
 //! MLS KeyPackage generation and management.
 
-use openmls::prelude::{KeyPackage, KeyPackageBuilder, Lifetime};
-use tls_codec::Serialize as TlsSerializeTrait;
+use openmls::prelude::{KeyPackageBuilder, Lifetime};
 use openmls_rust_crypto::OpenMlsRustCrypto;
 use openmls_traits::{signatures::Signer as OmlsSigner, types::SignatureScheme};
 use uuid::Uuid;
@@ -68,6 +67,52 @@ pub fn generate_keypackage(
         expires_at: now + i64::try_from(lifetime_secs).unwrap_or(i64::MAX),
         is_last_resort,
     })
+}
+
+/// Generate a `KeyPackageBundle` and return it alongside the metadata.
+///
+/// Unlike [`generate_keypackage`], this returns the full bundle (including
+/// HPKE private init key) serialized for transfer to another device, plus
+/// the public [`GeneratedKeyPackage`] for local tracking / upload.
+///
+/// # Errors
+///
+/// Returns `CryptoError::Mls` on openmls failure.
+pub fn generate_keypackage_bundle(
+    provider: &OpenMlsRustCrypto,
+    identity: &ClientIdentity,
+    lifetime_secs: u64,
+    is_last_resort: bool,
+) -> Result<(Vec<u8>, GeneratedKeyPackage), CryptoError> {
+    let credential_with_key = build_credential(identity);
+    let signer = IdentitySigner(identity);
+
+    let bundle = KeyPackageBuilder::new()
+        .key_package_lifetime(Lifetime::new(lifetime_secs))
+        .build(CIPHERSUITE, provider, &signer, credential_with_key)
+        .map_err(|e| CryptoError::Mls(format!("keypackage build: {e:?}")))?;
+
+    // Serialize the full bundle (includes HPKE private init key)
+    let bundle_bytes = rmp_serde::to_vec_named(&bundle)
+        .map_err(|e| CryptoError::Serialization(e.to_string()))?;
+
+    let serialized = rmp_serde::to_vec_named(bundle.key_package())
+        .map_err(|e| CryptoError::Serialization(e.to_string()))?;
+
+    let init_key_hash = blake3::hash(bundle.key_package().hpke_init_key().as_slice()).as_bytes().to_vec();
+
+    let now = now_secs();
+
+    let gen = GeneratedKeyPackage {
+        id: Uuid::now_v7(),
+        key_package_bytes: serialized,
+        init_key_hash,
+        secret_keys: Vec::new(),
+        expires_at: now + i64::try_from(lifetime_secs).unwrap_or(i64::MAX),
+        is_last_resort,
+    };
+
+    Ok((bundle_bytes, gen))
 }
 
 /// Wrapper to implement openmls `Signer` trait for `ClientIdentity`.

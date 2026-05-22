@@ -54,12 +54,15 @@ rand = "0.8"
 getrandom = { version = "0.2", features = ["js"] }
 
 # MLS
-openmls = "0.6"
-openmls_rust_crypto = "0.3"
-openmls_traits = "0.3"
+openmls = "0.8.1"
+openmls_rust_crypto = "0.5"
+openmls_traits = "0.5"
 
 # AGE
 age = "0.10"
+
+# Symmetric encryption for attachments
+aes-gcm = "0.10"
 
 # Storage (только в нативных билдах)
 rusqlite = { version = "0.32", features = ["bundled-sqlcipher"] }

@@ -8,3 +8,11 @@ pub struct AddReactionRequest {
     #[serde(with = "serde_bytes")]
     pub reaction_blind_index: Vec<u8>,
 }
+
+/// Request to remove a reaction.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RemoveReactionRequest {
+    pub message_id: Uuid,
+    #[serde(with = "serde_bytes")]
+    pub reaction_blind_index: Vec<u8>,
+}

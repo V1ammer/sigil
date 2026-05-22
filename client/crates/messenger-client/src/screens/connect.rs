@@ -1,46 +1,82 @@
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use leptos_router::hooks::use_navigate;
-use gloo_timers::callback::Timeout;
-use crate::i18n::{Locale, I18n};
-use crate::state::session::{use_session, SessionState};
+use messenger_core::api::client::ApiClient;
+use crate::state::notifications::{NotificationsState, ToastKind};
+use crate::state::session::{use_session, persist_server_url, SessionState};
 use crate::t;
 
 #[must_use]
 #[component]
 pub fn ConnectScreen() -> impl IntoView {
     let session = use_session();
-    let _i18n = use_context::<I18n>().expect("I18n must be provided");
+    let navigate = use_navigate();
+    let notifications = use_context::<NotificationsState>()
+        .expect("NotificationsState must be provided");
+
     let server_address = RwSignal::new(String::new());
     let is_loading = RwSignal::new(false);
     let error = RwSignal::new(Option::<String>::None);
     let show_help = RwSignal::new(false);
-    let navigate = use_navigate();
+
+    // Pre-fill from local storage
+    spawn_local(async move {
+        if let Ok(local) = messenger_storage::init_storage("default").await {
+            if let Ok(Some(saved_url)) = local.get_setting("server_url").await {
+                server_address.set(saved_url);
+            }
+        }
+    });
 
     let on_connect = move || {
-        let addr = server_address.get();
-        if addr.trim().is_empty() {
+        let url = server_address.get().trim().to_string();
+
+        // Validate URL
+        if url.is_empty() {
             error.set(Some(t!("connect.error.invalid")));
             return;
         }
+        if !url.starts_with("http://") && !url.starts_with("https://") {
+            error.set(Some(t!("connect.error.invalid")));
+            return;
+        }
+
         is_loading.set(true);
         error.set(None);
 
-        // Simulate connection — in C07+ this will be a real API call.
         let nav = navigate.clone();
-        let addr_clone = addr.clone();
-        Timeout::new(1500, move || {
-            if addr_clone.contains("invalid") {
-                error.set(Some(t!("connect.error.unavailable")));
-                is_loading.set(false);
-            } else {
-                // Store the server URL in session state.
-                session.state.set(SessionState::ServerConfigured {
-                    url: addr_clone,
-                });
-                nav("/login", Default::default());
+        let sess = session.clone();
+        let notif = notifications.clone();
+        spawn_local(async move {
+            let client = ApiClient::new(url.clone());
+            match client.server_info().await {
+                Ok(info) => {
+                    // Save server config to local store
+                    if let Ok(local) = messenger_storage::init_storage("default").await {
+                        let _ = local.set_setting("server_url", &url).await;
+                        let _ = local
+                            .set_setting(
+                                "server_pubkey_hex",
+                                &hex::encode(&info.server_identity_public_key),
+                            )
+                            .await;
+                        let _ = local
+                            .set_setting("mls_ciphersuite", &info.mls_ciphersuite.to_string())
+                            .await;
+                    }
+
+                    sess.state.set(SessionState::ServerConfigured { url: url.clone() });
+                    persist_server_url(&url);
+
+                    nav("/login", Default::default());
+                }
+                Err(e) => {
+                    notif.push(ToastKind::Error, format!("{}: {e}", t!("error.network")));
+                    error.set(Some(format!("{e}")));
+                    is_loading.set(false);
+                }
             }
-        })
-        .forget();
+        });
     };
 
     let is_disabled = move || is_loading.get() || server_address.get().trim().is_empty();

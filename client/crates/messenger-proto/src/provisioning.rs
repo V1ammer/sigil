@@ -7,6 +7,9 @@ pub struct CreateProvisioningRequest {
     pub user_id: Uuid,
     #[serde(with = "serde_bytes")]
     pub new_device_temp_public_key: Vec<u8>,
+    /// Temporary Ed25519 signing public key (32 bytes) — used for polling auth.
+    #[serde(with = "serde_bytes")]
+    pub new_device_temp_signing_public_key: Vec<u8>,
     #[serde(with = "serde_bytes")]
     pub nonce: Vec<u8>,
 }
@@ -30,23 +33,32 @@ pub struct GetProvisioningResponse {
     pub expires_at: i64,
 }
 
-/// Public keys of the new device submitted during approval.
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct NewDevicePublicKeys {
-    #[serde(with = "serde_bytes")]
-    pub init_public_key: Vec<u8>,
-    #[serde(with = "serde_bytes")]
-    pub signing_public_key: Vec<u8>,
-}
-
 /// Request to approve a provisioning request (from old device).
+///
+/// Server expects flat fields (not nested), with a mandatory timestamp
+/// that is part of the authorization signature message:
+/// `msg = new_device_signing_pk || new_device_hpke_pk || ts_le`.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ApproveProvisioningRequest {
     #[serde(with = "serde_bytes")]
     pub encrypted_bootstrap_blob: Vec<u8>,
-    pub new_device_public_keys: NewDevicePublicKeys,
+    /// New device's permanent X25519 HPKE public key (32 bytes).
+    #[serde(with = "serde_bytes")]
+    pub new_device_hpke_public_key: Vec<u8>,
+    /// New device's permanent Ed25519 signing public key (32 bytes).
+    #[serde(with = "serde_bytes")]
+    pub new_device_signing_public_key: Vec<u8>,
+    /// Identity key signature over `(new_device_signing_pk || new_device_hpke_pk || ts_le)`.
     #[serde(with = "serde_bytes")]
     pub device_authorization_signature: Vec<u8>,
+    /// Unix timestamp (seconds) used in the authorization signature message.
+    pub device_authorization_timestamp: i64,
+}
+
+/// Response after approving a provisioning request (old device gets `device_id`).
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ApproveProvisioningResponse {
+    pub device_id: Uuid,
 }
 
 /// Response when fetching bootstrap blob (new device).

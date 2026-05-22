@@ -8,7 +8,7 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["native"]
-native = ["messenger-core/native"]
+native = ["messenger-core/native", "dep:openmls", "dep:age"]
 web = ["messenger-core/web"]
 
 [dependencies]
@@ -19,14 +19,29 @@ wasm-bindgen = { workspace = true }
 js-sys = { workspace = true }
 web-sys = { workspace = true }
 gloo-timers = { workspace = true }
+wasm-bindgen-futures = "0.4"
 console_error_panic_hook = "0.1"
 tracing.workspace = true
 tracing-wasm.workspace = true
 serde = { workspace = true }
+serde_bytes = { workspace = true }
 uuid = { workspace = true }
+hex = { workspace = true }
 base64 = "0.22"
+rand = { workspace = true }
+x25519-dalek = { workspace = true }
+rmp-serde = { workspace = true }
+
+# Native-only deps (MLS, AGE)
+openmls = { workspace = true, optional = true }
+openmls_rust_crypto = { workspace = true, optional = true }
+openmls_traits = { workspace = true, optional = true }
+age = { workspace = true, optional = true }
+
+# Internal crates
 messenger-core = { path = "../messenger-core", default-features = false }
 messenger-storage = { path = "../messenger-storage" }
+qrcode = "0.14"
 messenger-proto = { path = "../messenger-proto" }
 
 [lints]

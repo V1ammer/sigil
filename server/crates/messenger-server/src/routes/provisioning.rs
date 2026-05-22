@@ -66,6 +66,12 @@ pub struct ProvisioningDetails {
     pub expires_at: i64,
 }
 
+/// Ответ на approve (шаг 3 — старое устройство получает device_id нового).
+#[derive(Debug, serde::Serialize)]
+pub struct ApproveProvisioningResponse {
+    pub device_id: Uuid,
+}
+
 /// Тело запроса на approve (шаг 3 — старое устройство).
 #[derive(Debug, serde::Deserialize)]
 pub struct ApproveProvisioningRequest {
@@ -335,7 +341,10 @@ pub async fn approve_request(
 
     txn.commit().await?;
 
-    Ok(typed_response::<()>(&headers, StatusCode::NO_CONTENT, &()))
+    let resp = ApproveProvisioningResponse {
+        device_id: new_device_id,
+    };
+    Ok(typed_response(&headers, StatusCode::OK, &resp))
 }
 
 /// `GET /v1/provisioning/requests/:id/bootstrap` — специальная auth.

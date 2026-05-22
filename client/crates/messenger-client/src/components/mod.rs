@@ -25,4 +25,5 @@ pub mod slider;
 pub mod progress;
 pub mod context_menu;
 pub mod label;
+pub mod qr_scanner;
 pub mod toast_container;

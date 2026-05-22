@@ -1,4 +1,5 @@
 use crate::api::{client::ApiClient, ApiError};
+use crate::api::endpoints::UsernameLookupResponse;
 use messenger_proto::users::*;
 use uuid::Uuid;
 
@@ -49,11 +50,13 @@ impl ApiClient {
     /// # Errors
     ///
     /// Returns `ApiError` on network or permission failure.
-    pub async fn revoke_device(&self, device_id: Uuid) -> Result<(), ApiError> {
+    pub async fn revoke_device(
+        &self,
+        device_id: Uuid,
+        req: &RevokeDeviceRequest,
+    ) -> Result<(), ApiError> {
         let path = format!("/v1/devices/me/{}/revoke", device_id);
-        self.send("POST", &path, Some(&RevokeDeviceRequest {
-            revocation_signature: vec![],
-        })).await
+        self.send("POST", &path, Some(req)).await
     }
 
     /// List active devices for a user.
@@ -64,5 +67,22 @@ impl ApiClient {
     pub async fn list_user_devices(&self, user_id: Uuid) -> Result<ListDevicesResponse, ApiError> {
         let path = format!("/v1/users/{}/devices", user_id);
         self.send::<(), _>("GET", &path, None).await
+    }
+
+    /// Look up a user by plaintext username.
+    ///
+    /// The server computes the blind index internally and returns the `user_id`.
+    /// Used during QR provisioning (new device needs user's ID before auth).
+    ///
+    /// # Errors
+    ///
+    /// Returns `ApiError` on network errors or 404.
+    pub async fn lookup_user_by_username(
+        &self,
+        username: &str,
+    ) -> Result<UsernameLookupResponse, ApiError> {
+        // Usernames are restricted to `[a-z0-9_]` so no URL encoding needed.
+        let path = format!("/v1/users/lookup?username={username}");
+        self.send::<(), UsernameLookupResponse>("GET", &path, None).await
     }
 }

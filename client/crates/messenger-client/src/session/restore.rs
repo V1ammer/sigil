@@ -4,6 +4,9 @@
 //! the session is restored to `ServerConfigured` or `Authenticated` state
 //! without re-authentication.
 
+use messenger_core::ed25519::Ed25519Pair;
+use messenger_core::identity::ClientIdentity;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use crate::state::session::UserRole;
 
@@ -15,6 +18,37 @@ pub struct RestoredSession {
     pub user_id: Uuid,
     pub device_id: Uuid,
     pub role: UserRole,
+}
+
+impl RestoredSession {
+    /// Try to reconstruct a `ClientIdentity` from the stored blob.
+    ///
+    /// Returns `None` if the blob is malformed or missing.
+    #[must_use]
+    pub fn restore_identity(&self) -> Option<ClientIdentity> {
+        let blob: IdentityBlob = rmp_serde::from_slice(&self.identity_blob).ok()?;
+        Some(ClientIdentity {
+            user_id: blob.user_id,
+            username: blob.username,
+            identity_signing_key: Ed25519Pair::from_seed(&blob.identity_seed),
+            device_id: blob.device_id,
+            device_signing_key: Ed25519Pair::from_seed(&blob.device_signing_seed),
+            device_hpke_seed: blob.device_hpke_seed,
+            device_hpke_public: blob.device_hpke_public,
+        })
+    }
+}
+
+/// Serializable identity data for localStorage persistence.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct IdentityBlob {
+    user_id: Uuid,
+    username: String,
+    identity_seed: [u8; 32],
+    device_id: Uuid,
+    device_signing_seed: [u8; 32],
+    device_hpke_seed: [u8; 32],
+    device_hpke_public: [u8; 32],
 }
 
 /// Attempt to restore a previous session from `localStorage`.
@@ -66,8 +100,6 @@ pub fn persist_session(
     identity_blob: &[u8],
     role: UserRole,
 ) {
-    // window() → Option<Window>, local_storage() → Result<Option<Storage>, JsValue>
-    // and_then + ok → Option<Option<Storage>>, then flatten → Option<Storage>
     if let Some(storage) = web_sys::window()
         .and_then(|w| w.local_storage().ok())
         .flatten()

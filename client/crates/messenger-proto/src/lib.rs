@@ -3,6 +3,7 @@
 #![warn(clippy::all, clippy::pedantic)]
 #![forbid(unsafe_code)]
 
+pub mod admin;
 pub mod auth;
 pub mod attachments;
 pub mod error;
