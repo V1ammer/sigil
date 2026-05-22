@@ -197,7 +197,7 @@ pub fn NewChatDialog(
                         <Input
                             id="search-users"
                             input_type="text"
-                            placeholder={t(lang.get(), "chats.search").to_string()}
+                            placeholder={t(lang.get(), "chats.search")}
                             on_change=Box::new({
                                 let q = search_query;
                                 move |val: String| q.set(val)
@@ -227,7 +227,7 @@ pub fn NewChatDialog(
                         <Input
                             id="search-members"
                             input_type="text"
-                            placeholder={t(lang.get(), "chats.search").to_string()}
+                            placeholder={t(lang.get(), "chats.search")}
                             on_change=Box::new({
                                 let q = search_query;
                                 move |val: String| q.set(val)

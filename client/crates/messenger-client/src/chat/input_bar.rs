@@ -204,7 +204,7 @@ pub fn InputBar(
                 // Attach button
                 <DropdownMenu>
                     <DropdownMenuTrigger>
-                        <Tooltip text={t(lang.get(), "attach.file").to_string()}>
+                        <Tooltip text={t(lang.get(), "attach.file")}>
                             <button class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md hover:bg-accent transition-colors">
                                 <Icon name="paperclip" class_name="h-5 w-5 text-muted-foreground"/>
                             </button>
@@ -233,7 +233,7 @@ pub fn InputBar(
                 // Textarea
                 <div class="flex-1 relative">
                     <Textarea
-                        placeholder={t(lang.get(), "message.placeholder").to_string()}
+                        placeholder={t(lang.get(), "message.placeholder")}
                         class="min-h-[40px] max-h-[200px] resize-none py-2.5 text-sm"
                         rows=1u32
                         on_change=on_change_cb

@@ -1,11 +1,12 @@
 use leptos::prelude::*;
 use leptos_router::hooks::use_navigate;
-use crate::i18n::{Language, t};
+use crate::i18n::I18n;
+use crate::t;
 
 #[must_use]
 #[component]
 pub fn LoginScreen() -> impl IntoView {
-    let lang = RwSignal::new(Language::Ru);
+    let _i18n = use_context::<I18n>().expect("I18n must be provided");
     let navigate = use_navigate();
 
     view! {
@@ -26,7 +27,7 @@ pub fn LoginScreen() -> impl IntoView {
                 <div class="w-full max-w-md space-y-8">
                     <div class="space-y-2 text-center">
                         <h1 class="text-2xl font-semibold tracking-tight text-foreground">
-                            {t(lang.get(), "login.title")} " Server"
+                            {t!("login.title")} " Server"
                         </h1>
                     </div>
 
@@ -34,17 +35,17 @@ pub fn LoginScreen() -> impl IntoView {
                         <div
                             class="cursor-pointer rounded-lg border bg-card text-card-foreground shadow-sm transition-colors hover:bg-accent"
                             on:click={
-                        let nav = navigate.clone();
-                        move |_| nav("/login/token", Default::default())
-                    }
+                                let nav = navigate.clone();
+                                move |_| nav("/login/token", Default::default())
+                            }
                         >
                             <div class="flex items-start gap-4 p-6">
                                 <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></svg>
                                 </div>
                                 <div class="space-y-1">
-                                    <h2 class="font-medium text-foreground">{t(lang.get(), "login.token.title")}</h2>
-                                    <p class="text-sm text-muted-foreground">{t(lang.get(), "login.token.description")}</p>
+                                    <h2 class="font-medium text-foreground">{t!("login.token.title")}</h2>
+                                    <p class="text-sm text-muted-foreground">{t!("login.token.description")}</p>
                                 </div>
                             </div>
                         </div>
@@ -52,23 +53,23 @@ pub fn LoginScreen() -> impl IntoView {
                         <div
                             class="cursor-pointer rounded-lg border bg-card text-card-foreground shadow-sm transition-colors hover:bg-accent"
                             on:click={
-                        let nav = navigate.clone();
-                        move |_| nav("/login/qr", Default::default())
-                    }
+                                let nav = navigate.clone();
+                                move |_| nav("/login/qr", Default::default())
+                            }
                         >
                             <div class="flex items-start gap-4 p-6">
                                 <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="5" height="5"/></svg>
                                 </div>
                                 <div class="space-y-1">
-                                    <h2 class="font-medium text-foreground">{t(lang.get(), "login.qr.title")}</h2>
-                                    <p class="text-sm text-muted-foreground">{t(lang.get(), "login.qr.description")}</p>
+                                    <h2 class="font-medium text-foreground">{t!("login.qr.title")}</h2>
+                                    <p class="text-sm text-muted-foreground">{t!("login.qr.description")}</p>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <p class="text-center text-sm text-muted-foreground">{t(lang.get(), "login.newDevice")}</p>
+                    <p class="text-center text-sm text-muted-foreground">{t!("login.newDevice")}</p>
                 </div>
             </main>
         </div>

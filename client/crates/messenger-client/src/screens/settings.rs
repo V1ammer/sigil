@@ -1,28 +1,42 @@
 use leptos::prelude::*;
 use leptos_router::hooks::{use_params_map, use_navigate};
-use crate::i18n::{Language, t};
+use crate::i18n::I18n;
+use crate::state::session::use_session;
 use crate::settings::*;
+use crate::t;
 
 #[must_use]
 #[component]
 pub fn SettingsScreen() -> impl IntoView {
-    let lang = RwSignal::new(Language::Ru);
+    let _i18n = use_context::<I18n>().expect("I18n must be provided");
+    let session = use_session();
     let params = use_params_map();
     let navigate = use_navigate();
-    let section = move || params.get().get("section").map(|s| s.clone()).unwrap_or_else(|| "account".to_string());
+    let section = move || {
+        params
+            .get()
+            .get("section")
+            .map(|s| s.clone())
+            .unwrap_or_else(|| "account".to_string())
+    };
 
-    let is_admin = true; // mock current user is admin
+    let is_admin = session.is_admin();
 
-    let sections: Vec<(&str, &str)> = vec![
-        ("account", "settings.account"),
-        ("devices", "settings.devices"),
-        ("appearance", "settings.appearance"),
-        ("notifications", "settings.notifications"),
-        ("privacy", "settings.privacy"),
-        ("admin-invites", "settings.admin"),
-        ("admin-users", "admin.users"),
-        ("about", "settings.about"),
-    ];
+    // Build sections list based on role.
+    let sections: Vec<(&str, &str)> = {
+        let mut s = vec![
+            ("account", "settings.account"),
+            ("devices", "settings.devices"),
+            ("appearance", "settings.appearance"),
+            ("notifications", "settings.notifications"),
+            ("privacy", "settings.privacy"),
+            ("about", "settings.about"),
+        ];
+        if is_admin {
+            s.push(("admin-invites", "settings.admin"));
+        }
+        s
+    };
 
     let render_content = move || {
         match section().as_str() {
@@ -43,7 +57,7 @@ pub fn SettingsScreen() -> impl IntoView {
             {/* Sidebar */}
             <div class="w-64 border-r border-border flex flex-col">
                 <div class="flex items-center justify-between p-4 border-b border-border">
-                    <h1 class="text-lg font-semibold text-foreground">{t(lang.get(), "settings.title")}</h1>
+                    <h1 class="text-lg font-semibold text-foreground">{t!("settings.title")}</h1>
                     <button
                         class="h-9 w-9 inline-flex items-center justify-center rounded-md hover:bg-accent"
                         on:click={
@@ -56,23 +70,30 @@ pub fn SettingsScreen() -> impl IntoView {
                 </div>
 
                 <div class="flex-1 overflow-y-auto p-2 space-y-1">
-                    {sections.iter().map(|(id, label_key)| {
-                        let id = *id;
-                        let label = t(lang.get(), label_key).to_string();
-                        let is_active = move || section() == id;
-                        let nav = navigate.clone();
-                        view! {
-                            <button
-                                class={move || format!(
-                                    "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-sm transition-colors {}",
-                                    if is_active() { "bg-accent text-accent-foreground" } else { "hover:bg-muted text-foreground" }
-                                )}
-                                on:click=move |_| nav(&format!("/settings/{}", id), Default::default())
-                            >
-                                {label}
-                            </button>
-                        }
-                    }).collect::<Vec<_>>()}
+                    {sections
+                        .iter()
+                        .map(|(id, label_key)| {
+                            let id = *id;
+                            let label = t!(label_key);
+                            let is_active = move || section() == id;
+                            let nav = navigate.clone();
+                            view! {
+                                <button
+                                    class={move || format!(
+                                        "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-sm transition-colors {}",
+                                        if is_active() {
+                                            "bg-accent text-accent-foreground"
+                                        } else {
+                                            "hover:bg-muted text-foreground"
+                                        }
+                                    )}
+                                    on:click=move |_| nav(&format!("/settings/{}", id), Default::default())
+                                >
+                                    {label.clone()}
+                                </button>
+                            }
+                        })
+                        .collect::<Vec<_>>()}
                 </div>
             </div>
 

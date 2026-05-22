@@ -6,6 +6,11 @@ edition.workspace = true
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = ["native"]
+native = ["messenger-core/native"]
+web = ["messenger-core/web"]
+
 [dependencies]
 leptos = { workspace = true }
 leptos_router = { workspace = true }
@@ -17,7 +22,10 @@ gloo-timers = { workspace = true }
 console_error_panic_hook = "0.1"
 tracing.workspace = true
 tracing-wasm.workspace = true
-messenger-core = { path = "../messenger-core" }
+serde = { workspace = true }
+uuid = { workspace = true }
+base64 = "0.22"
+messenger-core = { path = "../messenger-core", default-features = false }
 messenger-storage = { path = "../messenger-storage" }
 messenger-proto = { path = "../messenger-proto" }
 

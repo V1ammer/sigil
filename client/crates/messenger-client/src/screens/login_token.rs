@@ -1,19 +1,24 @@
 use leptos::prelude::*;
 use leptos_router::hooks::use_navigate;
 use gloo_timers::callback::Timeout;
-use crate::i18n::{Language, t};
+use crate::i18n::I18n;
+use crate::t;
 
 #[must_use]
 #[component]
 pub fn LoginTokenScreen() -> impl IntoView {
-    let lang = RwSignal::new(Language::Ru);
+    let _i18n = use_context::<I18n>().expect("I18n must be provided");
     let token = RwSignal::new(String::new());
     let is_loading = RwSignal::new(false);
     let error = RwSignal::new(Option::<String>::None);
     let navigate = use_navigate();
 
     let format_token = move |value: &str| -> String {
-        let cleaned: String = value.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_uppercase();
+        let cleaned: String = value
+            .chars()
+            .filter(char::is_ascii_alphanumeric)
+            .collect::<String>()
+            .to_uppercase();
         let mut parts = Vec::new();
         let mut remaining = cleaned.as_str();
         while !remaining.is_empty() {
@@ -30,7 +35,7 @@ pub fn LoginTokenScreen() -> impl IntoView {
         let navigate = navigate_for_submit.clone();
         let tok = token.get();
         if tok.len() < 19 {
-            error.set(Some(t(lang.get(), "token.error.invalid").to_string()));
+            error.set(Some(t!("token.error.invalid")));
             return;
         }
         is_loading.set(true);
@@ -39,15 +44,16 @@ pub fn LoginTokenScreen() -> impl IntoView {
         let nav = navigate.clone();
         Timeout::new(1500, move || {
             if tok.contains("EXPIRED") {
-                error.set(Some(t(lang.get(), "token.error.expired").to_string()));
+                error.set(Some(t!("token.error.expired")));
                 is_loading.set(false);
             } else if tok.contains("USED") {
-                error.set(Some(t(lang.get(), "token.error.exhausted").to_string()));
+                error.set(Some(t!("token.error.exhausted")));
                 is_loading.set(false);
             } else {
                 nav("/register", Default::default());
             }
-        }).forget();
+        })
+        .forget();
     });
 
     let is_valid = move || token.get().len() == 19;
@@ -69,14 +75,14 @@ pub fn LoginTokenScreen() -> impl IntoView {
             <main class="flex flex-1 flex-col items-center justify-center p-4">
                 <div class="w-full max-w-md space-y-8">
                     <div class="space-y-2 text-center">
-                        <h1 class="text-2xl font-semibold tracking-tight text-foreground">{t(lang.get(), "token.title")}</h1>
+                        <h1 class="text-2xl font-semibold tracking-tight text-foreground">{t!("token.title")}</h1>
                     </div>
 
                     <div class="space-y-4">
                         <div class="relative">
                             <input
                                 type="text"
-                                placeholder={t(lang.get(), "token.placeholder")}
+                                placeholder={t!("token.placeholder")}
                                 maxlength=19u32
                                 class="flex h-14 w-full rounded-md border border-input bg-background px-3 py-2 text-center font-mono text-lg tracking-wider ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                 disabled=is_loading
@@ -89,7 +95,9 @@ pub fn LoginTokenScreen() -> impl IntoView {
                                 on:keydown={
                                     let os = on_submit.clone();
                                     move |ev| {
-                                        if ev.key() == "Enter" && !is_loading.get() && is_valid() { os(); }
+                                        if ev.key() == "Enter" && !is_loading.get() && is_valid() {
+                                            os();
+                                        }
                                     }
                                 }
                             />
@@ -102,7 +110,7 @@ pub fn LoginTokenScreen() -> impl IntoView {
                             }}
                         </div>
 
-                        <p class="text-center text-sm text-muted-foreground">{t(lang.get(), "token.hint")}</p>
+                        <p class="text-center text-sm text-muted-foreground">{t!("token.hint")}</p>
 
                         {move || error.get().map(|e| {
                             view! {
@@ -120,7 +128,7 @@ pub fn LoginTokenScreen() -> impl IntoView {
                                 move |_| os()
                             }
                         >
-                            {move || if is_loading.get() { t(lang.get(), "loading") } else { t(lang.get(), "token.continue") }}
+                            {move || if is_loading.get() { t!("loading") } else { t!("token.continue") }}
                         </button>
                     </div>
                 </div>

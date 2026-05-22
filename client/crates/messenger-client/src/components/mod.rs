@@ -25,3 +25,4 @@ pub mod slider;
 pub mod progress;
 pub mod context_menu;
 pub mod label;
+pub mod toast_container;

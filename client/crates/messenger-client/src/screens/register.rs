@@ -1,12 +1,13 @@
 use leptos::prelude::*;
 use leptos_router::hooks::use_navigate;
 use gloo_timers::callback::Timeout;
-use crate::i18n::{Language, t};
+use crate::i18n::I18n;
+use crate::t;
 
 #[must_use]
 #[component]
 pub fn RegisterScreen() -> impl IntoView {
-    let lang = RwSignal::new(Language::Ru);
+    let _i18n = use_context::<I18n>().expect("I18n must be provided");
     let username = RwSignal::new(String::new());
     let display_name = RwSignal::new(String::new());
     let username_status = RwSignal::new("idle".to_string());
@@ -14,7 +15,10 @@ pub fn RegisterScreen() -> impl IntoView {
     let navigate = use_navigate();
 
     let on_username_change = move |value: &str| {
-        let cleaned: String = value.chars().filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_').collect();
+        let cleaned: String = value
+            .chars()
+            .filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_')
+            .collect();
         username.set(cleaned);
 
         let u = username.get();
@@ -27,23 +31,34 @@ pub fn RegisterScreen() -> impl IntoView {
         let u2 = u.clone();
         Timeout::new(500, move || {
             let taken = ["admin", "test", "user", "root"].contains(&u2.as_str());
-            username_status.set(if taken { "taken".to_string() } else { "available".to_string() });
-        }).forget();
+            username_status.set(if taken {
+                "taken".to_string()
+            } else {
+                "available".to_string()
+            });
+        })
+        .forget();
     };
 
     let navigate_on_submit = navigate.clone();
     let on_submit = move || {
-        if username.get().len() < 3 || display_name.get().is_empty() || username_status.get() != "available" {
+        if username.get().len() < 3
+            || display_name.get().is_empty()
+            || username_status.get() != "available"
+        {
             return;
         }
         is_submitting.set(true);
         let nav = navigate_on_submit.clone();
         Timeout::new(1500, move || {
             nav("/chats", Default::default());
-        }).forget();
+        })
+        .forget();
     };
 
-    let is_valid = move || username.get().len() >= 3 && !display_name.get().is_empty() && username_status.get() == "available";
+    let is_valid = move || {
+        username.get().len() >= 3 && !display_name.get().is_empty() && username_status.get() == "available"
+    };
 
     view! {
         <div class="flex min-h-screen flex-col bg-background">
@@ -62,7 +77,7 @@ pub fn RegisterScreen() -> impl IntoView {
             <main class="flex flex-1 flex-col items-center justify-center p-4">
                 <div class="w-full max-w-md space-y-8">
                     <div class="space-y-2 text-center">
-                        <h1 class="text-2xl font-semibold tracking-tight text-foreground">{t(lang.get(), "register.title")}</h1>
+                        <h1 class="text-2xl font-semibold tracking-tight text-foreground">{t!("register.title")}</h1>
                     </div>
 
                     <div class="space-y-6">
@@ -70,11 +85,11 @@ pub fn RegisterScreen() -> impl IntoView {
                             <div class="flex h-24 w-24 cursor-pointer items-center justify-center rounded-full bg-muted">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                             </div>
-                            <p class="text-sm text-muted-foreground">{t(lang.get(), "register.avatar.hint")}</p>
+                            <p class="text-sm text-muted-foreground">{t!("register.avatar.hint")}</p>
                         </div>
 
                         <div class="space-y-2">
-                            <label class="text-sm font-medium text-foreground">{t(lang.get(), "register.username")}</label>
+                            <label class="text-sm font-medium text-foreground">{t!("register.username")}</label>
                             <div class="relative">
                                 <input
                                     type="text"
@@ -96,15 +111,15 @@ pub fn RegisterScreen() -> impl IntoView {
                             </div>
                             <p class="text-xs text-muted-foreground">
                                 {move || match username_status.get().as_str() {
-                                    "taken" => t(lang.get(), "register.username.taken"),
-                                    "available" => t(lang.get(), "register.username.available"),
-                                    _ => t(lang.get(), "register.username.hint"),
+                                    "taken" => t!("register.username.taken"),
+                                    "available" => t!("register.username.available"),
+                                    _ => t!("register.username.hint"),
                                 }}
                             </p>
                         </div>
 
                         <div class="space-y-2">
-                            <label class="text-sm font-medium text-foreground">{t(lang.get(), "register.displayName")}</label>
+                            <label class="text-sm font-medium text-foreground">{t!("register.displayName")}</label>
                             <input
                                 type="text"
                                 placeholder="John Doe"
@@ -121,10 +136,10 @@ pub fn RegisterScreen() -> impl IntoView {
                             disabled={move || is_submitting.get() || !is_valid()}
                             on:click=move |_| on_submit()
                         >
-                            {move || if is_submitting.get() { t(lang.get(), "loading") } else { t(lang.get(), "register.create") }}
+                            {move || if is_submitting.get() { t!("loading") } else { t!("register.create") }}
                         </button>
 
-                        <p class="text-center text-xs text-muted-foreground">{t(lang.get(), "register.privacy")}</p>
+                        <p class="text-center text-xs text-muted-foreground">{t!("register.privacy")}</p>
                     </div>
                 </div>
             </main>

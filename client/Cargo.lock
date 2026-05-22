@@ -3111,6 +3111,7 @@ dependencies = [
 name = "messenger-client"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "console_error_panic_hook",
  "gloo-timers",
  "js-sys",
@@ -3120,8 +3121,10 @@ dependencies = [
  "messenger-core",
  "messenger-proto",
  "messenger-storage",
+ "serde",
  "tracing",
  "tracing-wasm",
+ "uuid",
  "wasm-bindgen",
  "web-sys",
 ]

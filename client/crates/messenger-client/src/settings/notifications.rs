@@ -47,23 +47,23 @@ pub fn NotificationsSettings() -> impl IntoView {
 
             <div class="space-y-4">
                 <NotificationRow
-                    label={t(lang.get(), "settings.notifications.enable").to_string()}
-                    description={t(lang.get(), "settings.notifications.enableDesc").to_string()}
+                    label={t(lang.get(), "settings.notifications.enable")}
+                    description={t(lang.get(), "settings.notifications.enableDesc")}
                     checked=enable_notifications
                 />
                 <NotificationRow
-                    label={t(lang.get(), "settings.notifications.sound").to_string()}
-                    description={t(lang.get(), "settings.notifications.soundDesc").to_string()}
+                    label={t(lang.get(), "settings.notifications.sound")}
+                    description={t(lang.get(), "settings.notifications.soundDesc")}
                     checked=sound_enabled
                 />
                 <NotificationRow
-                    label={t(lang.get(), "settings.notifications.preview").to_string()}
-                    description={t(lang.get(), "settings.notifications.previewDesc").to_string()}
+                    label={t(lang.get(), "settings.notifications.preview")}
+                    description={t(lang.get(), "settings.notifications.previewDesc")}
                     checked=preview_enabled
                 />
                 <NotificationRow
-                    label={t(lang.get(), "settings.notifications.readReceipts").to_string()}
-                    description={t(lang.get(), "settings.notifications.readReceiptsDesc").to_string()}
+                    label={t(lang.get(), "settings.notifications.readReceipts")}
+                    description={t(lang.get(), "settings.notifications.readReceiptsDesc")}
                     checked=read_receipts
                 />
             </div>

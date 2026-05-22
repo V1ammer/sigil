@@ -1,12 +1,15 @@
 use leptos::prelude::*;
 use leptos_router::hooks::use_navigate;
 use gloo_timers::callback::Timeout;
-use crate::i18n::{Language, t};
+use crate::i18n::{Locale, I18n};
+use crate::state::session::{use_session, SessionState};
+use crate::t;
 
 #[must_use]
 #[component]
 pub fn ConnectScreen() -> impl IntoView {
-    let lang = RwSignal::new(Language::Ru);
+    let session = use_session();
+    let _i18n = use_context::<I18n>().expect("I18n must be provided");
     let server_address = RwSignal::new(String::new());
     let is_loading = RwSignal::new(false);
     let error = RwSignal::new(Option::<String>::None);
@@ -16,28 +19,32 @@ pub fn ConnectScreen() -> impl IntoView {
     let on_connect = move || {
         let addr = server_address.get();
         if addr.trim().is_empty() {
-            error.set(Some(t(lang.get(), "connect.error.invalid").to_string()));
+            error.set(Some(t!("connect.error.invalid")));
             return;
         }
         is_loading.set(true);
         error.set(None);
 
-        // Simulate connection
+        // Simulate connection — in C07+ this will be a real API call.
         let nav = navigate.clone();
         let addr_clone = addr.clone();
         Timeout::new(1500, move || {
             if addr_clone.contains("invalid") {
-                error.set(Some(t(lang.get(), "connect.error.unavailable").to_string()));
+                error.set(Some(t!("connect.error.unavailable")));
                 is_loading.set(false);
             } else {
+                // Store the server URL in session state.
+                session.state.set(SessionState::ServerConfigured {
+                    url: addr_clone,
+                });
                 nav("/login", Default::default());
             }
-        }).forget();
+        })
+        .forget();
     };
 
     let is_disabled = move || is_loading.get() || server_address.get().trim().is_empty();
 
-    // Clone on_connect for use in closures
     let on_connect_clone = on_connect.clone();
     let on_connect_handler = move |_| on_connect_clone();
 
@@ -49,17 +56,17 @@ pub fn ConnectScreen() -> impl IntoView {
                         <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary-foreground"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                     </div>
                     <div class="space-y-2">
-                        <h1 class="text-2xl font-semibold tracking-tight text-foreground">{t(lang.get(), "app.name")}</h1>
-                        <p class="text-sm text-muted-foreground">{t(lang.get(), "app.description")}</p>
+                        <h1 class="text-2xl font-semibold tracking-tight text-foreground">{t!("app.name")}</h1>
+                        <p class="text-sm text-muted-foreground">{t!("app.description")}</p>
                     </div>
                 </div>
 
                 <div class="space-y-4">
                     <div class="space-y-2">
-                        <label class="text-sm font-medium text-foreground">{t(lang.get(), "connect.title")}</label>
+                        <label class="text-sm font-medium text-foreground">{t!("connect.title")}</label>
                         <input
                             type="url"
-                            placeholder={t(lang.get(), "connect.placeholder")}
+                            placeholder={t!("connect.placeholder")}
                             class="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                             disabled=is_loading
                             on:input=move |ev| server_address.set(event_target_value(&ev))
@@ -84,9 +91,9 @@ pub fn ConnectScreen() -> impl IntoView {
                         on:click=on_connect_handler
                     >
                         {move || if is_loading.get() {
-                            "Загрузка..."
+                            t!("loading")
                         } else {
-                            t(lang.get(), "connect.button")
+                            t!("connect.button")
                         }}
                     </button>
                 </div>
@@ -97,7 +104,7 @@ pub fn ConnectScreen() -> impl IntoView {
                         on:click=move |_| show_help.set(true)
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                        {t(lang.get(), "connect.whatsThis")}
+                        {t!("connect.whatsThis")}
                     </button>
                 </div>
             </div>
@@ -107,13 +114,13 @@ pub fn ConnectScreen() -> impl IntoView {
                     <div class="fixed inset-0 z-50 flex items-center justify-center">
                         <div class="fixed inset-0 bg-black/50" on:click=move |_| show_help.set(false)/>
                         <div class="relative z-50 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
-                            <h2 class="text-lg font-semibold">{t(lang.get(), "connect.help.title")}</h2>
-                            <p class="text-sm text-muted-foreground mt-2">{t(lang.get(), "connect.help.description")}</p>
+                            <h2 class="text-lg font-semibold">{t!("connect.help.title")}</h2>
+                            <p class="text-sm text-muted-foreground mt-2">{t!("connect.help.description")}</p>
                             <div class="flex justify-end pt-4">
                                 <button
                                     class="inline-flex items-center justify-center rounded-md bg-primary h-10 px-4 py-2 text-sm font-medium text-primary-foreground"
                                     on:click=move |_| show_help.set(false)
-                                >{t(lang.get(), "close")}</button>
+                                >{t!("close")}</button>
                             </div>
                         </div>
                     </div>

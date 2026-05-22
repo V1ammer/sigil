@@ -8,7 +8,8 @@
 #![allow(clippy::cast_precision_loss)]
 #![allow(clippy::cast_lossless)]
 #![allow(clippy::map_unwrap_or)]
-#![allow(clippy::redundant_closure_for_method_calls)]#![allow(clippy::clone_on_copy)]
+#![allow(clippy::redundant_closure_for_method_calls)]
+#![allow(clippy::clone_on_copy)]
 #![allow(clippy::default_trait_access)]
 #![allow(clippy::uninlined_format_args)]
 #![allow(clippy::wildcard_imports)]
@@ -42,5 +43,7 @@ pub mod chat;
 pub mod sidebar;
 pub mod settings;
 pub mod screens;
+pub mod state;
+pub mod session;
 
 pub use app::App;
