@@ -121,6 +121,20 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("welcome.title", "Select a chat");
     m.insert("welcome.hint", "Select a chat from the left or start a new one");
 
+    // Chat list
+    m.insert("chat.list.empty", "No conversations yet");
+    m.insert("chat.mls.not_ready", "Messages not available");
+    m.insert("chat.mls.hint", "MLS setup is required to view messages");
+
+    // Direct chat creation
+    m.insert("chat.create_direct.title", "New Direct Chat");
+    m.insert("chat.create_direct.placeholder", "Enter username");
+    m.insert("chat.create_direct.create", "Create chat");
+    m.insert("chat.create_direct.creating", "Creating...");
+    m.insert("chat.create_direct.cancel", "Cancel");
+    m.insert("chat.create_direct.empty_username", "Please enter a username");
+    m.insert("chat.create_direct.no_api", "API client not available");
+
     // Security
     m.insert("security.title", "Security");
     m.insert("security.changes", "Security changes");
@@ -132,6 +146,7 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
 
     // Settings
     m.insert("settings.title", "Settings");
+    m.insert("settings.back", "Back");
     m.insert("settings.account", "Account");
     m.insert("settings.devices", "Devices");
     m.insert("settings.appearance", "Appearance");
@@ -339,6 +354,7 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("close", "Close");
 
     // Time
+    m.insert("time.now", "just now");
     m.insert("time.today", "Today");
     m.insert("time.yesterday", "Yesterday");
     m.insert("time.daysAgo", "days ago");

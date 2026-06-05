@@ -16,7 +16,7 @@ use crate::error::CryptoError;
 /// with a 32-byte key).
 pub fn username_blind_index(username: &str, server_key: &[u8; 32]) -> Result<Vec<u8>, CryptoError> {
     let mut mac = HmacSha256::new_from_slice(server_key)
-        .map_err(|e| CryptoError::Mls(format!("HMAC init failed: {e}")))?;
+        .map_err(|e| CryptoError::Crypto(format!("HMAC init failed: {e}")))?;
     mac.update(username.as_bytes());
     Ok(mac.finalize().into_bytes().to_vec())
 }

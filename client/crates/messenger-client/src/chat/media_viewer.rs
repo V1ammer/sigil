@@ -104,30 +104,24 @@ pub fn MediaViewer(
                                 />
                             }.into_any()
                         } else {
-                            // Video placeholder
                             view! {
-                                <div class="flex flex-col items-center gap-4">
-                                    <div class="flex h-24 w-24 items-center justify-center rounded-full bg-white/10">
-                                        <Icon name="play" class_name="h-10 w-10 text-white/80"/>
-                                    </div>
-                                    {if let Some(ref url) = media_url {
-                                        view! {
-                                            <video
-                                                src=url
-                                                class="max-h-[80vh] max-w-full rounded-lg"
-                                                controls=true
-                                                autoplay=false
-                                            />
-                                        }.into_any()
-                                    } else {
-                                        view! {
-                                            <div class="flex flex-col items-center gap-2 text-white/60">
-                                                <Icon name="film" class_name="h-16 w-16"/>
-                                                <p class="text-sm">"Video"</p>
-                                            </div>
-                                        }.into_any()
-                                    }}
-                                </div>
+                                {if let Some(ref url) = media_url {
+                                    view! {
+                                        <video
+                                            src=url
+                                            class="max-h-[80vh] max-w-full rounded-lg"
+                                            controls=true
+                                            autoplay=false
+                                        />
+                                    }.into_any()
+                                } else {
+                                    view! {
+                                        <div class="flex flex-col items-center gap-2 text-white/60">
+                                            <Icon name="film" class_name="h-16 w-16"/>
+                                            <p class="text-sm">"Video"</p>
+                                        </div>
+                                    }.into_any()
+                                }}
                             }.into_any()
                         }}
                     </div>

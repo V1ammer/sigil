@@ -15,13 +15,13 @@ pub mod age_wrap;
 pub mod blind_index;
 #[cfg(feature = "native")]
 pub mod bootstrap;
-#[cfg(feature = "native")]
+#[cfg(any(feature = "native", feature = "wasm-mls"))]
 pub mod mls;
 pub mod prov;
 
 pub mod attachment_crypto;
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "voice"))]
 pub mod voice;
 
 #[must_use]

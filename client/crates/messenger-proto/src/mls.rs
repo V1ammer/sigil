@@ -20,6 +20,12 @@ pub struct CreateGroupRequest {
     pub ratchet_tree: Vec<u8>,
 }
 
+/// Request to create a direct chat on the server side (without MLS).
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CreateDirectChatRequest {
+    pub target_username: String,
+}
+
 /// Response after creating a group.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CreateGroupResponse {
@@ -114,19 +120,22 @@ pub struct ListGroupMembersResponse {
 }
 
 /// Summary of a group for the "my groups" list.
+/// Matches server's GroupSummary in routes/mls.rs.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GroupSummary {
-    pub group_id: Uuid,
+    pub id: Uuid,
     pub group_type: String,
     pub current_epoch: i64,
     pub created_at: i64,
-    pub created_by_user_id: Uuid,
+    pub role_in_chat: String,
+    pub joined_at: i64,
 }
 
 /// Response listing my groups.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ListGroupsResponse {
     pub groups: Vec<GroupSummary>,
+    pub has_more: bool,
 }
 
 /// Per-device delivery status.

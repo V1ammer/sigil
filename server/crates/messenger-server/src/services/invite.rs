@@ -7,8 +7,8 @@
 //! - `now_secs` — общая утилита для unix timestamp.
 
 use sea_orm::{
-    AccessMode, ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection,
-    DatabaseTransaction, EntityTrait, IsolationLevel, QueryFilter, Set, NotSet,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection,
+    DatabaseTransaction, EntityTrait, QueryFilter, Set, NotSet,
     TransactionTrait,
 };
 use uuid::Uuid;
@@ -39,12 +39,10 @@ pub fn now_secs() -> i64 {
 ///
 /// Возвращает `AppError::Db` при ошибке БД.
 pub async fn begin_immediate(db: &DatabaseConnection) -> Result<DatabaseTransaction, AppError> {
-    let txn = db
-        .begin_with_config(
-            Some(IsolationLevel::Serializable),
-            Some(AccessMode::ReadWrite),
-        )
-        .await?;
+    // SQLite: Use regular begin instead of begin_with_config.
+    // begin_with_config with Serializable/ReadWrite causes warnings
+    // and may leave the connection in a broken state.
+    let txn = db.begin().await?;
     Ok(txn)
 }
 

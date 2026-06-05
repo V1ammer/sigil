@@ -19,7 +19,7 @@ pub fn MessageList(
     #[prop(optional)] on_media_click: Option<Box<dyn Fn(&str) + Send + Sync + 'static>>,
     #[prop(optional)] on_avatar_click: Option<Box<dyn Fn(&str) + Send + Sync + 'static>>,
 ) -> impl IntoView {
-    let grouped = group_messages_with_dates(&messages);
+    let grouped = group_messages_with_dates(&messages, lang.get());
 
     let on_thread_click = on_thread_click.map(Arc::new);
     let on_media_click = on_media_click.map(Arc::new);
@@ -92,10 +92,9 @@ enum MessageGroup {
     Messages(Vec<Message>),
 }
 
-fn group_messages_with_dates(messages: &[Message]) -> Vec<MessageGroup> {
+fn group_messages_with_dates(messages: &[Message], lang: Language) -> Vec<MessageGroup> {
     let mut result = Vec::new();
     let mut i = 0;
-    let lang = Language::Ru; // placeholder, used for date formatting
 
     while i < messages.len() {
         // Date separator for the current message

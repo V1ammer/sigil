@@ -61,7 +61,7 @@ pub fn PrivacySettings() -> impl IntoView {
                 #[cfg(target_arch = "wasm32")]
                 {
                     if let Some(window) = web_sys::window() {
-                        if let Some(idb_factory) = window.indexed_db() {
+                        if let Ok(Some(idb_factory)) = window.indexed_db() {
                             let _ = idb_factory.delete_database("messenger");
                         }
                     }
@@ -154,16 +154,6 @@ pub fn PrivacySettings() -> impl IntoView {
                         <SelectOption value=String::from("90d")>{t!("settings.privacy.autoDelete90d")}</SelectOption>
                     </Select>
                     <p class="text-xs text-muted-foreground">{t!("settings.privacy.autoDeleteHint")}</p>
-                </div>
-
-                <Separator />
-
-                // Block list — placeholder (disabled)
-                <div class="flex items-center justify-between opacity-50 pointer-events-none">
-                    <div class="space-y-0.5">
-                        <Label class="text-foreground">{"Block list"}</Label>
-                        <p class="text-xs text-muted-foreground">{"Blocked users — coming soon"}</p>
-                    </div>
                 </div>
 
                 <Separator />

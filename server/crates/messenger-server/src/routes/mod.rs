@@ -7,6 +7,7 @@ use crate::state::AppState;
 
 pub mod admin;
 pub mod attachments;
+pub mod dev;
 pub mod keypackages;
 pub mod devices;
 pub mod invite;
@@ -50,6 +51,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/v1/server/info", get(server_info::info))
         .route("/v1/invite/redeem", post(invite::redeem))
+        .route("/v1/dev/create-token", get(dev::create_dev_token))
         .route(
             "/v1/provisioning/requests",
             post(provisioning::create_request),
@@ -58,6 +60,7 @@ pub fn build_router(state: AppState) -> Router {
             "/v1/provisioning/requests/:id/bootstrap",
             get(provisioning::get_provisioning_bootstrap),
         )
+        .route("/v1/users/lookup/username", get(users::username_lookup))
         .route("/v1/ws", get(ws::ws_handler));
 
     let admin = Router::new()
@@ -107,6 +110,7 @@ pub fn build_router(state: AppState) -> Router {
         )
         // S10 — MLS Messaging
         .route("/v1/groups", post(mls::create_group))
+        .route("/v1/groups/create-direct", post(mls::create_direct_chat))
         .route("/v1/groups/me", get(mls::list_my_groups))
         .route("/v1/groups/:id/members", get(mls::get_group_members))
         .route("/v1/groups/:id/commit", post(mls::post_commit))

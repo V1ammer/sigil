@@ -121,6 +121,21 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("welcome.title", "Выберите чат");
     m.insert("welcome.hint", "Выберите чат слева или начните новый");
 
+    // Chat list
+    m.insert("chat.list.empty", "Нет диалогов");
+    m.insert("chat.mls.not_ready", "Сообщения недоступны");
+    m.insert("chat.mls.hint", "Настройка MLS требуется для просмотра сообщений");
+
+    // Direct chat creation
+    m.insert("chat.create_direct.title", "Новый диалог");
+    m.insert("chat.create_direct.placeholder", "Введите имя пользователя");
+    m.insert("chat.create_direct.create", "Создать чат");
+    m.insert("chat.create_direct.creating", "Создание...");
+    m.insert("chat.create_direct.cancel", "Отмена");
+    m.insert("chat.create_direct.empty_username", "Введите имя пользователя");
+    m.insert("chat.create_direct.no_api", "API клиент недоступен");
+    m.insert("chat.mls.hint", "Настройка MLS требуется для просмотра сообщений");
+
     // Security
     m.insert("security.title", "Безопасность");
     m.insert("security.changes", "Изменения безопасности");
@@ -132,6 +147,7 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
 
     // Settings
     m.insert("settings.title", "Настройки");
+    m.insert("settings.back", "Назад");
     m.insert("settings.account", "Аккаунт");
     m.insert("settings.devices", "Устройства");
     m.insert("settings.appearance", "Внешний вид");
@@ -339,6 +355,7 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("close", "Закрыть");
 
     // Time
+    m.insert("time.now", "только что");
     m.insert("time.today", "Сегодня");
     m.insert("time.yesterday", "Вчера");
     m.insert("time.daysAgo", "дней назад");
@@ -402,9 +419,9 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
 
     // Error messages
     m.insert("error.network", "Ошибка сети");
-    m.insert("error.invite_invalid", "Неверный инвайт-токен");
-    m.insert("error.invite_expired", "Срок действия инвайт-токена истёк");
-    m.insert("error.invite_exhausted", "Инвайт-токен исчерпан");
+    m.insert("error.invite_invalid", "Токен приглашения недействителен");
+    m.insert("error.invite_expired", "Токен приглашения истёк");
+    m.insert("error.invite_exhausted", "Токен приглашения уже использован");
     m.insert("error.username_taken", "Имя пользователя уже занято");
 
     // C11 — Account

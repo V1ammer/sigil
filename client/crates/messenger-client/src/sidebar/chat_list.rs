@@ -60,7 +60,6 @@ fn ChatItem(
     on_mark_read: Option<std::sync::Arc<dyn Fn(String) + Send + Sync + 'static>>,
     on_archive: Option<std::sync::Arc<dyn Fn(String) + Send + Sync + 'static>>,
     on_delete: Option<std::sync::Arc<dyn Fn(String) + Send + Sync + 'static>>,
-    on_clear_history: Option<std::sync::Arc<dyn Fn(String) + Send + Sync + 'static>>,
 ) -> impl IntoView {
     let chat_id = chat.id.clone();
     let chat_id_for_pin = chat.id.clone();
@@ -90,7 +89,6 @@ fn ChatItem(
             let mute_toggle = on_mute_toggle.clone();
             let mark_read = on_mark_read.clone();
             let archive = on_archive.clone();
-            let clear_history = on_clear_history.clone();
             let delete = on_delete.clone();
             let chat_type_text = if chat_type == "group" {
                 t(lang.get(), "sidebar.chatList.leaveGroup")
@@ -139,16 +137,6 @@ fn ChatItem(
                     >
                         <Icon name="archive" class_name="mr-2 h-4 w-4" />
                         {t(lang.get(), "sidebar.chatList.archive")}
-                    </ContextMenuItem>
-                    <ContextMenuItem
-                        on_click=Box::new({
-                            let id = cid_inner.clone();
-                            let clear_history = clear_history.clone();
-                            move || { if let Some(f) = clear_history.as_ref() { f(id.clone()); } }
-                        })
-                    >
-                        <Icon name="trash" class_name="mr-2 h-4 w-4" />
-                        {t(lang.get(), "sidebar.chatList.clearHistory")}
                     </ContextMenuItem>
                     <ContextMenuSeparator />
                     <ContextMenuItem
@@ -333,10 +321,6 @@ pub fn ChatList(
         });
     }) as std::sync::Arc<dyn Fn(String) + Send + Sync + 'static>);
 
-    let on_clear_history = Some(std::sync::Arc::new(move |_id: String| {
-        // TODO: clear message history
-    }) as std::sync::Arc<dyn Fn(String) + Send + Sync + 'static>);
-
     view! {
         <div class=format!("flex h-full flex-col bg-background border-r border-border {}", class)>
             // Header
@@ -425,7 +409,6 @@ pub fn ChatList(
                                                 on_mark_read={on_mark_read.clone()}
                                                 on_archive={on_archive.clone()}
                                                 on_delete={on_delete.clone()}
-                                                on_clear_history={on_clear_history.clone()}
                                             />
                                         </div>
                                     }

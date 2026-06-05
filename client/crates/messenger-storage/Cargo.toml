@@ -21,6 +21,9 @@ getrandom = { workspace = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni = { version = "0.21", optional = true }
+rusqlite = { version = "0.32", features = ["bundled"], default-features = false }
+base64 = { workspace = true }
+serde_json = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { workspace = true, optional = true, features = ["Window", "AesGcmParams"] }

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::hooks::use_navigate;
+use leptos_router::NavigateOptions;
 use rand::RngCore;
 use messenger_core::ed25519::Ed25519Pair;
 use messenger_core::prov::{encode_qr, QrPayload};
@@ -12,6 +13,7 @@ use crate::i18n::I18n;
 use crate::session::restore::persist_session;
 use crate::state::notifications::{NotificationsState, ToastKind};
 use crate::state::session::{build_api_client, persist_auth_credentials, use_session, SessionState, UserRole};
+use crate::tauri_bridge;
 use crate::t;
 
 #[must_use]
@@ -215,24 +217,23 @@ pub fn LoginQrScreen() -> impl IntoView {
                             // Bootstrap blob received!
                             success_clone.set(true);
 
-                            // Decrypt AGE blob (native only)
-                            #[cfg(feature = "native")]
-                            {
-                                match decrypt_bootstrap_blob(
+                            // Decrypt AGE blob via Tauri bridge (Android/Desktop) or show error
+                            if tauri_bridge::is_tauri_context() {
+                                match tauri_bridge::age_decrypt(
                                     &resp.encrypted_bootstrap_blob,
-                                    &temp_x25519_secret,
+                                    &temp_x25519_secret.to_bytes(),
                                 )
                                 .await
                                 {
-                                    Ok((user_id, username_val, identity_seed, device_signing_seed, device_hpke_seed, kp_bundle)) => {
+                                    Ok(payload) => {
                                         // Create identity for new device using pre-generated seeds
                                         let identity = messenger_core::identity::ClientIdentity::generate_new_device_from_seeds(
-                                            user_id,
-                                            username_val,
+                                            payload.user_id,
+                                            payload.username.clone(),
                                             resp.device_id,
-                                            identity_seed,
-                                            device_signing_seed,
-                                            device_hpke_seed,
+                                            payload.identity_signing_seed,
+                                            payload.device_signing_seed,
+                                            payload.device_hpke_seed,
                                         );
 
                                         // Save to storage
@@ -250,14 +251,14 @@ pub fn LoginQrScreen() -> impl IntoView {
                                                 device_hpke_secret_key_wrapped: identity.device_hpke_seed.to_vec(),
                                                 device_hpke_public_key: identity.device_hpke_public.to_vec(),
                                             };
-                                            let _ = local.save_identity(user_id, &encrypted).await;
-                                            let _ = local.set_setting("current_user_id", &user_id.to_string()).await;
+                                            let _ = local.save_identity(payload.user_id, &encrypted).await;
+                                            let _ = local.set_setting("current_user_id", &payload.user_id.to_string()).await;
                                         }
 
                                         // Persist session
                                         // Encode full identity for blob storage
                                         let identity_blob = encode_identity_for_qr_blob(&identity);
-                                        persist_session(&url, user_id, resp.device_id, &identity_blob, UserRole::User);
+                                        persist_session(&url, payload.user_id, resp.device_id, &identity_blob, UserRole::User);
 
                                         // Update session
                                         let identity_arc = Arc::new(identity);
@@ -266,13 +267,14 @@ pub fn LoginQrScreen() -> impl IntoView {
                                             role: UserRole::User,
                                         });
 
-                                        // ── Store KeyPackageBundle in provider ──
-                                        if !kp_bundle.is_empty() {
+                                        // ── Store KeyPackageBundle in provider (native only—too slow on WASM) ──
+                                        #[cfg(feature = "native")]
+                                        if !payload.key_package_bundle.is_empty() {
                                             if let Ok(local) = messenger_storage::init_storage("default").await {
                                                 let local: Arc<dyn messenger_storage::traits::MessengerLocalStore> = local.into();
                                                 use messenger_core::mls::group::MlsRuntime;
                                                 let runtime = MlsRuntime::new(local.clone(), resp.device_id);
-                                                if let Err(e) = runtime.store_keypackage_bundle(&kp_bundle).await {
+                                                if let Err(e) = runtime.store_keypackage_bundle(&payload.key_package_bundle).await {
                                                     notif_clone.push(ToastKind::Warning, format!("Failed to store keypackage: {e}"));
                                                 }
 
@@ -294,19 +296,23 @@ pub fn LoginQrScreen() -> impl IntoView {
                                             }
                                         }
 
+                                        #[cfg(not(feature = "native"))]
+                                        if !payload.key_package_bundle.is_empty() {
+                                            // KeyPackage processing not available on WASM.
+                                            // The user can still log in and view messages;
+                                            // MLS group operations require a native build.
+                                        }
+
                                         notif_clone.push(ToastKind::Success, t!("qr.success"));
-                                        nav_clone("/chats", Default::default());
+                                        nav_clone("/chats", NavigateOptions { replace: true, ..Default::default() });
                                     }
                                     Err(e) => {
                                         err_msg_clone.set(Some(format!("{e}")));
                                         notif_clone.push(ToastKind::Error, format!("{}: {e}", t!("error.network")));
                                     }
                                 }
-                            }
-
-                            #[cfg(not(feature = "native"))]
-                            {
-                                // On WASM, AGE decryption is not available.
+                            } else {
+                                // In browser, AGE decryption is not available.
                                 err_msg_clone.set(Some(t!("error.network").to_string()));
                                 notif_clone.push(ToastKind::Error, t!("error.network"));
                             }
@@ -356,7 +362,7 @@ pub fn LoginQrScreen() -> impl IntoView {
     };
 
     view! {
-        <div class="flex min-h-screen flex-col bg-background">
+        <div class="flex h-screen-safe flex-col bg-background overflow-hidden">
             <header class="flex items-center gap-4 border-b border-border p-4">
                 <button
                     class="h-10 w-10 inline-flex items-center justify-center rounded-md hover:bg-accent"
@@ -492,26 +498,6 @@ pub fn LoginQrScreen() -> impl IntoView {
             </main>
         </div>
     }
-}
-
-/// Decrypt an AGE bootstrap blob using the temp X25519 secret key (native only).
-/// Returns (user_id, username, identity_seed, device_signing_seed, device_hpke_seed, key_package_bundle).
-#[cfg(feature = "native")]
-async fn decrypt_bootstrap_blob(
-    blob: &[u8],
-    temp_secret: &x25519_dalek::StaticSecret,
-) -> Result<(Uuid, String, [u8; 32], [u8; 32], [u8; 32], Vec<u8>), Box<dyn std::error::Error>> {
-    use messenger_core::bootstrap::open_bootstrap_raw_secret;
-
-    let payload = open_bootstrap_raw_secret(blob, &temp_secret.to_bytes())?;
-    Ok((
-        payload.user_id,
-        payload.username,
-        payload.identity_signing_seed,
-        payload.device_signing_seed,
-        payload.device_hpke_seed,
-        payload.key_package_bundle,
-    ))
 }
 
 /// Encode identity for blob storage (CBOR).

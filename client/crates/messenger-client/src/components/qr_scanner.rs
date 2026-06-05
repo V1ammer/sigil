@@ -12,6 +12,7 @@
 use std::sync::Arc;
 
 use leptos::prelude::*;
+use wasm_bindgen::JsCast;
 use leptos::task::spawn_local;
 use crate::components::button::{Button, ButtonVariant};
 use crate::i18n::I18n;
@@ -179,12 +180,14 @@ async fn start_barcode_wasm(
     let media_devices = window
         .navigator()
         .media_devices()
-        .ok_or("no media devices")?;
+        .map_err(|_| "no media devices")?;
 
-    let promise = media_devices.get_user_media_with_constraints(&constraints);
+    let promise = media_devices
+        .get_user_media_with_constraints(&constraints)
+        .map_err(|_| "camera access denied")?;
     let stream: web_sys::MediaStream = wasm_bindgen_futures::JsFuture::from(promise)
         .await
-        .map_err(|_| "camera access denied")?
+        .map_err(|_| "invalid MediaStream")?
         .dyn_into()
         .map_err(|_| "invalid MediaStream")?;
 
@@ -194,7 +197,10 @@ async fn start_barcode_wasm(
     // Create BarcodeDetector instance
     let barcode_ctor = js_sys::Reflect::get(&js_sys::global(), &"BarcodeDetector".into())
         .map_err(|_| "BarcodeDetector API not available")?;
-    let detector = js_sys::Reflect::construct(&barcode_ctor, &js_sys::Array::new())
+    let detector = js_sys::Reflect::construct(
+        &barcode_ctor.dyn_into::<js_sys::Function>().map_err(|_| "BarcodeDetector not a function")?,
+        &js_sys::Array::new(),
+    )
         .map_err(|_| "failed to create BarcodeDetector")?;
 
     let max_attempts = 300u32; // ~30 seconds at 100ms/frame
@@ -203,16 +209,19 @@ async fn start_barcode_wasm(
 
         let detect_fn = js_sys::Reflect::get(&detector, &"detect".into())
             .map_err(|_| "no detect method")?;
-        let promise = js_sys::Reflect::apply(&detect_fn, &detector, &js_sys::Array::of1(&video))
+        let promise = js_sys::Reflect::apply(
+                &detect_fn.dyn_into::<js_sys::Function>().map_err(|_| "detect not a function")?,
+                &detector,
+                &js_sys::Array::of1(&video),
+            )
             .map_err(|_| "detect failed")?;
 
-        let barcodes: js_sys::Array = wasm_bindgen_futures::JsFuture::from(
-            promise.dyn_into::<js_sys::Promise>().map_err(|_| "not a promise")?,
-        )
-        .await
-        .map_err(|_| "detect rejected")?
-        .dyn_into()
-        .map_err(|_| "not an array")?;
+        let js_promise: js_sys::Promise = promise.dyn_into().map_err(|_| "not a promise")?;
+        let barcodes: js_sys::Array = wasm_bindgen_futures::JsFuture::from(js_promise)
+            .await
+            .map_err(|_| "detect rejected")?
+            .dyn_into()
+            .map_err(|_| "not an array")?;
 
         if barcodes.length() > 0 {
             if let Some(first) = barcodes.get(0).dyn_ref::<js_sys::Object>() {
@@ -236,7 +245,7 @@ async fn start_barcode_wasm(
 fn stop_tracks(stream: &web_sys::MediaStream) {
     let tracks = stream.get_tracks();
     for i in 0..tracks.length() {
-        if let Some(track) = tracks.get(i).dyn_ref::<web_sys::MediaStreamTrack>() {
+        if let Ok(track) = tracks.get(i).dyn_into::<web_sys::MediaStreamTrack>() {
             track.stop();
         }
     }

@@ -18,7 +18,6 @@ pub fn ProfileSheet(
     #[prop(optional)] chat: Option<Chat>,
     #[prop(optional)] on_start_call: Option<Box<dyn Fn() + 'static>>,
     #[prop(optional)] on_block: Option<std::sync::Arc<dyn Fn() + Send + Sync + 'static>>,
-    #[prop(optional)] on_clear_history: Option<std::sync::Arc<dyn Fn() + Send + Sync + 'static>>,
 ) -> impl IntoView {
     let chat_data = chat;
     let is_group = chat_data.as_ref().map(|c| c.chat_type == "group").unwrap_or(false);
@@ -27,7 +26,6 @@ pub fn ProfileSheet(
         .unwrap_or(0);
 
     let close_cb = on_close.unwrap_or_else(|| Box::new(|| {}));
-    let on_clear_history = on_clear_history.clone();
     let on_block = on_block.clone();
 
     view! {
@@ -125,20 +123,6 @@ pub fn ProfileSheet(
 
                     // Danger zone
                     <div class="px-4 py-4 space-y-2">
-                        {{
-                            let clear_history = on_clear_history.clone();
-                            view! {
-                                <Button
-                                    variant=Signal::derive(move || ButtonVariant::Destructive)
-                                    class="w-full"
-                                    on_click=Box::new(move |_| {
-                                        if let Some(ref f) = clear_history { f(); }
-                                    })
-                                >
-                                    {t(lang.get(), "chat.clearHistory")}
-                                </Button>
-                            }.into_any()
-                        }}
                         {if is_group {
                             view! {
                                 <Button

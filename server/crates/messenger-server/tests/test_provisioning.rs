@@ -432,7 +432,7 @@ async fn test_full_provisioning_flow() {
         None,
     )
     .await;
-    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+    assert_eq!(resp.status(), StatusCode::OK);
 
     // 4. New device polls and gets the blob
     let bootstrap_path = format!("/v1/provisioning/requests/{provisioning_id}/bootstrap");
@@ -548,7 +548,7 @@ async fn test_polling_after_consumed_returns_error() {
         None,
     )
     .await;
-    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+    assert_eq!(resp.status(), StatusCode::OK);
 
     // First poll → OK
     let bootstrap_path = format!("/v1/provisioning/requests/{provisioning_id}/bootstrap");

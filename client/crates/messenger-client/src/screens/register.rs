@@ -4,12 +4,12 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::hooks::{use_navigate, use_query};
 use leptos_router::params::Params;
+use leptos_router::NavigateOptions;
 use rand::RngCore;
 use messenger_core::api::client::{ApiClient, AuthCredentials};
 use messenger_core::ed25519::Ed25519Pair;
 use messenger_core::identity::ClientIdentity;
-use messenger_core::blind_index::username_blind_index;
-use messenger_proto::auth::RedeemRequest;
+use messenger_proto::auth::{RedeemKind, RedeemRequest};
 use messenger_proto::keypackages::PublishKeyPackagesRequest;
 use uuid::Uuid;
 use crate::i18n::I18n;
@@ -17,6 +17,14 @@ use crate::session::restore::persist_session;
 use crate::state::notifications::{NotificationsState, ToastKind};
 use crate::state::session::{build_api_client, persist_auth_credentials, use_session, SessionState, UserRole};
 use crate::t;
+
+/// Log a message to browser console (WASM only, no-op on native).
+fn js_log(msg: impl std::fmt::Display) {
+    #[cfg(target_arch = "wasm32")]
+    web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(&msg.to_string()));
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = msg;
+}
 
 /// Query parameters for the register screen.
 #[derive(serde::Deserialize, Clone, Debug, PartialEq)]
@@ -34,13 +42,22 @@ impl Params for RegisterQuery {
 #[must_use]
 #[component]
 pub fn RegisterScreen() -> impl IntoView {
-    let _i18n = use_context::<I18n>().expect("I18n must be provided");
+    let i18n = use_context::<I18n>().expect("I18n must be provided");
     let session = use_session();
     let navigate = use_navigate();
     let notifications = use_context::<NotificationsState>()
         .expect("NotificationsState must be provided");
 
     let query = use_query::<RegisterQuery>();
+
+    // If already authenticated, redirect to chats
+    let nav_on_mount = navigate.clone();
+    let sess_on_mount = session.clone();
+    Effect::new(move |_| {
+        if sess_on_mount.is_authenticated() {
+            nav_on_mount("/chats", NavigateOptions { replace: true, ..Default::default() });
+        }
+    });
 
     let username = RwSignal::new(String::new());
     let display_name = RwSignal::new(String::new());
@@ -54,20 +71,12 @@ pub fn RegisterScreen() -> impl IntoView {
             .filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_')
             .collect();
         username.set(cleaned);
-
-        let u = username.get();
-        if u.len() < 3 {
-            username_status.set("idle".to_string());
-            return;
-        }
-        username_status.set("checking".to_string());
     };
 
     let is_valid = move || {
         let u = username.get();
         let d = display_name.get();
         u.len() >= 3 && u.len() <= 32 && !d.is_empty() && d.len() <= 64
-            && username_status.get() != "checking"
     };
 
     let nav_for_view = navigate.clone();
@@ -98,15 +107,37 @@ pub fn RegisterScreen() -> impl IntoView {
         let nav = navigate.clone();
         let sess = session.clone();
         let notif = notifications.clone();
+        let i18n_clone = i18n.clone();
+        let is_submit = is_submitting;
+        let err_signal = error;
+        let timeout_cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         spawn_local(async move {
+            js_log("[register] async block started");
+            
+            // Safety timeout: if registration takes > 20s, show error and re-enable form.
+            let timeout_submit = is_submit.clone();
+            let timeout_err = err_signal.clone();
+            let timeout_notif = notif.clone();
+            let timeout_cancel = timeout_cancelled.clone();
+            spawn_local(async move {
+                gloo_timers::future::TimeoutFuture::new(20_000).await;
+                if !timeout_cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                    timeout_err.set(Some("Registration timed out after 20s — check server connection".into()));
+                    timeout_notif.push(ToastKind::Error, "Registration timed out");
+                    timeout_submit.set(false);
+                }
+            });
             let mut api = match build_api_client() {
                 Some(c) => c,
                 None => {
-                    notif.push(ToastKind::Error, t!("error.network"));
+                    js_log("[register] ERROR: build_api_client() returned None");
+                    timeout_cancelled.store(true, std::sync::atomic::Ordering::Relaxed);
+                    notif.push(ToastKind::Error, i18n_clone.t("error.network"));
                     is_submitting.set(false);
                     return;
                 }
             };
+            js_log("[register] build_api_client() OK");
 
             // Step 1: Generate key material
             let identity_signing_key = Ed25519Pair::generate();
@@ -118,6 +149,7 @@ pub fn RegisterScreen() -> impl IntoView {
 
             let identity_pub = identity_signing_key.public_bytes();
             let device_signing_pub = device_signing_key.public_bytes();
+            js_log("[register] keys generated");
 
             // Step 2: Build device authorization signature
             let ts = messenger_core::api::signing::now_secs();
@@ -135,46 +167,42 @@ pub fn RegisterScreen() -> impl IntoView {
                 buf.extend_from_slice(&identity_pub);
                 buf
             };
-
-            // Step 4: Compute username blind index
-            let blind_index_key = get_blind_index_key().await;
-            let username_bi = match blind_index_key {
-                Some(key) => {
-                    username_blind_index(&uname, &key).unwrap_or_else(|_| uname.as_bytes().to_vec())
-                }
-                None => uname.as_bytes().to_vec(),
-            };
+            js_log("[register] credential built, sending redeem request...");
 
             // Step 5: Send redeem request
-            let token_bytes = hex::decode(&token).unwrap_or_else(|_| token.as_bytes().to_vec());
             let req = RedeemRequest {
-                token: token_bytes,
-                kind: "new_user".to_string(),
-                identity_credential: credential_bytes,
-                signature_public_key: identity_pub.to_vec(),
-                username_blind_index: username_bi,
+                token: token.clone(),
+                kind: RedeemKind::NewUser,
+                identity_credential: Some(credential_bytes),
+                signature_public_key: Some(identity_pub.to_vec()),
+                username: Some(uname.clone()),
+                existing_identity_proof: None,
                 device_init_public_key: hpke_public.to_vec(),
                 device_signing_public_key: device_signing_pub.to_vec(),
                 device_authorization_signature: device_auth_sig.to_vec(),
-                existing_identity_proof: Vec::new(),
+                device_authorization_timestamp: ts,
             };
 
             let resp = match api.redeem_invite(&req).await {
                 Ok(r) => r,
                 Err(e) => {
                     let err_msg = match e.error_code() {
-                        Some("ERR_INVITE_INVALID") => t!("error.invite_invalid").to_string(),
-                        Some("ERR_INVITE_EXPIRED") => t!("error.invite_expired").to_string(),
-                        Some("ERR_INVITE_EXHAUSTED") => t!("error.invite_exhausted").to_string(),
-                        Some("ERR_USERNAME_TAKEN") => t!("error.username_taken").to_string(),
-                        _ => format!("{}: {e}", t!("error.network")),
+                        Some("ERR_INVITE_INVALID") => i18n_clone.t("error.invite_invalid"),
+                        Some("ERR_INVITE_EXPIRED") => i18n_clone.t("error.invite_expired"),
+                        Some("ERR_INVITE_EXHAUSTED") => i18n_clone.t("error.invite_exhausted"),
+                        Some("ERR_USERNAME_TAKEN") => i18n_clone.t("error.username_taken"),
+                        Some(code) => format!("{code}: {e}"),
+                        None => format!("{e}"),
                     };
+                    js_log(&format!("[register] redeem failed: {err_msg}"));
                     notif.push(ToastKind::Error, &err_msg);
+                    timeout_cancelled.store(true, std::sync::atomic::Ordering::Relaxed);
                     error.set(Some(err_msg));
                     is_submitting.set(false);
                     return;
                 }
             };
+            js_log(&format!("[register] redeem SUCCESS: user_id={}, device_id={}", resp.user_id, resp.device_id));
 
             // Step 6: Create ClientIdentity with server-assigned IDs
             // Extract device secret before moving into ClientIdentity
@@ -188,6 +216,7 @@ pub fn RegisterScreen() -> impl IntoView {
                 device_hpke_seed: hpke_seed,
                 device_hpke_public: hpke_public,
             };
+            js_log("[register] identity created, saving to storage...");
 
             // Step 7: Save identity to local storage
             let server_url = sess.state.with(|s| match s {
@@ -231,14 +260,39 @@ pub fn RegisterScreen() -> impl IntoView {
             };
             api.set_auth(Some(auth));
             persist_auth_credentials(resp.device_id, &device_secret);
+            js_log("[register] auth configured");
 
-            // Step 9: Publish initial KeyPackages (placeholder — MLS KP generation
-            // is deferred to MLS integration phase)
-            let _ = api
-                .publish_keypackages(&PublishKeyPackagesRequest {
-                    key_packages: Vec::new(),
-                })
-                .await;
+            // Step 9: Publish initial KeyPackages (native only — too slow on WASM)
+            #[cfg(feature = "native")]
+            {
+                use messenger_core::mls::keypackage::generate_keypackage;
+                use openmls_rust_crypto::OpenMlsRustCrypto;
+
+                let mls_provider = OpenMlsRustCrypto::default();
+                // Generate 5 initial key packages (1 last-resort + 4 regular).
+                let mut key_packages = Vec::new();
+                // Last-resort KP
+                if let Ok(kp) = generate_keypackage(&mls_provider, &identity, 2_592_000, true) {
+                    key_packages.push(kp.key_package_bytes.into());
+                }
+                // Regular KPs (7-day lifetime)
+                for _ in 0..4 {
+                    if let Ok(kp) = generate_keypackage(&mls_provider, &identity, 604_800, false) {
+                        key_packages.push(kp.key_package_bytes.into());
+                    }
+                }
+                if !key_packages.is_empty() {
+                    let _ = api
+                        .publish_keypackages(&PublishKeyPackagesRequest {
+                            key_packages,
+                        })
+                        .await;
+                }
+            }
+            #[cfg(not(feature = "native"))]
+            {
+                js_log("[register] WASM: skipping keypackages publish (MLS too slow on WASM)");
+            }
 
             // Step 10: Update session state
             sess.state.set(SessionState::Authenticated {
@@ -246,12 +300,16 @@ pub fn RegisterScreen() -> impl IntoView {
                 role,
             });
 
-            notif.push(ToastKind::Success, t!("register.success"));
-            nav("/chats", Default::default());
+            timeout_cancelled.store(true, std::sync::atomic::Ordering::Relaxed);
+            notif.push(ToastKind::Success, i18n_clone.t("register.success"));
+            is_submit.set(false);
+            js_log("[register] navigating to /chats");
+            nav("/chats", NavigateOptions { replace: true, ..Default::default() });
+            js_log("[register] nav() called");
         });
     };
     view! {
-        <div class="flex min-h-screen flex-col bg-background">
+        <div class="flex h-screen-safe flex-col bg-background overflow-hidden">
             <header class="flex items-center gap-4 border-b border-border p-4">
                 <button
                     class="h-10 w-10 inline-flex items-center justify-center rounded-md hover:bg-accent"
@@ -341,29 +399,6 @@ pub fn RegisterScreen() -> impl IntoView {
             </main>
         </div>
     }
-}
-
-/// Try to retrieve the blind index key from local store.
-async fn get_blind_index_key() -> Option<[u8; 32]> {
-    if let Ok(local) = messenger_storage::init_storage("default").await {
-        if let Ok(Some(hex_key)) = local.get_setting("server_blind_index_key").await {
-            let bytes = hex::decode(&hex_key).ok()?;
-            if bytes.len() == 32 {
-                let mut key = [0u8; 32];
-                key.copy_from_slice(&bytes);
-                return Some(key);
-            }
-        }
-        if let Ok(Some(hex_key)) = local.get_setting("username_blind_index_key").await {
-            let bytes = hex::decode(&hex_key).ok()?;
-            if bytes.len() == 32 {
-                let mut key = [0u8; 32];
-                key.copy_from_slice(&bytes);
-                return Some(key);
-            }
-        }
-    }
-    None
 }
 
 /// Encode identity for blob storage (CBOR → base64).

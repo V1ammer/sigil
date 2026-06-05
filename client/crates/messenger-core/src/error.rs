@@ -28,7 +28,7 @@ pub enum CryptoError {
     Serialization(String),
 
     /// MLS operation failed.
-    #[cfg(feature = "native")]
+    #[cfg(any(feature = "native", feature = "wasm-mls"))]
     #[error("MLS error: {0}")]
     Mls(String),
 
@@ -65,7 +65,7 @@ impl From<messenger_storage::error::StorageError> for CryptoError {
     }
 }
 
-#[cfg(feature = "native")]
+#[cfg(any(feature = "native", feature = "wasm-mls"))]
 impl From<tls_codec::Error> for CryptoError {
     fn from(e: tls_codec::Error) -> Self {
         Self::Serialization(format!("tls_codec: {e}"))

@@ -9,6 +9,7 @@ use crate::components::sheet::{Sheet, SheetHeader, SheetTitle};
 use crate::components::scroll_area::ScrollArea;
 use crate::components::avatar::get_initials;
 use super::input_bar::{InputBar, InputPreview};
+use super::message_item::MessageItem;
 
 #[must_use]
 #[component]
@@ -27,6 +28,9 @@ pub fn ThreadPanel(
 
     // Wrap in Arc so the FnOnce closure can clone it
     let on_send_reply = Arc::new(on_send_reply);
+
+    // Store replies in a signal so closures can be Fn (not FnOnce)
+    let replies_signal = RwSignal::new(replies);
 
     view! {
         <Sheet
@@ -69,7 +73,34 @@ pub fn ThreadPanel(
             // Replies list
             <ScrollArea class="flex-1 px-4 py-3">
                 <div class="space-y-3">
-                    {t(lang.get(), "chats.empty")}
+                    {move || {
+                        let replies = replies_signal.get();
+                        if replies.is_empty() {
+                            view! {
+                                <p class="text-sm text-muted-foreground text-center py-8">
+                                    {t(lang.get(), "chats.empty")}
+                                </p>
+                            }.into_any()
+                        } else {
+                            view! {
+                                <For
+                                    each=move || replies_signal.get()
+                                    key=|msg| msg.id.clone()
+                                    children=move |msg| {
+                                        view! {
+                                            <MessageItem
+                                                lang=lang
+                                                message=msg
+                                                is_first_in_group=true
+                                                is_last_in_group=true
+                                                is_mobile=Signal::derive(move || false)
+                                            />
+                                        }
+                                    }
+                                />
+                            }.into_any()
+                        }
+                    }}
                 </div>
             </ScrollArea>
 

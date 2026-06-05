@@ -12,6 +12,7 @@ use messenger_server::state::{AppState, NonceCache};
 use messenger_server::tasks;
 use messenger_server::telemetry;
 use messenger_server::ws_registry::WsRegistry;
+use tower_http::cors::CorsLayer;
 use tower_http::limit::RequestBodyLimitLayer;
 
 #[tokio::main]
@@ -28,17 +29,9 @@ async fn main() -> anyhow::Result<()> {
     let identity = bootstrap::load_or_init(&db).await?;
     let nonce_cache = Arc::new(NonceCache::new(config.nonce_cache_capacity));
 
-    let storage = if config.data_dir.join("att").exists() || config.attachment_inline_threshold_bytes == 0 {
-        // Если data_dir/att существует — on-disk режим
-        StorageBackend::FileSystem {
-            root: config.data_dir.clone(),
-            inline_threshold: config.attachment_inline_threshold_bytes,
-        }
-    } else {
-        StorageBackend::FileSystem {
-            root: config.data_dir.clone(),
-            inline_threshold: config.attachment_inline_threshold_bytes,
-        }
+    let storage = StorageBackend::FileSystem {
+        root: config.data_dir.clone(),
+        inline_threshold: config.attachment_inline_threshold_bytes,
     };
     // Создаём att-директорию
     let _ = tokio::fs::create_dir_all(config.data_dir.join("att")).await;
@@ -60,7 +53,10 @@ async fn main() -> anyhow::Result<()> {
         state.storage.clone(),
     ));
 
+    let cors = CorsLayer::permissive();
+
     let app = build_router(state.clone())
+        .layer(cors)
         .layer(telemetry::trace_layer())
         .layer(RequestBodyLimitLayer::new(
             state.config.max_request_body_bytes,

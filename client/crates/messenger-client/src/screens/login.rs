@@ -1,16 +1,27 @@
 use leptos::prelude::*;
 use leptos_router::hooks::use_navigate;
+use leptos_router::NavigateOptions;
 use crate::i18n::I18n;
 use crate::t;
+use crate::state::session::use_session;
 
 #[must_use]
 #[component]
 pub fn LoginScreen() -> impl IntoView {
     let _i18n = use_context::<I18n>().expect("I18n must be provided");
     let navigate = use_navigate();
+    let session = use_session();
+
+    // Redirect to chats if already authenticated
+    let nav_if_auth = navigate.clone();
+    Effect::new(move |_| {
+        if session.is_authenticated() {
+            nav_if_auth("/chats", NavigateOptions { replace: true, ..Default::default() });
+        }
+    });
 
     view! {
-        <div class="flex min-h-screen flex-col bg-background">
+        <div class="flex h-screen-safe flex-col bg-background overflow-hidden">
             <header class="flex items-center gap-4 border-b border-border p-4">
                 <button
                     class="h-10 w-10 inline-flex items-center justify-center rounded-md hover:bg-accent"

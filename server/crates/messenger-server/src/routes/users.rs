@@ -164,3 +164,55 @@ pub async fn change_username(
 
     Ok(typed_response::<()>(&headers, StatusCode::NO_CONTENT, &()))
 }
+
+
+// ──────────────────────────────────────────────
+// GET /v1/users/lookup/username?username=<name> (public)
+// ──────────────────────────────────────────────
+
+/// Query параметры для username lookup.
+#[derive(Debug, serde::Deserialize)]
+pub struct UsernameLookupQuery {
+    pub username: String,
+}
+
+/// Минимальный ответ для username lookup (публичный, без auth).
+#[derive(Debug, serde::Serialize)]
+pub struct UsernameLookupResponse {
+    pub user_id: Uuid,
+}
+
+/// `GET /v1/users/lookup/username?username=xxx` (без auth)
+///
+/// Публичный эндпоинт для QR-логина: по username возвращает user_id.
+///
+/// # Errors
+///
+/// - `400 BadRequest` — пустой username.
+/// - `404 Not Found` — пользователь не найден.
+/// - `500` — внутренняя ошибка.
+pub async fn username_lookup(
+    State(state): State<AppState>,
+    Query(query): Query<UsernameLookupQuery>,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    if query.username.trim().is_empty() {
+        return Err(AppError::BadRequest("username cannot be empty".into()));
+    }
+
+    let blind_index = state.server_identity.blind_index(&query.username);
+
+    let user = messenger_entity::users::Entity::find()
+        .filter(messenger_entity::users::Column::UsernameBlindIndex.eq(blind_index))
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    Ok(typed_response(
+        &headers,
+        StatusCode::OK,
+        &UsernameLookupResponse {
+            user_id: user.id,
+        },
+    ))
+}

@@ -20,7 +20,6 @@ const EXPECTED_TABLES: &[&str] = &[
     "attachments",
     "reactions",
     "message_delivery_receipts",
-    "push_tokens",
 ];
 
 #[tokio::test]

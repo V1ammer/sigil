@@ -12,6 +12,18 @@ impl ApiClient {
         self.send("POST", "/v1/groups", Some(req)).await
     }
 
+    /// Create a direct chat (server-side, no MLS).
+    ///
+    /// # Errors
+    ///
+    /// Returns `ApiError` on network or if target user not found.
+    pub async fn create_direct_chat(&self, username: &str) -> Result<CreateGroupResponse, ApiError> {
+        let req = CreateDirectChatRequest {
+            target_username: username.to_string(),
+        };
+        self.send("POST", "/v1/groups/create-direct", Some(&req)).await
+    }
+
     /// List groups the authenticated user belongs to.
     ///
     /// # Errors

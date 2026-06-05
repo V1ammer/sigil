@@ -21,7 +21,7 @@ async-trait = "0.1"
 futures-channel = "0.3"
 futures-util = { version = "0.3", features = ["sink"] }
 
-# MLS (native only — openmls does not compile for wasm32)
+# MLS
 openmls = { workspace = true, optional = true }
 openmls_rust_crypto = { workspace = true, optional = true }
 openmls_traits = { workspace = true, optional = true }
@@ -54,6 +54,12 @@ gloo-net = { workspace = true }
 gloo-timers = { workspace = true }
 js-sys = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
+wasm-bindgen = { workspace = true }
+web-sys = { workspace = true, features = ["AudioBuffer", "MediaRecorder", "Blob", "BlobPropertyBag", "console"] }
+openmls = { workspace = true, optional = true, features = ["js"] }
+openmls_rust_crypto = { workspace = true, optional = true }
+openmls_traits = { workspace = true, optional = true }
+tls_codec = { version = "0.4", optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros", "time"] }
@@ -63,6 +69,7 @@ messenger-storage = { path = "../messenger-storage", features = ["native"] }
 default = ["native"]
 native = ["dep:openmls", "dep:openmls_rust_crypto", "dep:openmls_traits", "dep:tls_codec", "dep:age", "dep:bech32", "messenger-storage/native"]
 web = ["messenger-storage/web"]
+wasm-mls = ["web", "dep:openmls", "dep:openmls_rust_crypto", "dep:openmls_traits", "dep:tls_codec"]
 
 [lints]
 workspace = true

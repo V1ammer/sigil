@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::hooks::use_navigate;
+use leptos_router::NavigateOptions;
 use messenger_core::api::client::ApiClient;
 use crate::state::notifications::{NotificationsState, ToastKind};
 use crate::state::session::{use_session, persist_server_url, SessionState};
@@ -18,6 +19,15 @@ pub fn ConnectScreen() -> impl IntoView {
     let is_loading = RwSignal::new(false);
     let error = RwSignal::new(Option::<String>::None);
     let show_help = RwSignal::new(false);
+
+    // If already authenticated (session restored before mount), redirect to chats.
+    let nav = navigate.clone();
+    let session_for_effect = session.clone();
+    Effect::new(move |_| {
+        if session_for_effect.is_authenticated() {
+            nav("/chats", NavigateOptions { replace: true, ..Default::default() });
+        }
+    });
 
     // Pre-fill from local storage
     spawn_local(async move {
@@ -85,7 +95,7 @@ pub fn ConnectScreen() -> impl IntoView {
     let on_connect_handler = move |_| on_connect_clone();
 
     view! {
-        <div class="flex min-h-screen flex-col items-center justify-center bg-background p-4">
+        <div class="flex h-screen-safe flex-col items-center justify-center bg-background p-4 overflow-hidden">
             <div class="w-full max-w-md space-y-8">
                 <div class="flex flex-col items-center space-y-4 text-center">
                     <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary">

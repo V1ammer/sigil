@@ -5,6 +5,7 @@
 //! | Method | Path | Описание |
 //! |--------|------|----------|
 //! | POST   | `/v1/groups` | Создание группы |
+//! | POST   | `/v1/groups/create-direct` | Создание direct-чата (без MLS) |
 //! | GET    | `/v1/groups/me` | Список моих групп |
 //! | GET    | `/v1/groups/:id/members` | Участники группы |
 //! | POST   | `/v1/groups/:id/commit` | Атомарный Commit (epoch bump) |
@@ -464,6 +465,162 @@ pub async fn create_group(
             .await;
         }
     });
+
+    Ok(typed_response(
+        &headers,
+        StatusCode::CREATED,
+        &CreateGroupResponse {
+            group_id,
+            epoch: 0,
+            created_at: now,
+        },
+    ))
+}
+
+/// Запрос на создание direct-чата.
+#[derive(Deserialize)]
+pub struct CreateDirectChatRequest {
+    pub target_username: String,
+}
+
+/// Создание direct-чата (серверная сторона, без MLS).
+///
+/// Находит пользователя по username, создаёт группу `group_type="direct"`
+/// и добавляет в неё обоих пользователей со всеми их устройствами.
+///
+/// # Errors
+///
+/// - `400` — пустой username, попытка создать чат с самим собой.
+/// - `404` — target пользователь не найден или не active.
+/// - `500` — ошибка БД.
+#[allow(clippy::cast_possible_wrap)]
+pub async fn create_direct_chat(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    CurrentAuth(ctx): CurrentAuth,
+    body: Bytes,
+) -> Result<Response, AppError> {
+    let req: CreateDirectChatRequest = decode_body(&headers, &body)?;
+    let now = now_secs();
+
+    if req.target_username.trim().is_empty() {
+        return Err(AppError::BadRequest("target_username cannot be empty".into()));
+    }
+
+    // Найти target пользователя по blind_index
+    let blind_index = state.server_identity.blind_index(&req.target_username);
+    let target_user = messenger_entity::users::Entity::find()
+        .filter(messenger_entity::users::Column::UsernameBlindIndex.eq(blind_index))
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    if target_user.status != "active" {
+        return Err(AppError::NotFound);
+    }
+
+    if target_user.id == ctx.user.id {
+        return Err(AppError::BadRequest("cannot create direct chat with yourself".into()));
+    }
+
+    // Найти все активные устройства creator'а и target'а
+    let creator_devices = messenger_entity::devices::Entity::find()
+        .filter(messenger_entity::devices::Column::UserId.eq(ctx.user.id))
+        .filter(messenger_entity::devices::Column::RevokedAt.is_null())
+        .all(&state.db)
+        .await?;
+
+    let target_devices = messenger_entity::devices::Entity::find()
+        .filter(messenger_entity::devices::Column::UserId.eq(target_user.id))
+        .filter(messenger_entity::devices::Column::RevokedAt.is_null())
+        .all(&state.db)
+        .await?;
+
+    let all_devices: Vec<&messenger_entity::devices::Model> = creator_devices
+        .iter()
+        .chain(target_devices.iter())
+        .collect();
+
+    if all_devices.is_empty() {
+        return Err(AppError::BadRequest("no active devices available".into()));
+    }
+
+    // Транзакция
+    let txn = state
+        .db
+        .begin_with_config(Some(IsolationLevel::Serializable), Some(AccessMode::ReadWrite))
+        .await?;
+
+    let group_id = Uuid::now_v7();
+
+    // 1. INSERT mls_groups
+    mls_groups::ActiveModel {
+        id: Set(group_id),
+        group_type: Set("direct".into()),
+        current_epoch: Set(0),
+        ciphersuite: Set(MLS_CIPHERSUITE),
+        created_at: Set(now),
+        created_by_user_id: Set(ctx.user.id),
+    }
+    .insert(&txn)
+    .await?;
+
+    // 2. INSERT mls_group_members
+    mls_group_members::ActiveModel {
+        group_id: Set(group_id),
+        user_id: Set(ctx.user.id),
+        role_in_chat: Set("owner".into()),
+        joined_at_epoch: Set(0),
+        left_at_epoch: Set(None),
+        joined_at: Set(now),
+    }
+    .insert(&txn)
+    .await?;
+
+    mls_group_members::ActiveModel {
+        group_id: Set(group_id),
+        user_id: Set(target_user.id),
+        role_in_chat: Set("member".into()),
+        joined_at_epoch: Set(0),
+        left_at_epoch: Set(None),
+        joined_at: Set(now),
+    }
+    .insert(&txn)
+    .await?;
+
+    // 3. INSERT mls_group_devices (leaf_index: 0, 1, 2, ...)
+    for (idx, device) in all_devices.iter().enumerate() {
+        let leaf_index = i32::try_from(idx).unwrap_or(0);
+        mls_group_devices::ActiveModel {
+            group_id: Set(group_id),
+            device_id: Set(device.id),
+            leaf_index: Set(Some(leaf_index)),
+            added_at_epoch: Set(0),
+            removed_at_epoch: Set(None),
+        }
+        .insert(&txn)
+        .await?;
+    }
+
+    // 4. INSERT placeholder initial message (wire_format="proposal")
+    mls_messages::ActiveModel {
+        id: Set(Uuid::now_v7()),
+        group_id: Set(group_id),
+        epoch: Set(0),
+        sender_user_id: Set(ctx.user.id),
+        sender_device_id: Set(ctx.device.id),
+        wire_format: Set("proposal".into()),
+        mls_ciphertext: Set(Vec::new()),
+        parent_message_id: Set(None),
+        thread_root_id: Set(None),
+        reply_to_message_id: Set(None),
+        client_message_id: Set(Uuid::now_v7()),
+        created_at: Set(now),
+    }
+    .insert(&txn)
+    .await?;
+
+    txn.commit().await?;
 
     Ok(typed_response(
         &headers,

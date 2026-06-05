@@ -82,7 +82,7 @@ impl ApiClient {
         username: &str,
     ) -> Result<UsernameLookupResponse, ApiError> {
         // Usernames are restricted to `[a-z0-9_]` so no URL encoding needed.
-        let path = format!("/v1/users/lookup?username={username}");
+        let path = format!("/v1/users/lookup/username?username={username}");
         self.send::<(), UsernameLookupResponse>("GET", &path, None).await
     }
 }

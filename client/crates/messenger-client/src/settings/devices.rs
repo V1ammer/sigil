@@ -21,9 +21,12 @@ use std::sync::Arc;
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+#[cfg(feature = "native")]
 use messenger_core::bootstrap::BootstrapPayload;
 use messenger_core::ed25519::Ed25519Pair;
+#[cfg(feature = "native")]
 use messenger_core::mls::group::MlsRuntime;
+#[cfg(feature = "native")]
 use messenger_core::mls::keypackage::generate_keypackage_bundle;
 use messenger_core::prov::{decode_qr, QrPayload};
 use messenger_proto::keypackages::PublishKeyPackagesRequest;
@@ -209,6 +212,7 @@ pub fn DevicesSettings() -> impl IntoView {
                 let devs = devs;
                 let st = st;
 
+                #[cfg(feature = "native")]
                 spawn_local(async move {
                     // Get the stored QR payload from the previous step
                     let my_step = st.get_untracked();
@@ -353,7 +357,7 @@ pub fn DevicesSettings() -> impl IntoView {
                     // List groups and add new device to each
                     if let Ok(groups) = api.list_groups(None).await {
                         for g in &groups.groups {
-                            match runtime.propose_add(g.group_id, &identity, &[kp_bytes.clone()]).await {
+                            match runtime.propose_add(g.id, &identity, &[kp_bytes.clone()]).await {
                                 Ok(pc) => {
                                     let commit_req = PostCommitRequest {
                                         expected_epoch: pc.epoch as i64,
@@ -368,12 +372,12 @@ pub fn DevicesSettings() -> impl IntoView {
                                             device_id: new_device_id,
                                         }],
                                     };
-                                    if let Err(e) = api.post_commit(g.group_id, &commit_req).await {
-                                        nf.push(ToastKind::Warning, format!("Add to group {} failed: {e}", g.group_id));
+                                    if let Err(e) = api.post_commit(g.id, &commit_req).await {
+                                        nf.push(ToastKind::Warning, format!("Add to group {} failed: {e}", g.id));
                                     }
                                 }
                                 Err(e) => {
-                                    nf.push(ToastKind::Warning, format!("propose_add for group {} failed: {e}", g.group_id));
+                                    nf.push(ToastKind::Warning, format!("propose_add for group {} failed: {e}", g.id));
                                 }
                             }
                         }
@@ -397,6 +401,15 @@ pub fn DevicesSettings() -> impl IntoView {
 
                     st.set(ProvisioningStep::Success);
                 });
+                #[cfg(not(feature = "native"))]
+                {
+                    let msg = if crate::tauri_bridge::is_tauri_context() {
+                        "Device provisioning (MLS) is not available from mobile. Use the desktop app to approve new devices.".to_string()
+                    } else {
+                        "Device provisioning is not available in the browser.".to_string()
+                    };
+                    nf.push(ToastKind::Error, msg);
+                }
             }
         }
     });

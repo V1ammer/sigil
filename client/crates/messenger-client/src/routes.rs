@@ -76,7 +76,7 @@ pub fn RequireAdmin(children: Children) -> impl IntoView {
 #[component]
 fn NotFound() -> impl IntoView {
     view! {
-        <div class="flex min-h-screen items-center justify-center bg-background">
+        <div class="flex h-screen-safe items-center justify-center bg-background overflow-hidden">
             <p class="text-muted-foreground">"404 — Not Found"</p>
         </div>
     }

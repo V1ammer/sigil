@@ -132,10 +132,23 @@ impl ApiClient {
     }
 }
 
+fn js_log(msg: impl std::fmt::Display) {
+    #[cfg(target_arch = "wasm32")]
+    web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(&msg.to_string()));
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = msg;
+}
+
 pub(crate) fn parse_response<Resp>(resp: HttpResponse) -> Result<Resp, ApiError>
 where
     Resp: serde::de::DeserializeOwned,
 {
+    js_log(format!(
+        "[parse_response] status={}, body_len={}, first_bytes={:02x?}",
+        resp.status,
+        resp.body.len(),
+        &resp.body[..resp.body.len().min(16)]
+    ));
     if resp.status >= 400 {
         let err: messenger_proto::error::ApiErrorBody = rmp_serde::from_slice(&resp.body)
             .unwrap_or_else(|_| messenger_proto::error::ApiErrorBody {
@@ -154,5 +167,18 @@ where
         return rmp_serde::from_slice(&[0x80]).map_err(ApiError::Deserialize);
     }
 
-    rmp_serde::from_slice(&resp.body).map_err(ApiError::Deserialize)
+    #[cfg(target_arch = "wasm32")]
+    {
+        let hex_chars: String = resp.body.iter().take(32).map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
+        let first_bytes = format!("[parse_response] status={}, len={}, first_32_bytes_hex: {}",
+            resp.status, resp.body.len(), hex_chars);
+        web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(&first_bytes));
+    }
+
+    rmp_serde::from_slice(&resp.body).map_err(|e| {
+        // Log raw body on deserialize failure for debugging
+        let truncated: String = resp.body.iter().take(64).map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
+        js_log(format!("[parse_response] DESERIALIZE ERROR: {e} | status={}, body_hex(truncated): {}", resp.status, truncated));
+        ApiError::Deserialize(e)
+    })
 }

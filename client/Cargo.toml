@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/*", "src-tauri"]
+members = ["crates/*", "src-tauri", "src-tauri/tauri-plugin-android-keystore"]
 
 [workspace.package]
 version = "0.1.0"
@@ -34,6 +34,7 @@ wasm-bindgen-futures = "0.4"
 tauri = { version = "2", features = [] }
 tauri-build = "2"
 tauri-plugin-shell = "2"
+tauri-plugin-android-keystore = { path = "src-tauri/tauri-plugin-android-keystore" }
 
 # Async
 tokio = { version = "1", features = ["rt", "macros", "sync", "io-util"] }

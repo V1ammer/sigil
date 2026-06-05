@@ -7,9 +7,10 @@ edition.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["native"]
+default = ["wasm-mls"]
 native = ["messenger-core/native", "dep:openmls", "dep:age"]
-web = ["messenger-core/web"]
+web = ["messenger-core/web", "dep:serde-wasm-bindgen"]
+wasm-mls = ["web", "messenger-core/wasm-mls", "dep:openmls", "dep:openmls_rust_crypto", "dep:openmls_traits"]
 
 [dependencies]
 leptos = { workspace = true }
@@ -24,6 +25,7 @@ console_error_panic_hook = "0.1"
 tracing.workspace = true
 tracing-wasm.workspace = true
 serde = { workspace = true }
+serde_json = { workspace = true }
 serde_bytes = { workspace = true }
 uuid = { workspace = true }
 hex = { workspace = true }
@@ -31,6 +33,7 @@ base64 = "0.22"
 rand = { workspace = true }
 x25519-dalek = { workspace = true }
 rmp-serde = { workspace = true }
+serde-wasm-bindgen = { version = "0.6", optional = true }
 
 # Native-only deps (MLS, AGE)
 openmls = { workspace = true, optional = true }
@@ -40,9 +43,15 @@ age = { workspace = true, optional = true }
 
 # Internal crates
 messenger-core = { path = "../messenger-core", default-features = false }
-messenger-storage = { path = "../messenger-storage" }
 qrcode = "0.14"
 messenger-proto = { path = "../messenger-proto" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+messenger-storage = { path = "../messenger-storage" }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+messenger-storage = { path = "../messenger-storage", features = ["web"] }
+web-sys = { workspace = true, features = ["HtmlVideoElement", "MediaStream", "MediaStreamConstraints", "MediaStreamTrack", "MediaDevices"] }
 
 [lints]
 workspace = true

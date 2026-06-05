@@ -17,7 +17,6 @@ pub mod mls_groups;
 pub mod mls_message_states;
 pub mod mls_messages;
 pub mod mls_welcomes;
-pub mod push_tokens;
 pub mod reactions;
 pub mod server_config;
 pub mod user_identity_credentials;

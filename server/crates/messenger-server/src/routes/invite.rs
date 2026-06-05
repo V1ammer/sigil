@@ -95,6 +95,7 @@ pub async fn redeem(
     body: Bytes,
 ) -> Result<Response, AppError> {
     let req: RedeemRequest = decode_body(&headers, &body)?;
+    tracing::info!(kind = ?req.kind, username = ?req.username, "redeem request received");
 
     let now = now_secs();
 
@@ -110,6 +111,7 @@ async fn handle_new_user(
     req: &RedeemRequest,
     now: i64,
 ) -> Result<Response, AppError> {
+    tracing::info!("handle_new_user: step 0 - validating fields");
     // ── валидация полей ──
     let identity_credential = req
         .identity_credential
@@ -135,6 +137,7 @@ async fn handle_new_user(
     )
     .map_err(|_| AppError::BadRequest("invalid signature_public_key".into()))?;
 
+    tracing::info!("handle_new_user: step 1 - verifying device auth signature");
     // ── проверка device_authorization_signature ──
     verify_device_auth_signature(&signature_pk, req)?;
 
@@ -144,9 +147,11 @@ async fn handle_new_user(
         ));
     }
 
+    tracing::info!("handle_new_user: step 2 - beginning transaction");
     // ── транзакция ──
     let txn = begin_immediate(&state.db).await?;
 
+    tracing::info!("handle_new_user: step 3 - validating token");
     let token_row = validate_token(&txn, &req.token).await?;
 
     // Admin-токены только для NewUser
@@ -154,9 +159,27 @@ async fn handle_new_user(
         // уже NewUser по match выше, ничего делать не нужно
     }
 
+    tracing::info!(
+        token_role = %token_row.role_to_grant,
+        "handle_new_user: step 4a - before blind_index"
+    );
+
     let blind_index = state.server_identity.blind_index(username);
+    tracing::info!("handle_new_user: step 4b - blind_index done");
+
+    // Pre-check: is this username already taken?
+    let existing = Users::find()
+        .filter(users::Column::UsernameBlindIndex.eq(blind_index.clone()))
+        .one(&txn)
+        .await?;
+    if existing.is_some() {
+        tracing::info!("handle_new_user: step 4b5 - username already taken");
+        return Err(AppError::UsernameTaken);
+    }
+    tracing::info!("handle_new_user: step 4b6 - username available");
 
     let user_id = Uuid::now_v7();
+    tracing::info!("handle_new_user: step 4c - uuid generated");
     let device_id = Uuid::now_v7();
 
     // INSERT users
@@ -173,6 +196,9 @@ async fn handle_new_user(
     .await
     .map_err(map_unique_violation)?;
 
+    tracing::info!("handle_new_user: step 4d - user inserted successfully");
+
+    tracing::info!("handle_new_user: step 5 - inserting credential");
     // INSERT user_identity_credentials
     user_identity_credentials::ActiveModel {
         user_id: Set(user_id),
@@ -183,17 +209,22 @@ async fn handle_new_user(
     .insert(&txn)
     .await?;
 
+    tracing::info!("handle_new_user: step 6 - inserted credential, inserting device");
     // INSERT device
     insert_device(&txn, user_id, device_id, req, now).await?;
 
+    tracing::info!("handle_new_user: step 7 - inserted device, consuming token");
     // consume token
     consume_token(&txn, token_row.id, user_id, device_id).await?;
 
+    tracing::info!("handle_new_user: step 8 - token consumed, inserting key_change_event");
     // key_change_event
     insert_key_change_event(&txn, user_id, device_id, "device_added", now).await?;
 
+    tracing::info!("handle_new_user: step 9 - committing");
     txn.commit().await?;
 
+    tracing::info!("handle_new_user: step 10 - done, responding");
     Ok(typed_response(
         &HeaderMap::new(),
         StatusCode::CREATED,

@@ -12,7 +12,6 @@ pub use super::mls_groups::Entity as MlsGroups;
 pub use super::mls_message_states::Entity as MlsMessageStates;
 pub use super::mls_messages::Entity as MlsMessages;
 pub use super::mls_welcomes::Entity as MlsWelcomes;
-pub use super::push_tokens::Entity as PushTokens;
 pub use super::reactions::Entity as Reactions;
 pub use super::server_config::Entity as ServerConfig;
 pub use super::user_identity_credentials::Entity as UserIdentityCredentials;

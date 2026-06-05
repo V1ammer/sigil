@@ -1,52 +1,50 @@
 use leptos::prelude::*;
 use leptos_router::hooks::use_navigate;
+use leptos_router::NavigateOptions;
 use crate::i18n::I18n;
 use crate::t;
+use crate::state::session::{use_session, SessionState};
 
 #[must_use]
 #[component]
 pub fn LoginTokenScreen() -> impl IntoView {
     let _i18n = use_context::<I18n>().expect("I18n must be provided");
-    let token = RwSignal::new(String::new());
-    let error = RwSignal::new(Option::<String>::None);
+    let session = use_session();
     let navigate = use_navigate();
 
-    let format_token = move |value: &str| -> String {
-        let cleaned: String = value
-            .chars()
-            .filter(char::is_ascii_alphanumeric)
-            .collect::<String>()
-            .to_uppercase();
-        let mut parts = Vec::new();
-        let mut remaining = cleaned.as_str();
-        while !remaining.is_empty() {
-            let end = remaining.len().min(4);
-            parts.push(&remaining[..end]);
-            remaining = &remaining[end..];
+    // Redirect to chats if already authenticated
+    let nav_if_auth = navigate.clone();
+    Effect::new(move |_| {
+        if session.is_authenticated() {
+            nav_if_auth("/chats", NavigateOptions { replace: true, ..Default::default() });
         }
-        parts.truncate(4);
-        parts.join("-")
-    };
+    });
+
+    let token = RwSignal::new(String::new());
+    let error = RwSignal::new(Option::<String>::None);
 
     let on_submit = {
         let navigate = navigate.clone();
         move || {
-            let tok = token.get();
-            if tok.len() < 19 {
+            let raw = token.get();
+            let cleaned: String = raw.chars().filter(|c| !c.is_whitespace()).collect();
+            if cleaned.len() < 8 {
                 error.set(Some(t!("token.error.invalid")));
                 return;
             }
             error.set(None);
-
-            let raw_token: String = tok.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
-            navigate(&format!("/register?token={raw_token}"), Default::default());
+            navigate(&format!("/register?token={cleaned}"), Default::default());
         }
     };
 
-    let is_valid = move || token.get().len() == 19;
+    let is_valid = move || {
+        let raw = token.get();
+        let cleaned: String = raw.chars().filter(|c| !c.is_whitespace()).collect();
+        cleaned.len() >= 8
+    };
 
     view! {
-        <div class="flex min-h-screen flex-col bg-background">
+        <div class="flex h-screen-safe flex-col bg-background overflow-hidden">
             <header class="flex items-center gap-4 border-b border-border p-4">
                 <button
                     class="h-10 w-10 inline-flex items-center justify-center rounded-md hover:bg-accent"
@@ -70,12 +68,11 @@ pub fn LoginTokenScreen() -> impl IntoView {
                             <input
                                 type="text"
                                 placeholder={t!("token.placeholder")}
-                                maxlength=19u32
+                                maxlength=64u32
                                 class="flex h-14 w-full rounded-md border border-input bg-background px-3 py-2 text-center font-mono text-lg tracking-wider ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                 prop:value=token
                                 on:input=move |ev| {
-                                    let formatted = format_token(&event_target_value(&ev));
-                                    token.set(formatted);
+                                    token.set(event_target_value(&ev));
                                     error.set(None);
                                 }
                                 on:keydown={
@@ -87,13 +84,6 @@ pub fn LoginTokenScreen() -> impl IntoView {
                                     }
                                 }
                             />
-                            {move || if is_valid() && error.get().is_none() {
-                                view! {
-                                    <svg class="absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-green-500" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                                }.into_any()
-                            } else {
-                                view! {}.into_any()
-                            }}
                         </div>
 
                         <p class="text-center text-sm text-muted-foreground">{t!("token.hint")}</p>
