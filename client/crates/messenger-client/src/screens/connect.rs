@@ -31,10 +31,8 @@ pub fn ConnectScreen() -> impl IntoView {
 
     // Pre-fill from local storage
     spawn_local(async move {
-        if let Ok(local) = messenger_storage::init_storage("default").await {
-            if let Ok(Some(saved_url)) = local.get_setting("server_url").await {
-                server_address.set(saved_url);
-            }
+        if let Some(saved_url) = crate::state::session::load_server_url() {
+            server_address.set(saved_url);
         }
     });
 
@@ -62,8 +60,8 @@ pub fn ConnectScreen() -> impl IntoView {
             match client.server_info().await {
                 Ok(info) => {
                     // Save server config to local store
+                    persist_server_url(&url);
                     if let Ok(local) = messenger_storage::init_storage("default").await {
-                        let _ = local.set_setting("server_url", &url).await;
                         let _ = local
                             .set_setting(
                                 "server_pubkey_hex",

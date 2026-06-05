@@ -63,9 +63,8 @@ pub async fn validate_token(
 ) -> Result<messenger_entity::invitation_tokens::Model, AppError> {
     use messenger_entity::invitation_tokens::{self, Entity as InvitationTokens};
 
-    // Хэшируем от base64 строки, а не от raw bytes.
-    // Это позволяет клиенту послать base64 токен как есть, без декодинга.
     let token_hash = blake3::hash(token_str.as_bytes()).as_bytes().to_vec();
+    tracing::info!(token_str = %token_str, token_hash = %hex::encode(&token_hash), "validating token hash");
 
     let row = InvitationTokens::find()
         .filter(invitation_tokens::Column::TokenHash.eq(token_hash))

@@ -43,8 +43,8 @@ pub fn LoginScreen() -> impl IntoView {
                     </div>
 
                     <div class="space-y-4">
-                        <div
-                            class="cursor-pointer rounded-lg border bg-card text-card-foreground shadow-sm transition-colors hover:bg-accent"
+                        <button
+                            class="cursor-pointer rounded-lg border bg-card text-card-foreground shadow-sm transition-colors hover:bg-accent text-left w-full"
                             on:click={
                                 let nav = navigate.clone();
                                 move |_| nav("/login/token", Default::default())
@@ -59,10 +59,10 @@ pub fn LoginScreen() -> impl IntoView {
                                     <p class="text-sm text-muted-foreground">{t!("login.token.description")}</p>
                                 </div>
                             </div>
-                        </div>
+                        </button>
 
-                        <div
-                            class="cursor-pointer rounded-lg border bg-card text-card-foreground shadow-sm transition-colors hover:bg-accent"
+                        <button
+                            class="cursor-pointer rounded-lg border bg-card text-card-foreground shadow-sm transition-colors hover:bg-accent text-left w-full"
                             on:click={
                                 let nav = navigate.clone();
                                 move |_| nav("/login/qr", Default::default())
@@ -77,7 +77,7 @@ pub fn LoginScreen() -> impl IntoView {
                                     <p class="text-sm text-muted-foreground">{t!("login.qr.description")}</p>
                                 </div>
                             </div>
-                        </div>
+                        </button>
                     </div>
 
                     <p class="text-center text-sm text-muted-foreground">{t!("login.newDevice")}</p>

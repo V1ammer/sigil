@@ -86,8 +86,8 @@ pub fn RegisterScreen() -> impl IntoView {
                 .ok()
                 .and_then(|q| q.token.clone())
         });
-        let token = match token_raw {
-            Some(t) if !t.is_empty() => t,
+        let token: String = match token_raw {
+            Some(t) if !t.is_empty() => t.chars().filter(|c| c.is_ascii_alphanumeric()).collect(),
             _ => {
                 error.set(Some(t!("token.error.invalid").to_string()));
                 return;
@@ -223,7 +223,10 @@ pub fn RegisterScreen() -> impl IntoView {
                 SessionState::ServerConfigured { url } => Some(url.clone()),
                 _ => None,
             });
-            let url = server_url.unwrap_or_default();
+            let url = server_url
+                .filter(|u| !u.is_empty())
+                .or_else(crate::state::session::load_server_url)
+                .unwrap_or_default();
 
             if let Ok(local) = messenger_storage::init_storage("default").await {
                 let encrypted = messenger_storage::EncryptedIdentity {

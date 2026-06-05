@@ -51,8 +51,9 @@ pub async fn create_dev_token(
         let mut token_bytes = [0u8; 32];
         rand::thread_rng().fill_bytes(&mut token_bytes);
 
-        let token_b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(token_bytes);
-        let token_hash = blake3::hash(token_b64.as_bytes()).as_bytes().to_vec();
+        let token_hex = hex::encode(token_bytes);
+        let token_hash = blake3::hash(token_hex.as_bytes()).as_bytes().to_vec();
+        tracing::info!(token = %token_hex, token_hash = %hex::encode(&token_hash), "created dev token");
 
         let now = now_secs();
         let expires_at = now + 365 * 24 * 3600;
@@ -74,8 +75,8 @@ pub async fn create_dev_token(
 
         let resp = DevTokenResponse {
             id: token_id,
-            token: hex::encode(token_bytes),
-            token_display: token_b64,
+            token: token_hex.clone(),
+            token_display: token_hex,
             expires_at,
         };
 

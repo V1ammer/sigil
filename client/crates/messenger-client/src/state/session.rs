@@ -97,6 +97,9 @@ pub fn use_session() -> Session {
 /// reactive signals or statics.
 pub fn build_api_client() -> Option<ApiClient> {
     let url = load_server_url()?;
+    if url.is_empty() {
+        return None;
+    }
     let mut client = ApiClient::new(url);
     if let Some(auth) = load_auth_credentials() {
         client.set_auth(Some(auth));

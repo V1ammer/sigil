@@ -3,7 +3,7 @@ use leptos_router::hooks::use_navigate;
 use leptos_router::NavigateOptions;
 use crate::i18n::I18n;
 use crate::t;
-use crate::state::session::{use_session, SessionState};
+use crate::state::session::{use_session, persist_server_url, SessionState};
 
 #[must_use]
 #[component]
@@ -14,8 +14,9 @@ pub fn LoginTokenScreen() -> impl IntoView {
 
     // Redirect to chats if already authenticated
     let nav_if_auth = navigate.clone();
+    let session_for_effect = session.clone();
     Effect::new(move |_| {
-        if session.is_authenticated() {
+        if session_for_effect.is_authenticated() {
             nav_if_auth("/chats", NavigateOptions { replace: true, ..Default::default() });
         }
     });
@@ -25,6 +26,7 @@ pub fn LoginTokenScreen() -> impl IntoView {
 
     let on_submit = {
         let navigate = navigate.clone();
+        let session = session.clone();
         move || {
             let raw = token.get();
             let cleaned: String = raw.chars().filter(|c| !c.is_whitespace()).collect();
@@ -33,6 +35,14 @@ pub fn LoginTokenScreen() -> impl IntoView {
                 return;
             }
             error.set(None);
+            // Persist server_url so register screen can build API client
+            let url = session.state.with(|s| match s {
+                SessionState::ServerConfigured { url } => Some(url.clone()),
+                _ => None,
+            });
+            if let Some(url) = url {
+                persist_server_url(&url);
+            }
             navigate(&format!("/register?token={cleaned}"), Default::default());
         }
     };
@@ -68,7 +78,7 @@ pub fn LoginTokenScreen() -> impl IntoView {
                             <input
                                 type="text"
                                 placeholder={t!("token.placeholder")}
-                                maxlength=64u32
+                                maxlength=80u32
                                 class="flex h-14 w-full rounded-md border border-input bg-background px-3 py-2 text-center font-mono text-lg tracking-wider ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                 prop:value=token
                                 on:input=move |ev| {
