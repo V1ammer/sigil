@@ -12,13 +12,13 @@ pub fn SettingsScreen() -> impl IntoView {
     let session = use_session();
     let params = use_params_map();
     let navigate = use_navigate();
-    let section = move || {
+    let section = Signal::derive(move || {
         params
             .get()
             .get("section")
             .map(|s| s.clone())
             .unwrap_or_else(|| "account".to_string())
-    };
+    });
 
     let is_admin = session.is_admin();
 
@@ -44,10 +44,10 @@ pub fn SettingsScreen() -> impl IntoView {
         move |_| n("/chats", Default::default())
     };
 
-    let has_sec = move || params.get().get("section").is_some();
+    let has_sec = Signal::derive(move || params.get().get("section").is_some());
 
     let render_content = move || {
-        match section().as_str() {
+        match section.get().as_str() {
             "account" => view! { <AccountSettings /> }.into_any(),
             "devices" => view! { <DevicesSettings /> }.into_any(),
             "appearance" => view! { <AppearanceSettings /> }.into_any(),
@@ -60,8 +60,8 @@ pub fn SettingsScreen() -> impl IntoView {
         }
     };
 
-    let sidebar_visible = Signal::derive(move || !has_sec());
-    let content_visible = Signal::derive(move || has_sec());
+    let sidebar_visible = Signal::derive(move || !has_sec.get());
+    let content_visible = Signal::derive(move || has_sec.get());
 
     // Prebuild section buttons
     let section_buttons: Vec<_> = sections
@@ -70,7 +70,7 @@ pub fn SettingsScreen() -> impl IntoView {
             let sid = *id;
             let label = t!(*label_key);
             let n = navigate.clone();
-            let active = move || section() == sid;
+            let active = move || section.get() == sid;
             let class = move || {
                 let base = "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-sm transition-colors";
                 if active() {
@@ -123,7 +123,7 @@ pub fn SettingsScreen() -> impl IntoView {
             }>
                 <div class="max-w-2xl p-6">
                     {move || {
-                        if has_sec() {
+                        if has_sec.get() {
                             view! {
                                 <div class="md:hidden mb-4">
                                     <button
