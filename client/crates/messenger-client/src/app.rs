@@ -80,11 +80,7 @@ pub fn App() -> impl IntoView {
                     role: restored.role,
                 });
 
-                web_sys::console::log_1(&"[App] Session restored, navigating to /chats".into());
-
-                // Navigate to chats so the user doesn't see ConnectScreen.
-                let navigate = leptos_router::hooks::use_navigate();
-                navigate("/chats", Default::default());
+                web_sys::console::log_1(&"[App] Session restored, ConnectScreen will redirect".into());
             } else {
                 web_sys::console::log_1(
                     &"[App] Identity blob malformed, setting ServerConfigured".into(),
