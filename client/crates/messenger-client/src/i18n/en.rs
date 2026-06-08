@@ -128,6 +128,8 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("welcome.title", "Select a chat");
     m.insert("welcome.hint", "Select a chat from the left or start a new one");
 
+    m.insert("chat.messages.empty", "No messages yet");
+
     // Chat list
     m.insert("chat.list.empty", "No conversations yet");
     m.insert("chat.mls.not_ready", "Messages not available");

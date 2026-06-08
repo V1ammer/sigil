@@ -606,7 +606,7 @@ pub fn is_mls_initialized() -> bool {
 /// Returns `true` if the join succeeded.
 pub async fn join_welcome(welcome_id: Uuid, welcome_ciphertext: &[u8]) -> bool {
     let (result, runtime) = {
-        let mut rt = match MLS_CACHE.with(|c| c.borrow_mut().take()) {
+        let rt = match MLS_CACHE.with(|c| c.borrow_mut().take()) {
             Some(r) => r,
             None => {
                 tracing::warn!("MLS not initialized, cannot join welcome");

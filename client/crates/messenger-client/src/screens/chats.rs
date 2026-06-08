@@ -10,6 +10,7 @@ use uuid::Uuid;
 use crate::chat::input_bar::{InputBar, InputPreview};
 use crate::chat::message_bridge::display_vec_to_mock;
 use crate::chat::message_list::MessageList;
+use crate::components::dropdown_menu::{DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger};
 use crate::i18n::I18n;
 use crate::sidebar::real_chat_list::RealChatList;
 use crate::state::chats::ChatsState;
@@ -103,6 +104,22 @@ pub fn ChatsScreen() -> impl IntoView {
     let i18n = use_context::<I18n>().expect("I18n must be provided");
     let locale = Signal::derive(move || i18n.locale.get().into());
 
+    // Mobile detection — use narrow layout on small screens (mobile/Android)
+    let is_mobile = Signal::derive(move || {
+        #[cfg(target_arch = "wasm32")]
+        {
+            web_sys::window()
+                .and_then(|w| w.inner_width().ok())
+                .and_then(|w| w.as_f64())
+                .map(|w| w < 768.0)
+                .unwrap_or(false)
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            false
+        }
+    });
+
     // Reply/Edit preview state
     let preview = RwSignal::new(InputPreview::None);
     let msg_svc = message_service.clone();
@@ -187,7 +204,7 @@ pub fn ChatsScreen() -> impl IntoView {
     }) as Arc<dyn Fn(&str, String) + Send + Sync + 'static>;
 
     view! {
-        <div class="flex h-screen-safe bg-background overflow-hidden">
+        <div class="flex h-full bg-background overflow-hidden">
             {/* Sidebar */}
             <div class=move || {
                 let base = "flex-col border-r border-border bg-sidebar overflow-hidden";
@@ -215,7 +232,7 @@ pub fn ChatsScreen() -> impl IntoView {
                 view! {
                     <div class=move || {
                         if selected.get().is_some() {
-                            "flex flex-1 flex-col w-full min-w-0"
+                            "flex flex-1 flex-col w-full min-w-0 min-h-0"
                         } else {
                             "hidden md:flex flex-1 flex-col"
                         }
@@ -231,7 +248,31 @@ pub fn ChatsScreen() -> impl IntoView {
                                     <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
                                 </svg>
                             </button>
-                            <span class="text-sm font-medium text-foreground truncate">{name.clone()}</span>
+                            <span class="text-sm font-medium text-foreground truncate flex-1 min-w-0">{name.clone()}</span>
+                            <DropdownMenu>
+                                <DropdownMenuTrigger>
+                                    <button class="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent transition-colors shrink-0">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>
+                                        </svg>
+                                    </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    <DropdownMenuItem>
+                                        <span class="text-sm">{t!("chat.profile")}</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem>
+                                        <span class="text-sm">{t!("chat.search")}</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem>
+                                        <span class="text-sm">{t!("chat.mute")}</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator/>
+                                    <DropdownMenuItem class="text-destructive".to_string()>
+                                        <span class="text-sm">{t!("chat.delete")}</span>
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
                         </div>
 
                         {/* Messages */}
@@ -250,7 +291,7 @@ pub fn ChatsScreen() -> impl IntoView {
                                             <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="text-muted-foreground mb-4">
                                                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
                                             </svg>
-                                            <p class="text-sm text-muted-foreground">{t!("chat.list.empty")}</p>
+                                            <p class="text-sm text-muted-foreground">{t!("chat.messages.empty")}</p>
                                         </div>
                                     }.into_any()
                                 } else {
@@ -259,7 +300,7 @@ pub fn ChatsScreen() -> impl IntoView {
                                         <MessageList
                                             lang=locale
                                             messages=mock_msgs
-                                            is_mobile=Signal::derive(|| false)
+                                            is_mobile=is_mobile
                                             on_reply=Box::new({
                                                 let r = on_reply_list.clone();
                                                 move |id: &str| r(id)
@@ -312,9 +353,34 @@ pub fn ChatsScreen() -> impl IntoView {
                                         }
                                     }
                                 })
+                                on_send_voice=Box::new({
+                                    let svc = message_service.clone();
+                                    let sel = selected.clone();
+                                    move |dur: u32| {
+                                        // Placeholder: actual voice recording not yet implemented
+                                        let _ = &svc;
+                                        let _ = &sel;
+                                        let _ = dur;
+                                        // When MediaRecorder is implemented, this will:
+                                        // 1. Get the recorded blob
+                                        // 2. Upload it to server via message_service
+                                        // 3. Send a voice message
+                                        web_sys::console::log_1(&format!("Voice recording: {}s (not yet implemented)", dur).into());
+                                    }
+                                })
                                 on_cancel_preview=Box::new({
                                     let prev = preview.clone();
                                     move || prev.set(InputPreview::None)
+                                })
+                                on_attach_file=Box::new({
+                                    move || {
+                                        web_sys::console::log_1(&"Attach file: not yet implemented".into());
+                                    }
+                                })
+                                on_attach_photo=Box::new({
+                                    move || {
+                                        web_sys::console::log_1(&"Attach photo: not yet implemented".into());
+                                    }
                                 })
                             />
                         </div>

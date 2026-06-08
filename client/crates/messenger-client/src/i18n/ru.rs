@@ -128,6 +128,8 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("welcome.title", "Выберите чат");
     m.insert("welcome.hint", "Выберите чат слева или начните новый");
 
+    m.insert("chat.messages.empty", "Нет сообщений");
+
     // Chat list
     m.insert("chat.list.empty", "Нет диалогов");
     m.insert("chat.mls.not_ready", "Сообщения недоступны");
