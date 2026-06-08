@@ -562,7 +562,7 @@ pub fn DevicesSettings() -> impl IntoView {
                     } else if devices.get().is_empty() {
                         view! {
                             <p class="text-sm text-muted-foreground text-center py-4">
-                                "No devices found"
+                                {t!("settings.devices.noDevices")}
                             </p>
                         }.into_any()
                     } else {
@@ -637,7 +637,7 @@ pub fn DevicesSettings() -> impl IntoView {
                                 <DialogHeader>
                                     <DialogTitle>{t!("scan.confirm.title")}</DialogTitle>
                                     <DialogDescription>
-                                        "Add a new device for user @"
+                                        {t!("settings.devices.addDeviceFor")}
                                         {qr_clone.user_id.to_string().chars().take(8).collect::<String>()}
                                         "..."
                                     </DialogDescription>
@@ -831,7 +831,7 @@ fn DeviceRow(
                 <div class="space-y-0.5">
                     <div class="flex items-center gap-2">
                         <span class="text-sm font-medium text-foreground">
-                            {move || format!("Device {}", &device.id.to_string()[..8])}
+                            {move || format!("{} {}", t!("settings.devices.label"), &device.id.to_string()[..8])}
                         </span>
                         {move || if is_current {
                             view! {
@@ -845,7 +845,7 @@ fn DeviceRow(
                         {move || if is_revoked {
                             view! {
                                 <Badge variant=String::from("destructive")>
-                                    "Revoked"
+                                    {t!("settings.devices.revoked")}
                                 </Badge>
                             }.into_any()
                         } else {

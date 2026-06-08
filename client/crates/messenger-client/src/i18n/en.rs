@@ -41,6 +41,7 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("qr.instruction", "Open the messenger on the device where you are already signed in, go to Settings → Devices → Add device, and scan this code.");
     m.insert("qr.validFor", "Valid for");
     m.insert("qr.refresh", "Refresh QR");
+    m.insert("qr.create", "Generate QR code");
     m.insert("qr.requestId", "Request ID");
     m.insert("qr.waiting", "Waiting for confirmation...");
     m.insert("qr.success", "Device added");
@@ -97,6 +98,12 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("message.placeholder", "Message");
     m.insert("message.reply", "Reply");
     m.insert("message.replyThread", "Reply in thread");
+    m.insert("message.editing", "Editing");
+    m.insert("message.recording", "Recording...");
+    m.insert("message.emoji", "Emoji");
+    m.insert("message.image", "Image");
+    m.insert("message.video", "Video");
+    m.insert("message.download", "Download");
     m.insert("message.react", "React");
     m.insert("message.edit", "Edit");
     m.insert("message.copy", "Copy");
@@ -157,6 +164,11 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.logout", "Sign out");
 
     // Account settings
+    m.insert("settings.account.displayName", "Display name");
+    m.insert("settings.account.username", "Username");
+    m.insert("settings.account.bio", "Bio");
+    m.insert("settings.account.cancel", "Cancel");
+    m.insert("settings.account.confirm", "Confirm");
     m.insert("account.displayName", "Display name");
     m.insert("account.username", "Username");
     m.insert("account.username.hint", "Username cannot be changed easily; contact admin");
@@ -193,6 +205,10 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.devices.currentDevice", "Current device");
     m.insert("settings.devices.lastActive", "Last active");
     m.insert("settings.devices.newDevice", "New device");
+    m.insert("settings.devices.noDevices", "No devices found");
+    m.insert("settings.devices.addDeviceFor", "Add a new device for user @");
+    m.insert("settings.devices.label", "Device");
+    m.insert("settings.devices.revoked", "Revoked");
     m.insert("settings.devices.revoke", "Revoke");
     m.insert("settings.devices.title", "Devices");
 
@@ -457,6 +473,7 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.privacy.blockList", "Block list");
     m.insert("settings.privacy.blockListDesc", "Blocked users");
     m.insert("settings.privacy.clearCache", "Clear local cache");
+    m.insert("settings.privacy.clearCacheAction", "Clear");
     m.insert("settings.privacy.clearCacheDesc", "Delete all local data and sign out");
     m.insert("settings.privacy.clearCacheConfirm", "Clear cache?");
     m.insert("settings.privacy.clearCacheWarning", "All local data will be permanently deleted. You will need to sign in again.");

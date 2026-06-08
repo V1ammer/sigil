@@ -2,6 +2,7 @@
 //! deleted messages with reactions, reply quoting, thread indicator, and context menu.
 use leptos::prelude::*;
 use leptos::ev::PointerEvent;
+use std::sync::Arc;
 use crate::i18n::{Language, t, format_time};
 use crate::mock::Message;
 use crate::icons::Icon;
@@ -21,6 +22,10 @@ pub fn MessageItem(
     #[prop(optional)] on_thread_click: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     #[prop(optional)] on_media_click: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     #[prop(optional)] on_avatar_click: Option<Box<dyn Fn() + Send + Sync + 'static>>,
+    #[prop(optional)] on_reply: Option<Box<dyn Fn() + Send + Sync + 'static>>,
+    #[prop(optional)] on_edit: Option<Box<dyn Fn() + Send + Sync + 'static>>,
+    #[prop(optional)] on_delete: Option<Box<dyn Fn() + Send + Sync + 'static>>,
+    #[prop(optional)] on_reaction: Option<Box<dyn Fn(String) + Send + Sync + 'static>>,
 ) -> impl IntoView {
     let msg = message;
     let is_own = msg.is_own;
@@ -72,10 +77,24 @@ pub fn MessageItem(
     let lang_clone = lang;
 
     // Build the context menu content outside view! to avoid proc macro issues
+    let on_reply = on_reply.map(std::sync::Arc::new);
+    let on_edit = on_edit.map(std::sync::Arc::new);
+    let on_delete = on_delete.map(std::sync::Arc::new);
+    let on_reaction = on_reaction.map(std::sync::Arc::new);
     let menu_content = {
         let msg_ctx = msg.clone();
+        let lang_clone = lang.get();
+        let on_reply_arc = on_reply.clone();
+        let on_edit_arc = on_edit.clone();
+        let on_delete_arc = on_delete.clone();
         Box::new(move || {
-            let views = message_context_menu_items(&msg_ctx, lang.get());
+            let views = message_context_menu_items(
+                &msg_ctx,
+                lang_clone,
+                on_reply_arc.clone().map(|f| f as Arc<dyn Fn() + Send + Sync + 'static>),
+                on_edit_arc.clone().map(|f| f as Arc<dyn Fn() + Send + Sync + 'static>),
+                on_delete_arc.clone().map(|f| f as Arc<dyn Fn() + Send + Sync + 'static>),
+            );
 
     view! {
                 <ContextMenuContent>
@@ -151,7 +170,7 @@ pub fn MessageItem(
                             // Message bubble
                             <div class=format!("px-3 py-2 text-sm shadow-sm break-words max-w-[75%] {bubble_class}")>
                                 // Message content based on type
-                                {render_content(msg.clone(), on_media_click_arc.clone())}
+                                {render_content(msg.clone(), on_media_click_arc.clone(), lang.get())}
 
                                 // Status row: edited + time + status icon
                                 <div class=format!("flex items-center gap-1 mt-1 {}", if is_own { "justify-end" } else { "justify-start" })>
@@ -193,12 +212,18 @@ pub fn MessageItem(
                                             let bg = if r.has_own { "bg-primary/20" } else { "bg-muted/70" };
                                             let emoji = r.emoji.clone();
                                             let count = r.count;
+                                            let react_cb = on_reaction.clone();
+                                            let emoji_for_span = emoji.clone();
                                             view! {
                                                 <button
                                                     class=format!("inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs shadow-sm hover:bg-accent transition-colors {bg}")
-                                                    on:click=move |_| {}
+                                                    on:click=move |_| {
+                                                        if let Some(ref f) = react_cb {
+                                                            f(emoji.clone());
+                                                        }
+                                                    }
                                                 >
-                                                    <span>{emoji}</span>
+                                                    <span>{emoji_for_span}</span>
                                                     {if count > 1 {
                                                         view! { <span class="text-[10px] font-medium text-foreground">{count}</span> }.into_any()
                                                     } else {
@@ -246,7 +271,13 @@ pub fn MessageItem(
                 <SheetTitle>{t(lang.get(), "message.reply")}</SheetTitle>
             </SheetHeader>
             <div class="space-y-1">
-                {message_context_menu_items(&msg_clone_for_context, lang_clone.get())
+                {message_context_menu_items(
+                    &msg_clone_for_context,
+                    lang_clone.get(),
+                    on_reply.clone().map(|f| f as Arc<dyn Fn() + Send + Sync + 'static>),
+                    on_edit.clone().map(|f| f as Arc<dyn Fn() + Send + Sync + 'static>),
+                    on_delete.clone().map(|f| f as Arc<dyn Fn() + Send + Sync + 'static>),
+                )
                     .into_iter()
                     .map(|item| item)
                     .collect::<Vec<_>>()
@@ -257,7 +288,7 @@ pub fn MessageItem(
 }
 
 /// Render message content based on type.
-fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn() + Send + Sync + 'static>>>) -> AnyView {
+fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn() + Send + Sync + 'static>>>, l: Language) -> AnyView {
     match msg.msg_type.as_str() {
         "voice" => {
             view! {
@@ -287,7 +318,7 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                             view! {
                                 <div class="flex flex-col items-center gap-2 text-muted-foreground">
                                     <Icon name="image" class_name="h-8 w-8"/>
-                                    <span class="text-xs">"Image"</span>
+                                    <span class="text-xs">{t(l, "message.image")}</span>
                                 </div>
                             }.into_any()
                         }}
@@ -313,7 +344,7 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                             view! {
                                 <div class="flex flex-col items-center gap-2 text-muted-foreground">
                                     <Icon name="film" class_name="h-8 w-8"/>
-                                    <span class="text-xs">"Video"</span>
+                                    <span class="text-xs">{t(l, "message.video")}</span>
                                 </div>
                             }.into_any()
                         }}
@@ -341,7 +372,7 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                             }.into_any()
                         }).unwrap_or_else(|| view! {}.into_any())}
                     </div>
-                    <Tooltip text="Download".to_string()>
+                    <Tooltip text={t(l, "message.download")}>
                         <button class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md hover:bg-accent">
                             <Icon name="download" class_name="h-4 w-4"/>
                         </button>
@@ -379,19 +410,24 @@ fn format_file_size(bytes: u64) -> String {
 fn message_context_menu_items(
     msg: &Message,
     lang: Language,
+    on_reply: Option<Arc<dyn Fn() + Send + Sync + 'static>>,
+    on_edit: Option<Arc<dyn Fn() + Send + Sync + 'static>>,
+    on_delete: Option<Arc<dyn Fn() + Send + Sync + 'static>>,
 ) -> Vec<AnyView> {
     let mut views: Vec<AnyView> = Vec::new();
-    let noop_cb = || Box::new(|| {}) as Box<dyn Fn() + Send + Sync + 'static>;
 
     // Reply
+    let reply_cb = on_reply.map(|f| {
+        Box::new(move || f()) as Box<dyn Fn() + Send + Sync + 'static>
+    });
     views.push(view! {
-        <ContextMenuItem on_click=noop_cb()>
+        <ContextMenuItem on_click=reply_cb.unwrap_or_else(|| Box::new(|| {}))>
             <Icon name="reply" class_name="mr-2 h-4 w-4"/>
             {t(lang, "message.reply")}
         </ContextMenuItem>
     }.into_any());
 
-    // Reply in thread (always show without callback for now)
+    // Reply in thread (stub for now)
     views.push(view! {
         <ContextMenuItem>
             <Icon name="message-square" class_name="mr-2 h-4 w-4"/>
@@ -420,8 +456,11 @@ fn message_context_menu_items(
 
     // Edit for own messages
     if msg.is_own && !msg.is_deleted {
+        let edit_cb = on_edit.clone().map(|f| {
+            Box::new(move || f()) as Box<dyn Fn() + Send + Sync + 'static>
+        });
         views.push(view! {
-            <ContextMenuItem on_click=noop_cb()>
+            <ContextMenuItem on_click=edit_cb.unwrap_or_else(|| Box::new(|| {}))>
                 <Icon name="edit" class_name="mr-2 h-4 w-4"/>
                 {t(lang, "message.edit")}
             </ContextMenuItem>
@@ -429,7 +468,7 @@ fn message_context_menu_items(
     }
 
     views.push(view! {
-        <ContextMenuItem on_click=noop_cb()>
+        <ContextMenuItem>
             <Icon name="forward" class_name="mr-2 h-4 w-4"/>
             {t(lang, "message.forward")}
         </ContextMenuItem>
@@ -438,10 +477,13 @@ fn message_context_menu_items(
     views.push(view! { <ContextMenuSeparator/> }.into_any());
 
     // Delete
+    let delete_cb = on_delete.map(|f| {
+        Box::new(move || f()) as Box<dyn Fn() + Send + Sync + 'static>
+    });
     views.push(view! {
         <ContextMenuItem
             class="text-destructive"
-            on_click=noop_cb()
+            on_click=delete_cb.unwrap_or_else(|| Box::new(|| {}))
         >
             <Icon name="trash" class_name="mr-2 h-4 w-4"/>
             {t(lang, "message.delete")}

@@ -59,6 +59,14 @@ pub struct PostCommitResponse {
     pub new_epoch: i64,
 }
 
+/// State of a message (edit/delete tracking).
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MessageState {
+    pub edited_at: Option<i64>,
+    pub deleted_at: Option<i64>,
+    pub replacement_message_id: Option<Uuid>,
+}
+
 /// A single message returned by the server.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StoredMessage {
@@ -75,6 +83,7 @@ pub struct StoredMessage {
     pub reply_to_message_id: Option<Uuid>,
     pub client_message_id: Uuid,
     pub created_at: i64,
+    pub state: Option<MessageState>,
 }
 
 /// Request to post an application message.

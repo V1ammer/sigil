@@ -41,6 +41,7 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("qr.instruction", "Откройте мессенджер на устройстве где вы уже вошли, нажмите Настройки → Устройства → Добавить устройство, и отсканируйте этот код.");
     m.insert("qr.validFor", "Действителен ещё");
     m.insert("qr.refresh", "Обновить QR");
+    m.insert("qr.create", "Создать QR код");
     m.insert("qr.requestId", "ID запроса");
     m.insert("qr.waiting", "Ждём подтверждения...");
     m.insert("qr.success", "Устройство добавлено");
@@ -97,6 +98,12 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("message.placeholder", "Сообщение");
     m.insert("message.reply", "Ответить");
     m.insert("message.replyThread", "Ответить в треде");
+    m.insert("message.editing", "Редактирование");
+    m.insert("message.recording", "Запись...");
+    m.insert("message.emoji", "Эмодзи");
+    m.insert("message.image", "Изображение");
+    m.insert("message.video", "Видео");
+    m.insert("message.download", "Скачать");
     m.insert("message.react", "Реакция");
     m.insert("message.edit", "Изменить");
     m.insert("message.copy", "Копировать");
@@ -134,7 +141,6 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("chat.create_direct.cancel", "Отмена");
     m.insert("chat.create_direct.empty_username", "Введите имя пользователя");
     m.insert("chat.create_direct.no_api", "API клиент недоступен");
-    m.insert("chat.mls.hint", "Настройка MLS требуется для просмотра сообщений");
 
     // Security
     m.insert("security.title", "Безопасность");
@@ -158,6 +164,11 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.logout", "Выйти");
 
     // Account settings
+    m.insert("settings.account.displayName", "Отображаемое имя");
+    m.insert("settings.account.username", "Имя пользователя");
+    m.insert("settings.account.bio", "О себе");
+    m.insert("settings.account.cancel", "Отмена");
+    m.insert("settings.account.confirm", "Подтвердить");
     m.insert("account.displayName", "Отображаемое имя");
     m.insert("account.username", "Имя пользователя");
     m.insert("account.username.hint", "Username нельзя изменить просто так; обратитесь к админу");
@@ -194,6 +205,10 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.devices.currentDevice", "Текущее устройство");
     m.insert("settings.devices.lastActive", "Последняя активность");
     m.insert("settings.devices.newDevice", "Новое устройство");
+    m.insert("settings.devices.noDevices", "Устройства не найдены");
+    m.insert("settings.devices.addDeviceFor", "Добавить устройство для пользователя @");
+    m.insert("settings.devices.label", "Устройство");
+    m.insert("settings.devices.revoked", "Отозвано");
     m.insert("settings.devices.revoke", "Отозвать");
     m.insert("settings.devices.title", "Устройства");
 
@@ -460,6 +475,7 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.privacy.clearCache", "Очистить локальный кэш");
     m.insert("settings.privacy.clearCacheDesc", "Удалить все локальные данные и выйти из аккаунта");
     m.insert("settings.privacy.clearCacheConfirm", "Очистить кэш?");
+    m.insert("settings.privacy.clearCacheAction", "Очистить");
     m.insert("settings.privacy.clearCacheWarning", "Все локальные данные будут безвозвратно удалены. Для продолжения потребуется повторный вход.");
 
     // C11 — About

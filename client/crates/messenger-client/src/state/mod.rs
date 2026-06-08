@@ -11,6 +11,9 @@ pub mod ui;
 pub mod settings;
 pub mod connectivity;
 pub mod notifications;
+pub mod ws_manager;
+pub mod message_service;
+pub mod sync_service;
 
 pub use session::*;
 pub use chats::*;
@@ -21,6 +24,7 @@ pub use settings::*;
 pub use connectivity::*;
 pub use notifications::*;
 
+use crate::state::message_service::MessageService;
 use leptos::prelude::*;
 
 /// Provide every piece of global state into the context hierarchy.
@@ -34,4 +38,5 @@ pub fn provide_app_state() {
     provide_context(SettingsState::new());
     provide_context(ConnectivityState::new());
     provide_context(NotificationsState::new());
+    provide_context(MessageService::new());
 }

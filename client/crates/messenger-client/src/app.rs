@@ -1,11 +1,17 @@
 use std::sync::Arc;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use messenger_core::api::client::AuthCredentials;
+use messenger_proto::ws::ClientFrame;
 use crate::routes::AppRoutes;
+use crate::t;
 use crate::theme::{provide_theme, restore_theme, restore_locale, persist_locale};
 use crate::i18n::{Locale, I18n};
+use crate::state::message_service::MessageService;
 use crate::state::provide_app_state;
-use crate::state::session::{persist_auth_credentials, persist_server_url, Session, SessionState, UserRole};
+use crate::state::session::{persist_auth_credentials, persist_server_url, load_server_url, Session, SessionState, UserRole};
+use crate::state::sync_service::SyncService;
+use crate::state::ws_manager::WsManager;
 use crate::session::restore::try_restore_session;
 use crate::components::toast_container::ToastContainer;
 
@@ -27,10 +33,38 @@ fn ErrorFallback(errors: ArcRwSignal<Errors>) -> impl IntoView {
                 <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
                     <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-destructive"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                 </div>
-                <h2 class="text-lg font-semibold text-foreground">"Something went wrong"</h2>
+                <h2 class="text-lg font-semibold text-foreground">{t!("error.title")}</h2>
                 <p class="text-sm text-muted-foreground break-all font-mono">{msg}</p>
             </div>
         </div>
+    }
+}
+
+/// Start the WebSocket connection with stored auth credentials.
+fn start_ws_connection(ws: &WsManager) {
+    let device_id_str = web_sys::window()
+        .and_then(|w| w.local_storage().ok())
+        .flatten()
+        .and_then(|s| s.get_item("messenger_device_id").ok().flatten());
+    let secret_b64 = web_sys::window()
+        .and_then(|w| w.local_storage().ok())
+        .flatten()
+        .and_then(|s| s.get_item("messenger_device_signing_secret").ok().flatten());
+    let server_url = load_server_url();
+
+    if let (Some(device_id_str), Some(secret_b64), Some(server_url)) = (device_id_str, secret_b64, server_url) {
+        use base64::Engine;
+        if let (Ok(device_id), Ok(secret_bytes)) = (device_id_str.parse::<uuid::Uuid>(), base64::engine::general_purpose::STANDARD.decode(&secret_b64)) {
+            if secret_bytes.len() == 32 {
+                let mut secret = [0u8; 32];
+                secret.copy_from_slice(&secret_bytes);
+                let auth = AuthCredentials {
+                    device_id,
+                    device_signing_secret: secret,
+                };
+                ws.connect(&server_url, auth);
+            }
+        }
     }
 }
 
@@ -59,19 +93,25 @@ pub fn App() -> impl IntoView {
         persist_locale(&loc);
     });
 
-    // 5. Try session restore in background — full identity recovery.
+    // 5. Provide WebSocket manager (starts disconnected).
+    let ws = WsManager::new();
+    provide_context(ws.clone());
+
+    // 5b. Provide SyncService (starts stopped — started after session restore).
+    let sync = SyncService::new();
+    provide_context(sync.clone());
+
+    // 6. Try session restore in background — full identity recovery.
     let session = use_context::<Session>().expect("Session must be provided");
     spawn_local(async move {
         web_sys::console::log_1(&"[App] Attempting session restore...".into());
         if let Some(restored) = try_restore_session().await {
             web_sys::console::log_1(&"[App] Session data found, restoring identity...".into());
-            // If we have a full identity blob, reconstruct ClientIdentity
-            // and set Authenticated state.
             if let Some(identity) = restored.restore_identity() {
-                // Persist server URL + auth credentials for future API calls.
+                let device_id = identity.device_id;
                 persist_server_url(&restored.server_url);
                 persist_auth_credentials(
-                    identity.device_id,
+                    device_id,
                     &identity.device_signing_key.secret_bytes(),
                 );
 
@@ -80,13 +120,22 @@ pub fn App() -> impl IntoView {
                     role: restored.role,
                 });
 
-                web_sys::console::log_1(&"[App] Session restored, ConnectScreen will redirect".into());
+                web_sys::console::log_1(&"[App] Session restored, starting WS, MLS, and Sync".into());
+
+                // Start WebSocket connection after session restore.
+                start_ws_connection(&ws);
+
+                // Initialize MLS runtime for message encryption.
+                if let Some(msg_svc) = use_context::<MessageService>() {
+                    msg_svc.init_mls(device_id).await;
+                }
+
+                // Start background sync service.
+                sync.start();
             } else {
                 web_sys::console::log_1(
                     &"[App] Identity blob malformed, setting ServerConfigured".into(),
                 );
-                // Identity blob is malformed; just set server URL so the user
-                // sees the login screen instead of re-entering the URL.
                 persist_server_url(&restored.server_url);
                 session.state.set(SessionState::ServerConfigured {
                     url: restored.server_url,

@@ -18,12 +18,20 @@ pub fn MessageList(
     #[prop(optional)] on_thread_click: Option<Box<dyn Fn(&str) + Send + Sync + 'static>>,
     #[prop(optional)] on_media_click: Option<Box<dyn Fn(&str) + Send + Sync + 'static>>,
     #[prop(optional)] on_avatar_click: Option<Box<dyn Fn(&str) + Send + Sync + 'static>>,
+    #[prop(optional)] on_reply: Option<Box<dyn Fn(&str) + Send + Sync + 'static>>,
+    #[prop(optional)] on_edit: Option<Box<dyn Fn(&str) + Send + Sync + 'static>>,
+    #[prop(optional)] on_delete: Option<Box<dyn Fn(&str) + Send + Sync + 'static>>,
+    #[prop(optional)] on_reaction: Option<Box<dyn Fn(&str, String) + Send + Sync + 'static>>,
 ) -> impl IntoView {
     let grouped = group_messages_with_dates(&messages, lang.get());
 
     let on_thread_click = on_thread_click.map(Arc::new);
     let on_media_click = on_media_click.map(Arc::new);
     let on_avatar_click = on_avatar_click.map(Arc::new);
+    let on_reply = on_reply.map(Arc::new);
+    let on_edit = on_edit.map(Arc::new);
+    let on_delete = on_delete.map(Arc::new);
+    let on_reaction = on_reaction.map(Arc::new);
 
     view! {
         <div class="flex-1 overflow-y-auto px-4 py-3 space-y-1" id="message-list">
@@ -43,6 +51,10 @@ pub fn MessageList(
                         let on_thread = on_thread_click.clone();
                         let on_media = on_media_click.clone();
                         let on_avatar = on_avatar_click.clone();
+                        let on_reply = on_reply.clone();
+                        let on_edit = on_edit.clone();
+                        let on_delete = on_delete.clone();
+                        let on_reaction = on_reaction.clone();
                         let items = msg_batch.into_iter().enumerate().map(move |(idx, msg)| {
                             let is_first = idx == 0;
                             let is_last = idx == len - 1;
@@ -74,6 +86,34 @@ pub fn MessageList(
                                         let oa = on_avatar.clone();
                                         Box::new(move || {
                                             if let Some(ref f) = oa { f(&sender_id); }
+                                        })
+                                    }
+                                    on_reply={
+                                        let id = msg_id.clone();
+                                        let r = on_reply.clone();
+                                        Box::new(move || {
+                                            if let Some(ref f) = r { f(&id); }
+                                        })
+                                    }
+                                    on_edit={
+                                        let id = msg_id.clone();
+                                        let e = on_edit.clone();
+                                        Box::new(move || {
+                                            if let Some(ref f) = e { f(&id); }
+                                        })
+                                    }
+                                    on_delete={
+                                        let id = msg_id.clone();
+                                        let d = on_delete.clone();
+                                        Box::new(move || {
+                                            if let Some(ref f) = d { f(&id); }
+                                        })
+                                    }
+                                    on_reaction={
+                                        let id = msg_id.clone();
+                                        let r = on_reaction.clone();
+                                        Box::new(move |emoji: String| {
+                                            if let Some(ref f) = r { f(&id, emoji); }
                                         })
                                     }
                                 />

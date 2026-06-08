@@ -107,7 +107,7 @@ pub fn ThreadPanel(
             // Thread input bar
             <div class="border-t border-border">
                 <InputBar
-                    lang=lang
+                    locale=lang
                     preview=InputPreview::None
                     on_send=Box::new({
                         let osr = on_send_reply.clone();

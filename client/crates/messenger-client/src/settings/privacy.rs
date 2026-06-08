@@ -160,15 +160,15 @@ pub fn PrivacySettings() -> impl IntoView {
 
                 // Clear local cache — destructive button with confirmation
                 <div class="space-y-3">
-                    <h4 class="text-sm font-medium text-foreground">{"Clear local cache"}</h4>
+                    <h4 class="text-sm font-medium text-foreground">{t!("settings.privacy.clearCache")}</h4>
                     <p class="text-xs text-muted-foreground">
-                        {"Remove all locally cached data, settings, and session information. You will be signed out."}
+                        {t!("settings.privacy.clearCacheWarning")}
                     </p>
                     <Button
                         variant=Signal::derive(move || ButtonVariant::Destructive)
                         on_click=Box::new(move |_| show_clear_cache.set(true))
                     >
-                        {"Clear local cache"}
+                        {t!("settings.privacy.clearCache")}
                     </Button>
                 </div>
             </div>
@@ -180,14 +180,14 @@ pub fn PrivacySettings() -> impl IntoView {
             on_close=Box::new(move || show_clear_cache.set(false))
         >
             <AlertDialogHeader>
-                <AlertDialogTitle>{"Clear local cache"}</AlertDialogTitle>
+                <AlertDialogTitle>{t!("settings.privacy.clearCache")}</AlertDialogTitle>
                 <AlertDialogDescription>
-                    {"This will remove all locally cached data, reset your settings, and sign you out. Your messages on the server will not be affected. This action cannot be undone."}
+                    {t!("settings.privacy.clearCacheWarning")}
                 </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
                 <AlertDialogCancel on_click=Box::new(move || show_clear_cache.set(false))>
-                    {"Cancel"}
+                    {t!("common.cancel")}
                 </AlertDialogCancel>
                 <AlertDialogAction
                     class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
@@ -200,7 +200,7 @@ pub fn PrivacySettings() -> impl IntoView {
                         }
                     })
                 >
-                    {"Clear"}
+                    {t!("settings.privacy.clearCacheAction")}
                 </AlertDialogAction>
             </AlertDialogFooter>
         </AlertDialog>

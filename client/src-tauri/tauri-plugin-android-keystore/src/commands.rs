@@ -20,7 +20,7 @@ pub fn set<R: Runtime>(
 ) -> Result<KeystoreResponse, String> {
     #[cfg(mobile)]
     {
-        let keystore = app.state::<mobile::KeystoreMobile>();
+        let keystore = app.state::<mobile::KeystoreMobile<R>>();
         keystore.set(&key, value.as_bytes())
     }
     #[cfg(not(mobile))]
@@ -39,7 +39,7 @@ pub fn get<R: Runtime>(
 ) -> Result<KeystoreGetResponse, String> {
     #[cfg(mobile)]
     {
-        let keystore = app.state::<mobile::KeystoreMobile>();
+        let keystore = app.state::<mobile::KeystoreMobile<R>>();
         keystore.get(&key).map(|opt| {
             use base64::engine::general_purpose::STANDARD as BASE64;
             use base64::Engine;
@@ -63,7 +63,7 @@ pub fn delete<R: Runtime>(
 ) -> Result<KeystoreResponse, String> {
     #[cfg(mobile)]
     {
-        let keystore = app.state::<mobile::KeystoreMobile>();
+        let keystore = app.state::<mobile::KeystoreMobile<R>>();
         keystore.delete(&key)
     }
     #[cfg(not(mobile))]

@@ -3462,6 +3462,7 @@ version = "0.1.0"
 dependencies = [
  "age",
  "base64 0.22.1",
+ "blake3",
  "console_error_panic_hook",
  "gloo-timers",
  "hex",

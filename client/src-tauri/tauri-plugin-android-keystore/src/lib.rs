@@ -1,6 +1,5 @@
 pub use commands::*;
 use tauri::{
-    AppHandle,
     plugin::{Builder, TauriPlugin},
     Runtime,
 };
@@ -19,11 +18,22 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::get,
             commands::delete,
         ])
-        .setup(|app: &AppHandle<R>, _api| {
+        .setup(|app, api| {
             #[cfg(mobile)]
             {
-                let keystore = mobile::KeystoreMobile::new();
+                // Register the Kotlin plugin class so its @Command methods are available.
+                let handle = api
+                    .register_android_plugin(
+                        "com.example.keystore",
+                        "KeystorePlugin",
+                    )
+                    .expect("failed to register Android keystore plugin");
+                let keystore = mobile::KeystoreMobile::new(handle);
                 app.manage(keystore);
+            }
+            #[cfg(not(mobile))]
+            {
+                let _ = (app, api);
             }
             Ok(())
         })

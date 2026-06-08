@@ -15,6 +15,7 @@ use uuid::Uuid;
 use crate::i18n::I18n;
 use crate::session::restore::persist_session;
 use crate::state::notifications::{NotificationsState, ToastKind};
+use crate::state::ws_manager::WsManager;
 use crate::state::session::{build_api_client, persist_auth_credentials, use_session, SessionState, UserRole};
 use crate::t;
 
@@ -302,6 +303,16 @@ pub fn RegisterScreen() -> impl IntoView {
                 identity: Arc::new(identity),
                 role,
             });
+
+            // Step 11: Start WebSocket connection for real-time notifications
+            if let Some(ws) = use_context::<WsManager>() {
+                let url = url.clone();
+                let auth = AuthCredentials {
+                    device_id: resp.device_id,
+                    device_signing_secret: device_secret,
+                };
+                ws.connect(&url, auth);
+            }
 
             timeout_cancelled.store(true, std::sync::atomic::Ordering::Relaxed);
             notif.push(ToastKind::Success, i18n_clone.t("register.success"));

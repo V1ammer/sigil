@@ -30,7 +30,7 @@ pub enum InputPreview {
 #[must_use]
 #[component]
 pub fn InputBar(
-    #[prop(optional, into)] lang: Signal<Language>,
+    #[prop(optional, into)] locale: Signal<Language>,
     #[prop(optional, into)] preview: InputPreview,
     #[prop(optional)] on_send: Option<Box<dyn Fn(String) + Send + Sync + 'static>>,
     #[prop(optional)] on_cancel_preview: Option<Box<dyn Fn() + Send + Sync + 'static>>,
@@ -155,7 +155,7 @@ pub fn InputBar(
                             <div class="flex items-center gap-1.5 min-w-0 flex-1">
                                 <Icon name="edit" class_name="h-4 w-4 shrink-0 text-warning"/>
                                 <div class="min-w-0">
-                                    <p class="text-xs font-medium text-warning-foreground">"Editing"</p>
+                                    <p class="text-xs font-medium text-warning-foreground">{t(locale.get(), "message.editing")}</p>
                                     <p class="text-xs text-muted-foreground line-clamp-1">{content.clone()}</p>
                                 </div>
                             </div>
@@ -176,7 +176,7 @@ pub fn InputBar(
                 <div class="flex items-center gap-3 mb-2 px-2 py-2 rounded-lg bg-destructive/10">
                     <div class="flex items-center gap-2">
                         <span class="h-3 w-3 animate-pulse rounded-full bg-destructive"/>
-                        <span class="text-sm font-medium text-destructive-foreground">"Recording..."</span>
+                        <span class="text-sm font-medium text-destructive-foreground">{t(locale.get(), "message.recording")}</span>
                     </div>
                     <span class="text-sm tabular-nums text-muted-foreground">
                         {move || format!("{}:{:02}", recording_duration.get() / 60, recording_duration.get() % 60)}
@@ -204,7 +204,7 @@ pub fn InputBar(
                 // Attach button
                 <DropdownMenu>
                     <DropdownMenuTrigger>
-                        <Tooltip text={t(lang.get(), "attach.file")}>
+                        <Tooltip text={t(locale.get(), "attach.file")}>
                             <button class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md hover:bg-accent transition-colors">
                                 <Icon name="paperclip" class_name="h-5 w-5 text-muted-foreground"/>
                             </button>
@@ -213,11 +213,11 @@ pub fn InputBar(
                     <DropdownMenuContent class="min-w-[10rem]" align="start">
                         <DropdownMenuItem on_click=on_attach_photo_cb>
                             <Icon name="image" class_name="mr-2 h-4 w-4"/>
-                            {t(lang.get(), "attach.photo")}
+                            {t(locale.get(), "attach.photo")}
                         </DropdownMenuItem>
                         <DropdownMenuItem on_click=on_attach_file_cb>
                             <Icon name="file" class_name="mr-2 h-4 w-4"/>
-                            {t(lang.get(), "attach.file")}
+                            {t(locale.get(), "attach.file")}
                         </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
@@ -233,7 +233,7 @@ pub fn InputBar(
                 // Textarea
                 <div class="flex-1 relative">
                     <Textarea
-                        placeholder={t(lang.get(), "message.placeholder")}
+                        placeholder={t(locale.get(), "message.placeholder")}
                         class="min-h-[40px] max-h-[200px] resize-none py-2.5 text-sm"
                         rows=1u32
                         on_change=on_change_cb
@@ -275,7 +275,7 @@ pub fn InputBar(
             side="bottom".to_string()
         >
             <SheetHeader>
-                <SheetTitle>"Emoji"</SheetTitle>
+                <SheetTitle>{t(locale.get(), "message.emoji")}</SheetTitle>
             </SheetHeader>
             <div class="grid grid-cols-8 gap-2 p-2">
                 {EMOJI_LIST.iter().map(|emoji| {

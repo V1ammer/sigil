@@ -1,0 +1,153 @@
+//! WebSocket connection manager — connects after auth and dispatches real-time events.
+//!
+//! Wraps `WsClient` in a reactive shell.  After authentication, call `connect()` to
+//! start the background event loop.  Events are dispatched to the relevant Leptos
+//! stores (chats, messages, connectivity).
+
+use std::sync::Arc;
+use std::sync::Mutex;
+
+use leptos::prelude::*;
+use leptos::task::spawn_local;
+use messenger_core::api::client::AuthCredentials;
+use messenger_core::api::ws::client::WsClient;
+use messenger_proto::ws::{ClientFrame, ServerFrame};
+use uuid::Uuid;
+
+use super::connectivity::{ConnectivityState, WsConnectivity};
+use super::chats::ChatsState;
+
+/// Reactive WebSocket handle — Send + Sync for Leptos context.
+#[derive(Clone)]
+pub struct WsManager {
+    /// Queue of outgoing frames.  The event loop drains this periodically.
+    outgoing: Arc<Mutex<Vec<ClientFrame>>>,
+    /// Connectivity state shared with the UI.
+    pub connectivity: ConnectivityState,
+    /// Whether we have an active event loop running.
+    running: Arc<Mutex<bool>>,
+}
+
+impl WsManager {
+    /// Create a new disconnected manager.
+    pub fn new() -> Self {
+        Self {
+            outgoing: Arc::new(Mutex::new(Vec::new())),
+            connectivity: ConnectivityState::new(),
+            running: Arc::new(Mutex::new(false)),
+        }
+    }
+
+    /// Start the WebSocket connection and background event loop.
+    ///
+    /// Call once after successful authentication.
+    pub fn connect(&self, base_url: &str, auth: AuthCredentials) {
+        let url = base_url.to_string();
+        let outgoing = self.outgoing.clone();
+        let connectivity = self.connectivity.clone();
+
+        {
+            let mut running = self.running.lock().unwrap();
+            if *running {
+                tracing::warn!("ws already running");
+                return;
+            }
+            *running = true;
+        }
+
+        connectivity.ws_state.set(WsConnectivity::Connecting);
+
+        spawn_local(async move {
+            match WsClient::connect(&url, auth).await {
+                Ok(mut client) => {
+                    connectivity.ws_state.set(WsConnectivity::Connected);
+                    connectivity.api_reachable.set(true);
+                    tracing::debug!("ws connected");
+
+                    // Event loop — process outgoing and incoming frames.
+                    loop {
+                        // 1. Drain queued outgoing frames.
+                        let frames = {
+                            let mut q = outgoing.lock().unwrap();
+                            q.drain(..).collect::<Vec<_>>()
+                        };
+                        for frame in &frames {
+                            let _ = client.send(frame.clone());
+                        }
+
+                        // 2. Wait for the next incoming frame.
+                        match client.next_event().await {
+                            Some(frame) => Self::handle_frame(frame, &connectivity),
+                            None => {
+                                tracing::debug!("ws event loop ended");
+                                break;
+                            }
+                        }
+                    }
+
+                    connectivity.ws_state.set(WsConnectivity::Disconnected);
+                    connectivity.api_reachable.set(false);
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "ws initial connect failed");
+                    connectivity.ws_state.set(WsConnectivity::Disconnected);
+                }
+            }
+        });
+    }
+
+    /// Dispatch a single server frame to reactive stores.
+    fn handle_frame(frame: ServerFrame, connectivity: &ConnectivityState) {
+        match frame {
+            ServerFrame::AuthOk { user_id } => {
+                tracing::debug!(%user_id, "ws auth ok");
+                connectivity.ws_state.set(WsConnectivity::Connected);
+                connectivity.api_reachable.set(true);
+            }
+            ServerFrame::Pong => {}
+            ServerFrame::NewMessage { group_id, .. } => {
+                tracing::debug!(%group_id, "ws new message");
+                if let Some(chats) = use_context::<ChatsState>() {
+                    chats.chats.update(|list| {
+                        if let Some(chat) = list.iter_mut().find(|c| c.group_id == group_id) {
+                            chat.last_message_at = Some(js_sys::Date::now() as i64);
+                        }
+                    });
+                }
+            }
+            ServerFrame::NewWelcome { welcome_id, group_id } => {
+                tracing::debug!(%welcome_id, %group_id, "ws new welcome");
+            }
+            ServerFrame::KeyChange { .. } => {}
+            ServerFrame::Typing { .. } => {}
+            ServerFrame::Error { code, message } => {
+                tracing::warn!(%code, message = %message.as_deref().unwrap_or(""), "ws server error");
+            }
+            ServerFrame::AuthError { .. } => {
+                tracing::warn!("ws auth error");
+                connectivity.ws_state.set(WsConnectivity::Disconnected);
+            }
+        }
+    }
+
+    /// Queue a frame to be sent.  The event loop will pick it up.
+    pub fn send(&self, frame: ClientFrame) {
+        self.outgoing.lock().unwrap().push(frame);
+    }
+
+    /// Convenience: send a Typing indicator.
+    pub fn send_typing(&self, group_id: Uuid, started: bool) {
+        self.send(ClientFrame::Typing { group_id, started });
+    }
+
+    /// Whether the WebSocket is currently connected.
+    pub fn is_connected(&self) -> bool {
+        self.connectivity.ws_state.get() == WsConnectivity::Connected
+    }
+}
+
+impl Default for WsManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
