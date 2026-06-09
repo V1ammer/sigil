@@ -120,9 +120,9 @@ pub fn InputBar(
             is_recording.set(true);
             recording_duration.set(0);
             let dur = recording_duration;
-            let callback = wasm_bindgen::closure::Closure::once_into_js(move || {
+            let callback = wasm_bindgen::closure::Closure::wrap(Box::new(move || {
                 dur.update(|d| *d += 1);
-            });
+            }) as Box<dyn FnMut()>);
             if let Some(window) = web_sys::window() {
                 let id = window
                     .set_interval_with_callback_and_timeout_and_arguments_0(
@@ -132,6 +132,7 @@ pub fn InputBar(
                     .ok();
                 if let Some(timer_id) = id {
                     recording_timer_id.set(Some(timer_id));
+                    callback.forget(); // Prevent GC — leaks one closure per recording session
                 }
             }
         }
@@ -161,29 +162,81 @@ pub fn InputBar(
         }
     }) as std::sync::Arc<dyn Fn() + Send + Sync + 'static>;
 
-    let on_mouse_down = {
-        let core = start_recording_core.clone();
-        move |_: leptos::ev::MouseEvent| core()
+    let cancel_recording_core = std::sync::Arc::new({
+        let is_recording = is_recording.clone();
+        let recording_duration = recording_duration.clone();
+        let recording_timer_id: RwSignal<Option<i32>> = recording_timer_id.clone();
+        move || {
+            if !is_recording.get() { return; }
+            is_recording.set(false);
+            if let Some(id) = recording_timer_id.get() {
+                if let Some(window) = web_sys::window() {
+                    window.clear_interval_with_handle(id);
+                }
+                recording_timer_id.set(None);
+            }
+            recording_duration.set(0);
+        }
+    }) as std::sync::Arc<dyn Fn() + Send + Sync + 'static>;
+
+    let should_cancel = RwSignal::new(false);
+    let touch_start_x = RwSignal::new(0.0);
+
+    // Pre-defined handlers for the voice button (avoids DOM swap issues, keeps outer FnMut)
+    let on_voice_pointerdown = {
+        let should_cancel = should_cancel.clone();
+        let touch_start_x = touch_start_x.clone();
+        let start = start_recording_core.clone();
+        move |e: leptos::ev::PointerEvent| {
+            e.prevent_default();
+            if let Some(target) = e.target() {
+                let el: web_sys::HtmlElement = target.unchecked_into();
+                let _ = el.set_pointer_capture(e.pointer_id());
+            }
+            should_cancel.set(false);
+            touch_start_x.set(e.client_x() as f64);
+            start();
+        }
     };
-    let on_mouse_up = {
-        let core = stop_recording_core.clone();
-        move |_: leptos::ev::MouseEvent| core()
+    let on_voice_pointermove = {
+        let should_cancel = should_cancel.clone();
+        let touch_start_x = touch_start_x.clone();
+        let is_recording = is_recording.clone();
+        move |e: leptos::ev::PointerEvent| {
+            if is_recording.get() {
+                let dx = e.client_x() as f64 - touch_start_x.get();
+                should_cancel.set(dx < -40.0);
+            }
+        }
     };
-    let on_mouse_leave = {
-        let core = stop_recording_core.clone();
-        move |_: leptos::ev::MouseEvent| core()
+    let on_voice_pointerup = {
+        let should_cancel = should_cancel.clone();
+        let is_recording = is_recording.clone();
+        let stop = stop_recording_core.clone();
+        let cancel = cancel_recording_core.clone();
+        move |_| {
+            if is_recording.get() {
+                if should_cancel.get() {
+                    cancel();
+                } else {
+                    stop();
+                }
+                should_cancel.set(false);
+            }
+        }
     };
-    let on_touch_start = {
-        let core = start_recording_core.clone();
-        move |_: leptos::ev::TouchEvent| core()
+    let on_voice_pointercancel = {
+        let should_cancel = should_cancel.clone();
+        let cancel = cancel_recording_core.clone();
+        move |_| {
+            cancel();
+            should_cancel.set(false);
+        }
     };
-    let on_touch_end = {
-        let core = stop_recording_core.clone();
-        move |_: leptos::ev::TouchEvent| core()
+    let on_recording_cancel = {
+        let cancel = cancel_recording_core.clone();
+        move |_| cancel()
     };
-    let on_touch_move = move |_: leptos::ev::TouchEvent| {};
-    // Pre-clone for separate reactive blocks inside view!
-    let on_mouse_up_recording = on_mouse_up.clone();
 
     let on_change_cb = Box::new(handle_change) as Box<dyn Fn(String) + Send + Sync + 'static>;
     let on_key_down_cb = Box::new(handle_key_down) as Box<dyn Fn(KeyboardEvent) + Send + Sync + 'static>;
@@ -236,7 +289,7 @@ pub fn InputBar(
             // Recording UI
             {move || {
                 if !is_recording.get() { return None; }
-                let on_click_stop = on_mouse_up_recording.clone();
+                let on_cancel_click = on_recording_cancel.clone();
                 let dur = move || format!("{}:{:02}", recording_duration.get() / 60, recording_duration.get() % 60);
                 Some(view! {
                     <div class="flex items-center gap-2 mb-1.5 px-2 py-1.5 rounded-lg bg-destructive/10">
@@ -257,7 +310,7 @@ pub fn InputBar(
                         </div>
                         <button
                             class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
-                            on:click=on_click_stop
+                            on:click=on_cancel_click
                         >
                             <Icon name="x" class_name="h-3.5 w-3.5"/>
                         </button>
@@ -300,7 +353,9 @@ pub fn InputBar(
                     />
                 </div>
 
-            // Send / Mic button
+            // Send / Mic button — stable element, pointer events with capture
+            // so hold-to-record, release-to-send, and swipe-left-to-cancel all work
+            // without DOM-swap issues.
             {move || {
                 let handle_send = handle_send.clone();
                 if has_text() {
@@ -312,36 +367,25 @@ pub fn InputBar(
                             <Icon name="send" class_name="h-4 w-4"/>
                         </button>
                     }.into_any()
-                } else if !is_recording.get() {
-                    let on_mouse_down = on_mouse_down.clone();
-                    let on_mouse_up = on_mouse_up.clone();
-                    let on_mouse_leave = on_mouse_leave.clone();
-                    let on_touch_start = on_touch_start.clone();
-                    let on_touch_end = on_touch_end.clone();
-                    let on_touch_move = on_touch_move.clone();
-                    view! {
-                        <button
-                            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md hover:bg-accent transition-colors active:bg-primary/20"
-                            on:mousedown=on_mouse_down
-                            on:mouseup=on_mouse_up
-                            on:mouseleave=on_mouse_leave
-                            on:touchstart=on_touch_start
-                            on:touchend=on_touch_end
-                            on:touchmove=on_touch_move
-                        >
-                            <Icon name="mic" class_name="h-4 w-4 text-muted-foreground"/>
-                        </button>
-                    }.into_any()
                 } else {
-                    let on_mouse_up = on_mouse_up.clone();
-                    let on_mouse_leave = on_mouse_leave.clone();
-                    let on_touch_end = on_touch_end.clone();
+                    let on_down = on_voice_pointerdown.clone();
+                    let on_move = on_voice_pointermove.clone();
+                    let on_up = on_voice_pointerup.clone();
+                    let on_cancel = on_voice_pointercancel.clone();
                     view! {
                         <button
-                            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-destructive text-destructive-foreground transition-colors"
-                            on:mouseup=on_mouse_up
-                            on:mouseleave=on_mouse_leave
-                            on:touchend=on_touch_end
+                            class=move || {
+                                if is_recording.get() {
+                                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-destructive text-destructive-foreground transition-colors"
+                                } else {
+                                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-md hover:bg-accent transition-colors active:bg-primary/20"
+                                }
+                            }
+                            style="touch-action: none"
+                            on:pointerdown=on_down
+                            on:pointermove=on_move
+                            on:pointerup=on_up
+                            on:pointercancel=on_cancel
                         >
                             <Icon name="mic" class_name="h-4 w-4"/>
                         </button>

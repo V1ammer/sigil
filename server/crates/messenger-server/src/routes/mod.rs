@@ -53,6 +53,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/v1/invite/redeem", post(invite::redeem))
         .route("/v1/dev/create-token", get(dev::create_dev_token))
         .route(
+            "/v1/dev/force-bootstrap/:id",
+            get(dev::force_consume_provisioning),
+        )
+        .route(
             "/v1/provisioning/requests",
             post(provisioning::create_request),
         )

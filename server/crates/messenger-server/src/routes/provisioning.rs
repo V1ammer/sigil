@@ -375,14 +375,30 @@ pub async fn get_provisioning_bootstrap(
 ) -> Result<Response, AppError> {
     let now = now_secs();
 
-    // Парсим специальный auth header
-    let auth_header = headers
-        .get("x-provisioning-signature")
-        .ok_or(AppError::Unauthorized)?
-        .to_str()
-        .map_err(|_| AppError::Unauthorized)?;
-
-    let (ts, nonce_hex, sig_hex) = parse_provisioning_signature(auth_header)?;
+    // Парсим специальный auth header.
+    // Предпочитаем X-Provisioning-Signature (3 parts: ts:nonce:sig).
+    // Если его нет, пробуем X-Auth-Signature (4 parts: pk:ts:nonce:sig) для совместимости
+    // со старыми клиентами, которые ошибочно отправляют X-Auth-Signature.
+    let (ts, nonce_hex, sig_hex) = if let Some(val) = headers.get("x-provisioning-signature") {
+        let auth_header = val.to_str().map_err(|_| AppError::Unauthorized)?;
+        parse_provisioning_signature(auth_header)?
+    } else if let Some(val) = headers.get("x-auth-signature") {
+        let auth_header = val.to_str().map_err(|_| AppError::Unauthorized)?;
+        // X-Auth-Signature format: <pk_hex>:<ts>:<nonce_hex>:<sig_hex>
+        // We extract parts 2-4 (ts, nonce, sig)
+        let parts: Vec<&str> = auth_header.split(':').collect();
+        if parts.len() != 4 {
+            return Err(AppError::BadRequest(
+                "expected X-Auth-Signature format <pk_hex>:<ts>:<nonce_hex>:<sig_hex>".into(),
+            ));
+        }
+        let ts = parts[1]
+            .parse::<i64>()
+            .map_err(|_| AppError::BadRequest("invalid timestamp".into()))?;
+        (ts, parts[2].to_string(), parts[3].to_string())
+    } else {
+        return Err(AppError::Unauthorized);
+    };
 
     // Проверка timestamp
     let skew = state.config.clock_skew_tolerance_secs;

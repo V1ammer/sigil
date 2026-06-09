@@ -3,18 +3,20 @@
 //! Эти эндпоинты **не** предназначены для production и отключены
 //! в релизных сборках.
 
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use base64::Engine;
 use rand::RngCore;
-use sea_orm::ActiveModelTrait;
+use sea_orm::{ActiveModelTrait, EntityTrait, Set};
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::error::typed_response;
+use crate::error::{typed_response, AppError};
 use crate::services::invite::now_secs;
 use crate::state::AppState;
+use messenger_entity::device_provisioning_requests;
+use messenger_entity::device_provisioning_requests::Entity as ProvRequests;
 use messenger_entity::invitation_tokens;
 
 #[derive(Serialize)]
@@ -81,5 +83,67 @@ pub async fn create_dev_token(
         };
 
         Ok(typed_response(&headers, StatusCode::CREATED, &resp))
+    }
+}
+
+/// `GET /v1/dev/force-bootstrap/:id` — dev-only: consume a provisioning request
+/// without signature verification. Only available in debug builds.
+#[allow(clippy::module_name_repetitions)]
+pub async fn force_consume_provisioning(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    #[cfg(not(debug_assertions))]
+    {
+        let _ = (state, id, headers);
+        return Err(AppError::NotFound);
+    }
+
+    #[cfg(debug_assertions)]
+    {
+        let now = now_secs();
+        let provisioning = ProvRequests::find_by_id(id)
+            .one(&state.db)
+            .await?
+            .ok_or(AppError::NotFound)?;
+
+        if provisioning.status != "approved" {
+            return Err(AppError::ProvisioningExpired);
+        }
+        if provisioning.expires_at <= now {
+            return Err(AppError::ProvisioningExpired);
+        }
+
+        let bootstrap_blob = provisioning
+            .encrypted_bootstrap_blob
+            .clone()
+            .ok_or_else(|| AppError::Internal(anyhow::anyhow!("approved without blob")))?;
+
+        let new_device_id = provisioning
+            .new_device_id
+            .ok_or_else(|| AppError::Internal(anyhow::anyhow!("approved without device_id")))?;
+
+        // Mark as consumed
+        let mut active: device_provisioning_requests::ActiveModel = provisioning.into();
+        active.status = Set("consumed".to_string());
+        active.encrypted_bootstrap_blob = Set(None);
+        active.update(&state.db).await?;
+
+        #[derive(Serialize)]
+        struct ForceBootstrapResponse {
+            new_device_id: Uuid,
+            #[serde(with = "serde_bytes")]
+            encrypted_bootstrap_blob: Vec<u8>,
+        }
+
+        Ok(typed_response(
+            &headers,
+            StatusCode::OK,
+            &ForceBootstrapResponse {
+                new_device_id,
+                encrypted_bootstrap_blob: bootstrap_blob,
+            },
+        ))
     }
 }

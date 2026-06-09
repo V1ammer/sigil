@@ -88,15 +88,14 @@ impl ApiClient {
         let canonical = signing::build_signed_message(method, &path, ts, &nonce, &body_bytes);
         let pair = Ed25519Pair::from_secret_bytes(temp_signing_secret);
         let sig = pair.sign(&canonical);
-        // Use the hex-encoded temp public key as the "device id" for auth
+        // Provisioning signature format: <ts>:<nonce_hex>:<sig_hex> (3 parts, no device id)
         let auth_header = format!(
-            "{}:{}:{}:{}",
-            hex::encode(temp_signing_public),
+            "{}:{}:{}",
             ts,
             hex::encode(&nonce),
             hex::encode(&sig)
         );
-        headers.push(("X-Auth-Signature".to_string(), auth_header));
+        headers.push(("X-Provisioning-Signature".to_string(), auth_header));
 
         let url = format!("{}{}", self.base_url, path);
         let resp = self.transport.request(method, &url, headers, body_bytes).await?;
