@@ -40,7 +40,9 @@ impl WsManager {
 
     /// Start the WebSocket connection and background event loop.
     ///
-    /// Call once after successful authentication.
+    /// Call once after successful authentication. The event loop reconnects
+    /// automatically with exponential backoff (1s, 2s, 4s, 8s, capped at 30s)
+    /// after the WebSocket drops.
     pub fn connect(&self, base_url: &str, auth: AuthCredentials) {
         let url = base_url.to_string();
         let outgoing = self.outgoing.clone();
@@ -58,40 +60,45 @@ impl WsManager {
         connectivity.ws_state.set(WsConnectivity::Connecting);
 
         spawn_local(async move {
-            match WsClient::connect(&url, auth).await {
-                Ok(mut client) => {
-                    connectivity.ws_state.set(WsConnectivity::Connected);
-                    connectivity.api_reachable.set(true);
-                    tracing::debug!("ws connected");
+            let mut backoff_ms: u32 = 1_000;
+            loop {
+                connectivity.ws_state.set(WsConnectivity::Connecting);
+                match WsClient::connect(&url, auth.clone()).await {
+                    Ok(mut client) => {
+                        connectivity.ws_state.set(WsConnectivity::Connected);
+                        connectivity.api_reachable.set(true);
+                        backoff_ms = 1_000;
+                        tracing::debug!("ws connected");
 
-                    // Event loop — process outgoing and incoming frames.
-                    loop {
-                        // 1. Drain queued outgoing frames.
-                        let frames = {
-                            let mut q = outgoing.lock().unwrap();
-                            q.drain(..).collect::<Vec<_>>()
-                        };
-                        for frame in &frames {
-                            let _ = client.send(frame.clone());
-                        }
+                        loop {
+                            let frames = {
+                                let mut q = outgoing.lock().unwrap();
+                                q.drain(..).collect::<Vec<_>>()
+                            };
+                            for frame in &frames {
+                                let _ = client.send(frame.clone());
+                            }
 
-                        // 2. Wait for the next incoming frame.
-                        match client.next_event().await {
-                            Some(frame) => Self::handle_frame(frame, &connectivity),
-                            None => {
-                                tracing::debug!("ws event loop ended");
-                                break;
+                            match client.next_event().await {
+                                Some(frame) => Self::handle_frame(frame, &connectivity),
+                                None => {
+                                    tracing::debug!("ws event loop ended");
+                                    break;
+                                }
                             }
                         }
-                    }
 
-                    connectivity.ws_state.set(WsConnectivity::Disconnected);
-                    connectivity.api_reachable.set(false);
+                        connectivity.ws_state.set(WsConnectivity::Disconnected);
+                        connectivity.api_reachable.set(false);
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "ws connect failed, will retry");
+                        connectivity.ws_state.set(WsConnectivity::Disconnected);
+                    }
                 }
-                Err(e) => {
-                    tracing::warn!(error = %e, "ws initial connect failed");
-                    connectivity.ws_state.set(WsConnectivity::Disconnected);
-                }
+
+                gloo_timers::future::TimeoutFuture::new(backoff_ms).await;
+                backoff_ms = (backoff_ms.saturating_mul(2)).min(30_000);
             }
         });
     }
