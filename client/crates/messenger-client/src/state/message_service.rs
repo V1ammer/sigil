@@ -149,8 +149,26 @@ impl MessageService {
 
         match api.post_message(group_id, &req).await {
             Ok(resp) => {
-                // Optimistic update
-                self.add_own_message(group_id, text, client_message_id, now);
+                // Optimistic update — preserve reply/thread context so the local
+                // bubble shows the reply quote without waiting for the server echo.
+                self.messages.by_group.update(|map| {
+                    map.entry(group_id).or_default().push(DisplayMessage {
+                        id: resp.message_id,
+                        client_message_id,
+                        group_id,
+                        sender_user_id: Uuid::nil(),
+                        sender_device_id: Uuid::nil(),
+                        kind: MessageKind::Text,
+                        body: MessageBody::Text(text.to_string()),
+                        reply_to_message_id: reply_to,
+                        thread_root_id: thread_root,
+                        created_at: now,
+                        edited_at: None,
+                        deleted_at: None,
+                        delivery_status: DeliveryStatus::SentToServer,
+                        reactions: Vec::new(),
+                    });
+                });
                 Some(resp.message_id)
             }
             Err(e) => {
