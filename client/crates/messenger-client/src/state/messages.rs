@@ -29,18 +29,24 @@ pub enum MessageKind {
 pub enum MessageBody {
     Text(String),
     Voice {
-        duration_secs: u32,
+        attachment_id: Uuid,
+        decryption_key: Vec<u8>,
+        duration_ms: u32,
         waveform: Vec<u8>,
         transcription: Option<String>,
     },
     Image {
-        thumbnail: Vec<u8>,
-        full: Vec<u8>,
-    },
-    Video {
-        thumbnail: Vec<u8>,
+        attachment_id: Uuid,
+        decryption_key: Vec<u8>,
+        mime: String,
+        width: u32,
+        height: u32,
+        thumb: Option<Vec<u8>>,
     },
     File {
+        attachment_id: Uuid,
+        decryption_key: Vec<u8>,
+        mime: String,
         name: String,
         size: u64,
     },

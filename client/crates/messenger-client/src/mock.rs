@@ -71,6 +71,10 @@ pub struct Message {
     pub thumbnail_url: Option<String>,
     pub file_name: Option<String>,
     pub file_size: Option<u64>,
+    pub mime_type: Option<String>,
+    pub attachment_id: Option<String>,
+    /// Base64-encoded decryption key (32 bytes).
+    pub decryption_key: Option<String>,
     // System specific
     pub system_action: Option<String>,
 }
@@ -306,6 +310,9 @@ fn create_messages_for(chat_id: &str, participant_id: &str, participant_name: &s
         thumbnail_url: None,
         file_name: None,
         file_size: None,
+        mime_type: None,
+        attachment_id: None,
+        decryption_key: None,
         system_action: None,
     });
 
@@ -332,6 +339,9 @@ fn create_messages_for(chat_id: &str, participant_id: &str, participant_name: &s
         thumbnail_url: None,
         file_name: None,
         file_size: None,
+        mime_type: None,
+        attachment_id: None,
+        decryption_key: None,
         system_action: None,
     });
 
@@ -358,6 +368,9 @@ fn create_messages_for(chat_id: &str, participant_id: &str, participant_name: &s
         thumbnail_url: None,
         file_name: None,
         file_size: None,
+        mime_type: None,
+        attachment_id: None,
+        decryption_key: None,
         system_action: None,
     });
 
@@ -385,6 +398,9 @@ fn create_messages_for(chat_id: &str, participant_id: &str, participant_name: &s
         thumbnail_url: None,
         file_name: None,
         file_size: None,
+        mime_type: None,
+        attachment_id: None,
+        decryption_key: None,
         system_action: None,
     });
 
@@ -421,6 +437,9 @@ fn create_messages_for(chat_id: &str, participant_id: &str, participant_name: &s
         thumbnail_url: None,
         file_name: None,
         file_size: None,
+        mime_type: None,
+        attachment_id: None,
+        decryption_key: None,
         system_action: None,
     });
 
@@ -455,6 +474,9 @@ fn create_messages_for(chat_id: &str, participant_id: &str, participant_name: &s
         thumbnail_url: None,
         file_name: None,
         file_size: None,
+        mime_type: None,
+        attachment_id: None,
+        decryption_key: None,
         system_action: None,
     });
 
@@ -482,6 +504,9 @@ fn create_messages_for(chat_id: &str, participant_id: &str, participant_name: &s
         thumbnail_url: None,
         file_name: None,
         file_size: None,
+        mime_type: None,
+        attachment_id: None,
+        decryption_key: None,
         system_action: None,
     });
 
@@ -509,6 +534,9 @@ fn create_messages_for(chat_id: &str, participant_id: &str, participant_name: &s
         thumbnail_url: None,
         file_name: Some("design_v2.fig".into()),
         file_size: Some(2_456_789),
+        mime_type: None,
+        attachment_id: None,
+        decryption_key: None,
         system_action: None,
     });
 
@@ -536,6 +564,9 @@ fn create_messages_for(chat_id: &str, participant_id: &str, participant_name: &s
         thumbnail_url: None,
         file_name: None,
         file_size: None,
+        mime_type: None,
+        attachment_id: None,
+        decryption_key: None,
         system_action: Some("new_device".into()),
     });
 
@@ -563,6 +594,9 @@ fn create_messages_for(chat_id: &str, participant_id: &str, participant_name: &s
         thumbnail_url: None,
         file_name: None,
         file_size: None,
+        mime_type: None,
+        attachment_id: None,
+        decryption_key: None,
         system_action: None,
     });
 
@@ -590,6 +624,9 @@ fn create_messages_for(chat_id: &str, participant_id: &str, participant_name: &s
         thumbnail_url: None,
         file_name: None,
         file_size: None,
+        mime_type: None,
+        attachment_id: None,
+        decryption_key: None,
         system_action: None,
     });
 
@@ -621,6 +658,9 @@ fn create_messages_for(chat_id: &str, participant_id: &str, participant_name: &s
         thumbnail_url: None,
         file_name: None,
         file_size: None,
+        mime_type: None,
+        attachment_id: None,
+        decryption_key: None,
         system_action: None,
     });
 
@@ -654,6 +694,9 @@ fn create_group_messages() -> Vec<Message> {
         thumbnail_url: None,
         file_name: None,
         file_size: None,
+        mime_type: None,
+        attachment_id: None,
+        decryption_key: None,
         system_action: None,
     });
 
@@ -680,6 +723,9 @@ fn create_group_messages() -> Vec<Message> {
         thumbnail_url: None,
         file_name: None,
         file_size: None,
+        mime_type: None,
+        attachment_id: None,
+        decryption_key: None,
         system_action: None,
     });
 
@@ -711,6 +757,9 @@ fn create_group_messages() -> Vec<Message> {
         thumbnail_url: None,
         file_name: None,
         file_size: None,
+        mime_type: None,
+        attachment_id: None,
+        decryption_key: None,
         system_action: None,
     });
 
@@ -743,6 +792,9 @@ fn create_group_messages() -> Vec<Message> {
         thumbnail_url: None,
         file_name: None,
         file_size: None,
+        mime_type: None,
+        attachment_id: None,
+        decryption_key: None,
         system_action: None,
     });
 
@@ -769,6 +821,9 @@ fn create_group_messages() -> Vec<Message> {
         thumbnail_url: None,
         file_name: None,
         file_size: None,
+        mime_type: None,
+        attachment_id: None,
+        decryption_key: None,
         system_action: None,
     });
 
@@ -795,6 +850,9 @@ fn create_group_messages() -> Vec<Message> {
         thumbnail_url: None,
         file_name: Some("project_requirements.pdf".into()),
         file_size: Some(1_234_567),
+        mime_type: None,
+        attachment_id: None,
+        decryption_key: None,
         system_action: None,
     });
 
@@ -826,6 +884,9 @@ fn create_group_messages() -> Vec<Message> {
         thumbnail_url: None,
         file_name: None,
         file_size: None,
+        mime_type: None,
+        attachment_id: None,
+        decryption_key: None,
         system_action: None,
     });
 
@@ -864,6 +925,9 @@ pub fn mock_chats() -> Vec<Chat> {
                 thumbnail_url: None,
                 file_name: None,
                 file_size: None,
+                mime_type: None,
+                attachment_id: None,
+                decryption_key: None,
                 system_action: None,
             }),
             unread_count: 0,
@@ -903,6 +967,9 @@ pub fn mock_chats() -> Vec<Chat> {
                 thumbnail_url: None,
                 file_name: None,
                 file_size: None,
+                mime_type: None,
+                attachment_id: None,
+                decryption_key: None,
                 system_action: None,
             }),
             unread_count: 3,
@@ -942,6 +1009,9 @@ pub fn mock_chats() -> Vec<Chat> {
                 thumbnail_url: None,
                 file_name: None,
                 file_size: None,
+                mime_type: None,
+                attachment_id: None,
+                decryption_key: None,
                 system_action: None,
             }),
             unread_count: 0,
@@ -981,6 +1051,9 @@ pub fn mock_chats() -> Vec<Chat> {
                 thumbnail_url: None,
                 file_name: None,
                 file_size: None,
+                mime_type: None,
+                attachment_id: None,
+                decryption_key: None,
                 system_action: None,
             }),
             unread_count: 1,
@@ -1020,6 +1093,9 @@ pub fn mock_chats() -> Vec<Chat> {
                 thumbnail_url: None,
                 file_name: None,
                 file_size: None,
+                mime_type: None,
+                attachment_id: None,
+                decryption_key: None,
                 system_action: None,
             }),
             unread_count: 0,
@@ -1059,6 +1135,9 @@ pub fn mock_chats() -> Vec<Chat> {
                 thumbnail_url: None,
                 file_name: Some("Marketing_Plan_Q3.pdf".into()),
                 file_size: Some(3_456_789),
+                mime_type: None,
+                attachment_id: None,
+                decryption_key: None,
                 system_action: None,
             }),
             unread_count: 0,
@@ -1098,6 +1177,9 @@ pub fn mock_chats() -> Vec<Chat> {
                 thumbnail_url: None,
                 file_name: None,
                 file_size: None,
+                mime_type: None,
+                attachment_id: None,
+                decryption_key: None,
                 system_action: None,
             }),
             unread_count: 5,
@@ -1137,6 +1219,9 @@ pub fn mock_chats() -> Vec<Chat> {
                 thumbnail_url: None,
                 file_name: None,
                 file_size: None,
+                mime_type: None,
+                attachment_id: None,
+                decryption_key: None,
                 system_action: None,
             }),
             unread_count: 0,
@@ -1176,6 +1261,9 @@ pub fn mock_chats() -> Vec<Chat> {
                 thumbnail_url: None,
                 file_name: None,
                 file_size: None,
+                mime_type: None,
+                attachment_id: None,
+                decryption_key: None,
                 system_action: None,
             }),
             unread_count: 0,
@@ -1215,6 +1303,9 @@ pub fn mock_chats() -> Vec<Chat> {
                 thumbnail_url: None,
                 file_name: None,
                 file_size: None,
+                mime_type: None,
+                attachment_id: None,
+                decryption_key: None,
                 system_action: None,
             }),
             unread_count: 0,
@@ -1276,6 +1367,9 @@ pub fn mock_thread_messages() -> Vec<Message> {
             thumbnail_url: None,
             file_name: None,
             file_size: None,
+            mime_type: None,
+            attachment_id: None,
+            decryption_key: None,
             system_action: None,
         },
         Message {
@@ -1301,6 +1395,9 @@ pub fn mock_thread_messages() -> Vec<Message> {
             thumbnail_url: None,
             file_name: None,
             file_size: None,
+            mime_type: None,
+            attachment_id: None,
+            decryption_key: None,
             system_action: None,
         },
         Message {
@@ -1331,6 +1428,9 @@ pub fn mock_thread_messages() -> Vec<Message> {
             thumbnail_url: None,
             file_name: None,
             file_size: None,
+            mime_type: None,
+            attachment_id: None,
+            decryption_key: None,
             system_action: None,
         },
         Message {
@@ -1356,6 +1456,9 @@ pub fn mock_thread_messages() -> Vec<Message> {
             thumbnail_url: None,
             file_name: None,
             file_size: None,
+            mime_type: None,
+            attachment_id: None,
+            decryption_key: None,
             system_action: None,
         },
         Message {
@@ -1381,6 +1484,9 @@ pub fn mock_thread_messages() -> Vec<Message> {
             thumbnail_url: None,
             file_name: None,
             file_size: None,
+            mime_type: None,
+            attachment_id: None,
+            decryption_key: None,
             system_action: None,
         },
     ]

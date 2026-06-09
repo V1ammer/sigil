@@ -43,6 +43,20 @@ pub enum ChatFilter {
 
 /// Key for persisting display name in localStorage.
 const DISPLAY_NAME_CACHE_KEY: &str = "messenger_chat_display_names";
+/// Key for persisting per-chat user preferences (pin, mute, archive).
+const CHAT_PREFS_KEY: &str = "messenger_chat_prefs";
+
+/// Per-chat client-side preferences. The server does not store these — they are
+/// purely a local UX convenience.
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct ChatPrefs {
+    #[serde(default)]
+    pub pinned: bool,
+    #[serde(default)]
+    pub muted: bool,
+    #[serde(default)]
+    pub archived: bool,
+}
 
 /// Reactive chat-list state.
 #[derive(Clone)]
@@ -53,19 +67,96 @@ pub struct ChatsState {
     pub filter: RwSignal<ChatFilter>,
     /// Cache of group_id → display_name for direct chats.
     pub display_name_cache: RwSignal<HashMap<Uuid, String>>,
+    /// Per-chat preferences (pin, mute, archive) — local only.
+    pub prefs: RwSignal<HashMap<Uuid, ChatPrefs>>,
 }
 
 impl ChatsState {
     #[must_use]
     pub fn new() -> Self {
         let cache = Self::load_cache_from_storage();
+        let prefs = Self::load_prefs_from_storage();
         Self {
             chats: RwSignal::new(Vec::new()),
             selected: RwSignal::new(None),
             search: RwSignal::new(String::new()),
             filter: RwSignal::new(ChatFilter::All),
             display_name_cache: RwSignal::new(cache),
+            prefs: RwSignal::new(prefs),
         }
+    }
+
+    /// Read the prefs for a chat (defaults to all-false).
+    pub fn prefs_for(&self, group_id: Uuid) -> ChatPrefs {
+        self.prefs
+            .get_untracked()
+            .get(&group_id)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    fn update_prefs<F: FnOnce(&mut ChatPrefs)>(&self, group_id: Uuid, f: F) {
+        self.prefs.update(|map| {
+            let entry = map.entry(group_id).or_default();
+            f(entry);
+        });
+        self.persist_prefs();
+        // Also reflect in the visible chat row so sorting picks it up.
+        self.chats.update(|chats| {
+            if let Some(c) = chats.iter_mut().find(|c| c.group_id == group_id) {
+                let p = self.prefs.get_untracked();
+                if let Some(pref) = p.get(&group_id) {
+                    c.pinned = pref.pinned;
+                    c.muted = pref.muted;
+                }
+            }
+        });
+    }
+
+    pub fn toggle_pin(&self, group_id: Uuid) {
+        self.update_prefs(group_id, |p| p.pinned = !p.pinned);
+    }
+
+    pub fn toggle_mute(&self, group_id: Uuid) {
+        self.update_prefs(group_id, |p| p.muted = !p.muted);
+    }
+
+    pub fn toggle_archive(&self, group_id: Uuid) {
+        self.update_prefs(group_id, |p| p.archived = !p.archived);
+    }
+
+    fn persist_prefs(&self) {
+        if let Some(storage) = web_sys::window()
+            .and_then(|w| w.local_storage().ok())
+            .flatten()
+        {
+            let serialized: Vec<(String, ChatPrefs)> = self
+                .prefs
+                .get_untracked()
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.clone()))
+                .collect();
+            if let Ok(json) = serde_json::to_string(&serialized) {
+                let _ = storage.set_item(CHAT_PREFS_KEY, &json);
+            }
+        }
+    }
+
+    fn load_prefs_from_storage() -> HashMap<Uuid, ChatPrefs> {
+        if let Some(storage) = web_sys::window()
+            .and_then(|w| w.local_storage().ok())
+            .flatten()
+        {
+            if let Ok(Some(json)) = storage.get_item(CHAT_PREFS_KEY) {
+                if let Ok(entries) = serde_json::from_str::<Vec<(String, ChatPrefs)>>(&json) {
+                    return entries
+                        .into_iter()
+                        .filter_map(|(id_str, p)| id_str.parse::<Uuid>().ok().map(|id| (id, p)))
+                        .collect();
+                }
+            }
+        }
+        HashMap::new()
     }
 
     /// Load chats from the server via API, replacing current list.
@@ -78,6 +169,7 @@ impl ChatsState {
     pub async fn load_from_server(&self, api: &ApiClient) -> Result<(), messenger_core::api::ApiError> {
         let resp = api.list_groups(None).await?;
         let cache = self.display_name_cache.get_untracked();
+        let prefs = self.prefs.get_untracked();
         let chats: Vec<Chat> = resp
             .groups
             .into_iter()
@@ -92,6 +184,7 @@ impl ChatsState {
                     .get(&g.id)
                     .cloned()
                     .unwrap_or_else(|| g.id.to_string());
+                let p = prefs.get(&g.id).cloned().unwrap_or_default();
                 Chat {
                     group_id: g.id,
                     chat_type,
@@ -100,8 +193,8 @@ impl ChatsState {
                     last_message_preview: None,
                     last_message_at: None,
                     unread_count: 0,
-                    muted: false,
-                    pinned: false,
+                    muted: p.muted,
+                    pinned: p.pinned,
                     current_epoch: g.current_epoch,
                 }
             })
@@ -174,15 +267,19 @@ impl ChatsState {
     }
 
     /// Returns a memoised derived signal that filters, searches and sorts the
-    /// chat list.
+    /// chat list. Archived chats are hidden unless the search query is non-empty.
     pub fn filtered(&self) -> impl Fn() -> Vec<Chat> + 'static {
         let chats = self.chats;
         let search = self.search;
         let filter = self.filter;
+        let prefs = self.prefs;
         move || {
             let mut list = chats.get();
             let s = search.get().to_lowercase();
-            if !s.is_empty() {
+            let prefs_map = prefs.get();
+            if s.is_empty() {
+                list.retain(|c| !prefs_map.get(&c.group_id).map_or(false, |p| p.archived));
+            } else {
                 list.retain(|c| c.display_name.to_lowercase().contains(&s));
             }
             match filter.get() {

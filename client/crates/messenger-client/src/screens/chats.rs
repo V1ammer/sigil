@@ -7,13 +7,15 @@ use std::sync::Arc;
 
 use uuid::Uuid;
 
+use crate::chat::chat_header::ChatHeader;
 use crate::chat::input_bar::{InputBar, InputPreview};
-use crate::chat::message_bridge::display_vec_to_mock;
+use crate::chat::message_bridge::{display_to_mock, display_vec_to_mock};
 use crate::chat::message_list::MessageList;
-use crate::components::dropdown_menu::{DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger};
+use crate::chat::thread_panel::ThreadPanel;
 use crate::i18n::I18n;
+use crate::mock;
 use crate::sidebar::real_chat_list::RealChatList;
-use crate::state::chats::ChatsState;
+use crate::state::chats::{Chat as StateChat, ChatType, ChatsState};
 use crate::state::message_service::MessageService;
 use crate::state::session::{build_api_client, use_session, SessionState};
 use crate::t;
@@ -24,6 +26,47 @@ fn display_name_for(chats: &[crate::state::chats::Chat], group_id: Uuid) -> Stri
         .find(|c| c.group_id == group_id)
         .map(|c| c.display_name.clone())
         .unwrap_or_else(|| group_id.to_string())
+}
+
+/// Build a minimal `mock::Chat` from a `state::chats::Chat` for use by `ChatHeader`.
+///
+/// `ChatHeader` was authored against the mock structure during UI-first development;
+/// this avoids duplicating its prop surface.
+fn to_mock_chat(c: &StateChat, display_name: &str) -> mock::Chat {
+    mock::Chat {
+        id: c.group_id.to_string(),
+        chat_type: if c.chat_type == ChatType::Direct { "direct" } else { "group" }.to_string(),
+        name: display_name.to_string(),
+        avatar_url: None,
+        participant_ids: Vec::new(),
+        last_message: None,
+        unread_count: c.unread_count,
+        is_pinned: c.pinned,
+        is_muted: c.muted,
+        muted_until: None,
+        is_archived: false,
+        has_security_changes: false,
+        device_count: None,
+    }
+}
+
+/// Placeholder chat for the header while real chat data is being fetched.
+fn placeholder_mock_chat(group_id: Uuid, display_name: &str) -> mock::Chat {
+    mock::Chat {
+        id: group_id.to_string(),
+        chat_type: "direct".to_string(),
+        name: display_name.to_string(),
+        avatar_url: None,
+        participant_ids: Vec::new(),
+        last_message: None,
+        unread_count: 0,
+        is_pinned: false,
+        is_muted: false,
+        muted_until: None,
+        is_archived: false,
+        has_security_changes: false,
+        device_count: None,
+    }
 }
 
 #[must_use]
@@ -79,20 +122,18 @@ pub fn ChatsScreen() -> impl IntoView {
         }
     }) as Arc<dyn Fn(String) + Send + Sync + 'static>;
 
-    let on_back = move |_| selected.set(None);
-
-    // Send handler
+    // Send handler — text only, no reply context (reply handled in InputBar callback below)
     let on_send_handler = {
         let msg_svc = message_service.clone();
         let selected = selected.clone();
-        Arc::new(move |text: String| {
+        Arc::new(move |text: String, reply_to: Option<uuid::Uuid>| {
             if let Some(group_id) = selected.get_untracked() {
                 let svc = msg_svc.clone();
                 spawn_local(async move {
-                    svc.send_text(group_id, &text, None).await;
+                    svc.send_text(group_id, &text, reply_to).await;
                 });
             }
-        }) as Arc<dyn Fn(String) + Send + Sync + 'static>
+        }) as Arc<dyn Fn(String, Option<uuid::Uuid>) + Send + Sync + 'static>
     };
 
     let session = use_session();
@@ -136,12 +177,19 @@ pub fn ChatsScreen() -> impl IntoView {
             if let (Some(gid), Ok(id)) = (group_id, uuid::Uuid::parse_str(msg_id)) {
                 let msgs = msg_svc.messages.by_group.get_untracked();
                 if let Some(msg) = msgs.get(&gid).and_then(|ms| ms.iter().find(|m| m.id == id)) {
-                    let sender = msg.sender_user_id.to_string();
+                    // Show short id as fallback; proper user-name lookup is TODO.
+                    let sender = msg
+                        .sender_user_id
+                        .to_string()
+                        .chars()
+                        .take(8)
+                        .collect::<String>();
                     let text = match &msg.body {
                         crate::state::messages::MessageBody::Text(t) => t.clone(),
                         _ => msg_id.to_string(),
                     };
                     preview.set(InputPreview::Reply {
+                        message_id: msg_id.to_string(),
                         sender_name: sender,
                         content: text,
                     });
@@ -203,6 +251,16 @@ pub fn ChatsScreen() -> impl IntoView {
         }
     }) as Arc<dyn Fn(&str, String) + Send + Sync + 'static>;
 
+    // Currently open thread root (None = no thread).
+    let thread_root: RwSignal<Option<Uuid>> = RwSignal::new(None);
+    let on_thread_open_list = Arc::new({
+        move |msg_id: &str| {
+            if let Ok(id) = uuid::Uuid::parse_str(msg_id) {
+                thread_root.set(Some(id));
+            }
+        }
+    }) as Arc<dyn Fn(&str) + Send + Sync + 'static>;
+
     view! {
         <div class="flex h-full bg-background overflow-hidden">
             {/* Sidebar */}
@@ -218,16 +276,48 @@ pub fn ChatsScreen() -> impl IntoView {
             </div>
 
             {/* Main area */}
+            {
+                let messages_state_for_main = messages_state.clone();
+                let messages_state_for_thread = messages_state.clone();
+                let msg_svc_for_thread = msg_svc.clone();
+                let sel_for_thread = sel.clone();
+                let locale_for_thread = locale;
+                view! {
+            <div class="contents">
             {move || {
                 let on_reply_list = on_reply_list.clone();
                 let on_edit_list = on_edit_list.clone();
                 let on_delete_list = on_delete_list.clone();
                 let on_reaction_list = on_reaction_list.clone();
+                let on_thread_open_list = on_thread_open_list.clone();
+                let messages_state_for_inner = messages_state_for_main.clone();
                 selected.get().map(|group_id| {
-                let name = display_name_for(&chats_signal.get(), group_id);
-                let msgs = messages_state.for_group(group_id);
+                let chats_now = chats_signal.get();
+                let name = display_name_for(&chats_now, group_id);
+                let state_chat = chats_now.iter().find(|c| c.group_id == group_id).cloned();
+                let msgs = messages_state_for_inner.for_group(group_id);
                 let is_loading = loading_messages.get();
                 let on_send = on_send_handler.clone();
+
+                // Wire chat-header actions to ChatsState mutators.
+                let cs = chats_state.clone();
+                let on_pin_toggle = Box::new(move || cs.toggle_pin(group_id)) as Box<dyn Fn() + Send + Sync + 'static>;
+                let cs2 = chats_state.clone();
+                let on_mute_toggle = Box::new(move || cs2.toggle_mute(group_id)) as Box<dyn Fn() + Send + Sync + 'static>;
+                let cs3 = chats_state.clone();
+                let on_archive = Box::new(move || {
+                    cs3.toggle_archive(group_id);
+                    // Leaving the chat view after archiving feels natural.
+                    cs3.selected.set(None);
+                }) as Box<dyn Fn() + Send + Sync + 'static>;
+                let on_mark_read_cb = Box::new(|| {}) as Box<dyn Fn() + Send + Sync + 'static>;
+                let on_leave_cb = Box::new(|| {}) as Box<dyn Fn() + Send + Sync + 'static>;
+                let on_delete_cb = Box::new(|| {}) as Box<dyn Fn() + Send + Sync + 'static>;
+                let on_back_cb = Box::new(move || selected.set(None)) as Box<dyn Fn() + Send + Sync + 'static>;
+                let chat_for_header = state_chat
+                    .as_ref()
+                    .map(|c| to_mock_chat(c, &name))
+                    .unwrap_or_else(|| placeholder_mock_chat(group_id, &name));
 
                 view! {
                     <div class=move || {
@@ -237,43 +327,17 @@ pub fn ChatsScreen() -> impl IntoView {
                             "hidden md:flex flex-1 flex-col"
                         }
                     }>
-                        {/* Header */}
-                        <div class="flex items-center gap-3 border-b border-border px-4 py-3 shrink-0">
-                            <button
-                                class="md:hidden inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent transition-colors"
-                                on:click=on_back
-                                title={t!("back")}
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
-                                </svg>
-                            </button>
-                            <span class="text-sm font-medium text-foreground truncate flex-1 min-w-0">{name.clone()}</span>
-                            <DropdownMenu>
-                                <DropdownMenuTrigger>
-                                    <button class="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent transition-colors shrink-0">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                            <circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>
-                                        </svg>
-                                    </button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                    <DropdownMenuItem>
-                                        <span class="text-sm">{t!("chat.profile")}</span>
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem>
-                                        <span class="text-sm">{t!("chat.search")}</span>
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem>
-                                        <span class="text-sm">{t!("chat.mute")}</span>
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator/>
-                                    <DropdownMenuItem class="text-destructive".to_string()>
-                                        <span class="text-sm">{t!("chat.delete")}</span>
-                                    </DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                        </div>
+                        <ChatHeader
+                            lang=locale
+                            chat=chat_for_header
+                            on_back=on_back_cb
+                            on_pin_toggle=on_pin_toggle
+                            on_mute_toggle=on_mute_toggle
+                            on_mark_read=on_mark_read_cb
+                            on_archive=on_archive
+                            on_leave_group=on_leave_cb
+                            on_delete_chat=on_delete_cb
+                        />
 
                         {/* Messages */}
                         {move || {
@@ -317,6 +381,10 @@ pub fn ChatsScreen() -> impl IntoView {
                                                 let r = on_reaction_list.clone();
                                                 move |id: &str, emoji: String| r(id, emoji)
                                             })
+                                            on_thread_open=Box::new({
+                                                let t = on_thread_open_list.clone();
+                                                move |id: &str| t(id)
+                                            })
                                         />
                                     }.into_any()
                                 }
@@ -346,8 +414,13 @@ pub fn ChatsScreen() -> impl IntoView {
                                                         prev.set(InputPreview::None);
                                                     }
                                                 }
-                                                _ => {
-                                                    os(text);
+                                                InputPreview::Reply { message_id, .. } => {
+                                                    let reply_to = uuid::Uuid::parse_str(&message_id).ok();
+                                                    os(text, reply_to);
+                                                    prev.set(InputPreview::None);
+                                                }
+                                                InputPreview::None => {
+                                                    os(text, None);
                                                 }
                                             }
                                         }
@@ -356,30 +429,29 @@ pub fn ChatsScreen() -> impl IntoView {
                                 on_send_voice=Box::new({
                                     let svc = message_service.clone();
                                     let sel = selected.clone();
-                                    move |dur: u32| {
-                                        // Placeholder: actual voice recording not yet implemented
-                                        let _ = &svc;
-                                        let _ = &sel;
-                                        let _ = dur;
-                                        // When MediaRecorder is implemented, this will:
-                                        // 1. Get the recorded blob
-                                        // 2. Upload it to server via message_service
-                                        // 3. Send a voice message
-                                        web_sys::console::log_1(&format!("Voice recording: {}s (not yet implemented)", dur).into());
+                                    move |payload: crate::chat::input_bar::VoicePayload| {
+                                        if let Some(group_id) = sel.get_untracked() {
+                                            let svc = svc.clone();
+                                            spawn_local(async move {
+                                                svc.send_voice(group_id, payload).await;
+                                            });
+                                        }
                                     }
                                 })
                                 on_cancel_preview=Box::new({
                                     let prev = preview.clone();
                                     move || prev.set(InputPreview::None)
                                 })
-                                on_attach_file=Box::new({
-                                    move || {
-                                        web_sys::console::log_1(&"Attach file: not yet implemented".into());
-                                    }
-                                })
-                                on_attach_photo=Box::new({
-                                    move || {
-                                        web_sys::console::log_1(&"Attach photo: not yet implemented".into());
+                                on_send_attachment=Box::new({
+                                    let svc = message_service.clone();
+                                    let sel = selected.clone();
+                                    move |payload: crate::chat::input_bar::AttachmentPayload| {
+                                        if let Some(group_id) = sel.get_untracked() {
+                                            let svc = svc.clone();
+                                            spawn_local(async move {
+                                                svc.send_attachment(group_id, payload).await;
+                                            });
+                                        }
                                     }
                                 })
                             />
@@ -398,6 +470,70 @@ pub fn ChatsScreen() -> impl IntoView {
                 }.into_any()
             })}
             } // close move || block
+
+            // Thread panel — slide-over with parent + replies, lives outside the
+            // main split so it overlays the whole chat area.
+            {
+                let msg_svc = msg_svc_for_thread;
+                let sel = sel_for_thread;
+                let messages_state = messages_state_for_thread;
+                let thread_is_open = Signal::derive(move || thread_root.get().is_some());
+                let on_close_thread = Box::new(move || thread_root.set(None)) as Box<dyn Fn() + Send + Sync + 'static>;
+
+                let messages_state_p = messages_state.clone();
+                let sel_p = sel.clone();
+                let parent_message = Signal::derive(move || {
+                    let root = thread_root.get()?;
+                    let gid = sel_p.get()?;
+                    let store = messages_state_p.by_group.get();
+                    store
+                        .get(&gid)
+                        .and_then(|ms| ms.iter().find(|m| m.id == root).cloned())
+                        .map(|m| display_to_mock(&m))
+                });
+                let messages_state_r = messages_state.clone();
+                let sel_r = sel.clone();
+                let replies = Signal::derive(move || {
+                    let root = match thread_root.get() { Some(r) => r, None => return vec![] };
+                    let gid = match sel_r.get() { Some(g) => g, None => return vec![] };
+                    let store = messages_state_r.by_group.get();
+                    store
+                        .get(&gid)
+                        .map(|ms| {
+                            ms.iter()
+                                .filter(|m| m.thread_root_id == Some(root))
+                                .map(display_to_mock)
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default()
+                });
+
+                let on_send_reply = Box::new(move |text: String| {
+                    let svc = msg_svc.clone();
+                    let gid = sel.get_untracked();
+                    let root = thread_root.get_untracked();
+                    if let (Some(group_id), Some(root_id)) = (gid, root) {
+                        spawn_local(async move {
+                            svc.send_text_in_thread(group_id, &text, Some(root_id), Some(root_id))
+                                .await;
+                        });
+                    }
+                }) as Box<dyn Fn(String) + Send + Sync + 'static>;
+
+                view! {
+                    <ThreadPanel
+                        lang=locale_for_thread
+                        is_open=thread_is_open
+                        on_close=on_close_thread
+                        parent_message=parent_message.get()
+                        replies=replies.get()
+                        on_send_reply=on_send_reply
+                    />
+                }
+            }
+            </div>
+                }
+            }
         </div>
     }
 }

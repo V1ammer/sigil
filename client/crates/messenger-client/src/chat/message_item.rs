@@ -3,6 +3,8 @@
 use leptos::prelude::*;
 use leptos::ev::PointerEvent;
 use std::sync::Arc;
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::JsCast;
 use crate::i18n::{Language, t, format_time};
 use crate::mock::Message;
 use crate::icons::Icon;
@@ -20,6 +22,7 @@ pub fn MessageItem(
     #[prop(optional, into)] is_last_in_group: bool,
     #[prop(optional, into)] is_mobile: Signal<bool>,
     #[prop(optional)] on_thread_click: Option<Box<dyn Fn() + Send + Sync + 'static>>,
+    #[prop(optional)] on_thread_open: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     #[prop(optional)] on_media_click: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     #[prop(optional)] on_avatar_click: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     #[prop(optional)] on_reply: Option<Box<dyn Fn() + Send + Sync + 'static>>,
@@ -63,8 +66,61 @@ pub fn MessageItem(
     // Mobile action sheet
     let menu_open = RwSignal::new(false);
 
-    // Long-press handler for mobile
-    let long_press_trigger = move |_e: PointerEvent| {
+    // Long-press tracking: fire menu after 400ms of hold without movement > 10px.
+    // Cancel on pointermove past threshold or pointerup before timer fires.
+    // State lives in RwSignals so handlers stay Send + Sync (Leptos bound).
+    const LONG_PRESS_MS: i32 = 400;
+    const MOVE_CANCEL_PX: f64 = 10.0;
+    let timer_id: RwSignal<Option<i32>> = RwSignal::new(None);
+    let pointer_start: RwSignal<(f64, f64)> = RwSignal::new((0.0, 0.0));
+
+    let clear_timer = move || {
+        if let Some(id) = timer_id.get_untracked() {
+            if let Some(window) = web_sys::window() {
+                window.clear_timeout_with_handle(id);
+            }
+            timer_id.set(None);
+        }
+    };
+
+    let on_pointerdown = move |e: PointerEvent| {
+        // Only handle primary pointer (touch or left mouse). Right mouse handled by oncontextmenu.
+        if e.button() > 0 {
+            return;
+        }
+        clear_timer();
+        pointer_start.set((e.client_x() as f64, e.client_y() as f64));
+        let cb = Closure::<dyn FnMut()>::new(move || {
+            menu_open.set(true);
+            timer_id.set(None);
+        });
+        if let Some(window) = web_sys::window() {
+            if let Ok(id) = window.set_timeout_with_callback_and_timeout_and_arguments_0(
+                cb.as_ref().unchecked_ref(),
+                LONG_PRESS_MS,
+            ) {
+                timer_id.set(Some(id));
+            }
+        }
+        // Leak one closure per press — released on next press or app teardown.
+        cb.forget();
+    };
+
+    let on_pointermove = move |e: PointerEvent| {
+        let (sx, sy) = pointer_start.get_untracked();
+        let dx = e.client_x() as f64 - sx;
+        let dy = e.client_y() as f64 - sy;
+        if (dx * dx + dy * dy).sqrt() > MOVE_CANCEL_PX {
+            clear_timer();
+        }
+    };
+
+    let on_pointerup = move |_: PointerEvent| clear_timer();
+    let on_pointercancel = move |_: PointerEvent| clear_timer();
+
+    let on_contextmenu = move |e: leptos::ev::MouseEvent| {
+        // Desktop right-click: open the same action sheet, prevent native menu.
+        e.prevent_default();
         menu_open.set(true);
     };
 
@@ -80,13 +136,18 @@ pub fn MessageItem(
     let on_reply = on_reply.map(std::sync::Arc::new);
     let on_edit = on_edit.map(std::sync::Arc::new);
     let on_delete = on_delete.map(std::sync::Arc::new);
+    let on_thread_open = on_thread_open.map(std::sync::Arc::new);
     let on_reaction = on_reaction.map(std::sync::Arc::new);
+    // Clone for the quick-reaction picker inside the bottom sheet — the bubble's
+    // reaction tap-handlers consume the original further down.
+    let on_reaction_for_sheet = on_reaction.clone();
     let menu_content = {
         let msg_ctx = msg.clone();
         let lang_clone = lang.get();
         let on_reply_arc = on_reply.clone();
         let on_edit_arc = on_edit.clone();
         let on_delete_arc = on_delete.clone();
+        let on_thread_arc = on_thread_open.clone();
         Box::new(move || {
             let views = message_context_menu_items(
                 &msg_ctx,
@@ -94,6 +155,7 @@ pub fn MessageItem(
                 on_reply_arc.clone().map(|f| f as Arc<dyn Fn() + Send + Sync + 'static>),
                 on_edit_arc.clone().map(|f| f as Arc<dyn Fn() + Send + Sync + 'static>),
                 on_delete_arc.clone().map(|f| f as Arc<dyn Fn() + Send + Sync + 'static>),
+                on_thread_arc.clone().map(|f| f as Arc<dyn Fn() + Send + Sync + 'static>),
             );
 
     view! {
@@ -108,12 +170,20 @@ pub fn MessageItem(
 
     view! {
         <div class=format!("flex {} relative group mb-0.5", align)>
-            // Desktop context menu wrapper
+            // Action menu wrapper — same bottom sheet on desktop right-click and mobile long-press.
             <ContextMenu
                 menu=menu_content
             >
                 <ContextMenuTrigger>
-                    <div class="flex items-end gap-2 max-w-full" on:pointerdown=long_press_trigger>
+                    <div
+                        class="flex items-end gap-2 max-w-full"
+                        style="touch-action: pan-y"
+                        on:pointerdown=on_pointerdown
+                        on:pointermove=on_pointermove
+                        on:pointerup=on_pointerup
+                        on:pointercancel=on_pointercancel
+                        on:contextmenu=on_contextmenu
+                    >
                         // Avatar column for other users
                         {if show_avatar {
                             view! {
@@ -135,7 +205,7 @@ pub fn MessageItem(
                             view! {}.into_any()
                         }}
 
-                        <div class=format!("flex flex-col {}", if is_own { "items-end" } else { "items-start" })>
+                        <div class=format!("flex flex-col w-fit max-w-[75%] min-w-0 {}", if is_own { "items-end" } else { "items-start" })>
                             // Sender name (first in group only)
                             {if show_sender_name {
                                 view! {
@@ -168,7 +238,7 @@ pub fn MessageItem(
                             }}
 
                             // Message bubble
-                            <div class=format!("px-3 py-2 text-sm shadow-sm break-words max-w-[75%] {bubble_class}")>
+                            <div class=format!("px-3 py-2 text-sm shadow-sm break-words max-w-full {bubble_class}")>
                                 // Message content based on type
                                 {render_content(msg.clone(), on_media_click_arc.clone(), lang.get())}
 
@@ -270,6 +340,30 @@ pub fn MessageItem(
             <SheetHeader>
                 <SheetTitle>{t(lang.get(), "message.reply")}</SheetTitle>
             </SheetHeader>
+            // Quick reaction emojis — tap to react and dismiss the sheet.
+            {
+                let close_after = menu_open;
+                let emojis = ["👍", "❤️", "😄", "🎉", "😢", "🙏"];
+                view! {
+                    <div class="flex items-center justify-around gap-1 pb-3 mb-2 border-b border-border">
+                        {emojis.into_iter().map(|e| {
+                            let cb = on_reaction_for_sheet.clone();
+                            let emoji_owned = e.to_string();
+                            view! {
+                                <button
+                                    class="flex h-11 w-11 items-center justify-center rounded-full text-xl hover:bg-accent active:scale-95 transition-transform"
+                                    on:click=move |_| {
+                                        if let Some(ref f) = cb { f(emoji_owned.clone()); }
+                                        close_after.set(false);
+                                    }
+                                >
+                                    {e}
+                                </button>
+                            }
+                        }).collect::<Vec<_>>()}
+                    </div>
+                }
+            }
             <div class="space-y-1">
                 {message_context_menu_items(
                     &msg_clone_for_context,
@@ -277,6 +371,7 @@ pub fn MessageItem(
                     on_reply.clone().map(|f| f as Arc<dyn Fn() + Send + Sync + 'static>),
                     on_edit.clone().map(|f| f as Arc<dyn Fn() + Send + Sync + 'static>),
                     on_delete.clone().map(|f| f as Arc<dyn Fn() + Send + Sync + 'static>),
+                    on_thread_open.clone().map(|f| f as Arc<dyn Fn() + Send + Sync + 'static>),
                 )
                     .into_iter()
                     .map(|item| item)
@@ -291,17 +386,67 @@ pub fn MessageItem(
 fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn() + Send + Sync + 'static>>>, l: Language) -> AnyView {
     match msg.msg_type.as_str() {
         "voice" => {
+            // Duration arrives in seconds via the bridge; the player uses ms.
+            let duration_ms = msg.duration.unwrap_or(0) * 1000;
             view! {
                 <VoiceMessage
-                    duration=msg.duration.unwrap_or(0)
+                    duration_ms=duration_ms
                     waveform=msg.waveform.clone()
                     transcription=msg.transcription.clone().unwrap_or_default()
                     is_own=msg.is_own
+                    attachment_id=msg.attachment_id.clone().unwrap_or_default()
+                    decryption_key=msg.decryption_key.clone().unwrap_or_default()
+                    mime=msg.mime_type.clone().unwrap_or_default()
                 />
             }.into_any()
         }
         "image" => {
             let mc = on_media_click.clone();
+            let attachment_id = msg.attachment_id.clone();
+            let decryption_key = msg.decryption_key.clone();
+            let mime = msg.mime_type.clone().unwrap_or_else(|| "image/jpeg".into());
+            let blob_url: RwSignal<Option<String>> = RwSignal::new(None);
+            let err: RwSignal<Option<String>> = RwSignal::new(None);
+
+            // Auto-fetch and decrypt on first render. Caches the object URL.
+            if let (Some(aid), Some(key_b64)) = (attachment_id, decryption_key) {
+                leptos::task::spawn_local(async move {
+                    use base64::Engine as _;
+                    let api = match crate::state::session::build_api_client() {
+                        Some(a) => a,
+                        None => { err.set(Some("no api".into())); return; }
+                    };
+                    let attachment_id = match aid.parse::<uuid::Uuid>() {
+                        Ok(u) => u,
+                        Err(_) => { err.set(Some("bad id".into())); return; }
+                    };
+                    let ct = match api.download_attachment(attachment_id, None).await {
+                        Ok(b) => b,
+                        Err(e) => { err.set(Some(format!("dl: {e}"))); return; }
+                    };
+                    let key_bytes = match base64::engine::general_purpose::STANDARD.decode(&key_b64) {
+                        Ok(b) if b.len() == 32 => b,
+                        _ => { err.set(Some("bad key".into())); return; }
+                    };
+                    let mut key = [0u8; 32];
+                    key.copy_from_slice(&key_bytes);
+                    let plain = match messenger_core::attachment_crypto::decrypt_attachment(&key, &ct) {
+                        Ok(p) => p,
+                        Err(e) => { err.set(Some(format!("decrypt: {e:?}"))); return; }
+                    };
+                    let u8a = js_sys::Uint8Array::from(plain.as_slice());
+                    let arr = js_sys::Array::new();
+                    arr.push(&u8a.into());
+                    let mut bag = web_sys::BlobPropertyBag::new();
+                    bag.type_(&mime);
+                    if let Ok(blob) = web_sys::Blob::new_with_u8_array_sequence_and_options(&arr, &bag) {
+                        if let Ok(url) = web_sys::Url::create_object_url_with_blob(&blob) {
+                            blob_url.set(Some(url));
+                        }
+                    }
+                });
+            }
+
             view! {
                 <button
                     class="block overflow-hidden rounded-lg -mx-1 -mt-1 mb-1"
@@ -310,17 +455,24 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                     }
                 >
                     <div class="aspect-video max-h-64 w-full bg-muted flex items-center justify-center">
-                        {if let Some(ref thumb) = msg.thumbnail_url {
-                            view! {
-                                <img src=thumb alt="Image" class="h-full w-full object-cover"/>
-                            }.into_any()
-                        } else {
-                            view! {
-                                <div class="flex flex-col items-center gap-2 text-muted-foreground">
-                                    <Icon name="image" class_name="h-8 w-8"/>
-                                    <span class="text-xs">{t(l, "message.image")}</span>
-                                </div>
-                            }.into_any()
+                        {move || {
+                            if let Some(url) = blob_url.get() {
+                                view! { <img src=url alt="Image" class="h-full w-full object-cover"/> }.into_any()
+                            } else if let Some(e) = err.get() {
+                                view! {
+                                    <div class="flex flex-col items-center gap-1 text-destructive">
+                                        <Icon name="image" class_name="h-8 w-8"/>
+                                        <span class="text-[10px]">{e}</span>
+                                    </div>
+                                }.into_any()
+                            } else {
+                                view! {
+                                    <div class="flex flex-col items-center gap-2 text-muted-foreground">
+                                        <span class="h-8 w-8 inline-block rounded-full border-2 border-current border-t-transparent animate-spin"/>
+                                        <span class="text-xs">{t(l, "message.image")}</span>
+                                    </div>
+                                }.into_any()
+                            }
                         }}
                     </div>
                 </button>
@@ -359,6 +511,66 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
         }
         "file" => {
             let file_name = msg.file_name.as_deref().unwrap_or("File").to_string();
+            let file_name_for_dl = file_name.clone();
+            let attachment_id = msg.attachment_id.clone();
+            let decryption_key = msg.decryption_key.clone();
+            let mime = msg.mime_type.clone().unwrap_or_else(|| "application/octet-stream".into());
+            let downloading = RwSignal::new(false);
+
+            let on_download = move |_: leptos::ev::MouseEvent| {
+                if downloading.get_untracked() { return; }
+                let aid = match attachment_id.clone() { Some(s) => s, None => return };
+                let key_b64 = match decryption_key.clone() { Some(s) => s, None => return };
+                let mime = mime.clone();
+                let file_name = file_name_for_dl.clone();
+                downloading.set(true);
+                leptos::task::spawn_local(async move {
+                    use base64::Engine as _;
+                    let api = match crate::state::session::build_api_client() {
+                        Some(a) => a,
+                        None => { downloading.set(false); return; }
+                    };
+                    let attachment_id = match aid.parse::<uuid::Uuid>() {
+                        Ok(u) => u,
+                        Err(_) => { downloading.set(false); return; }
+                    };
+                    let ct = match api.download_attachment(attachment_id, None).await {
+                        Ok(b) => b,
+                        Err(_) => { downloading.set(false); return; }
+                    };
+                    let key_bytes = match base64::engine::general_purpose::STANDARD.decode(&key_b64) {
+                        Ok(b) if b.len() == 32 => b,
+                        _ => { downloading.set(false); return; }
+                    };
+                    let mut key = [0u8; 32];
+                    key.copy_from_slice(&key_bytes);
+                    let plain = match messenger_core::attachment_crypto::decrypt_attachment(&key, &ct) {
+                        Ok(p) => p,
+                        Err(_) => { downloading.set(false); return; }
+                    };
+                    // Trigger browser download via temporary <a download>.
+                    let u8a = js_sys::Uint8Array::from(plain.as_slice());
+                    let arr = js_sys::Array::new();
+                    arr.push(&u8a.into());
+                    let mut bag = web_sys::BlobPropertyBag::new();
+                    bag.type_(&mime);
+                    if let Ok(blob) = web_sys::Blob::new_with_u8_array_sequence_and_options(&arr, &bag) {
+                        if let Ok(url) = web_sys::Url::create_object_url_with_blob(&blob) {
+                            if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
+                                if let Ok(a) = doc.create_element("a") {
+                                    let a_el: web_sys::HtmlAnchorElement = a.unchecked_into();
+                                    a_el.set_href(&url);
+                                    a_el.set_download(&file_name);
+                                    a_el.click();
+                                }
+                            }
+                            let _ = web_sys::Url::revoke_object_url(&url);
+                        }
+                    }
+                    downloading.set(false);
+                });
+            };
+
             view! {
                 <div class="flex items-center gap-3 rounded-lg -mx-1 -mt-1 mb-1 p-2 bg-muted/30">
                     <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -372,11 +584,17 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                             }.into_any()
                         }).unwrap_or_else(|| view! {}.into_any())}
                     </div>
-                    <Tooltip text={t(l, "message.download")}>
-                        <button class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md hover:bg-accent">
-                            <Icon name="download" class_name="h-4 w-4"/>
-                        </button>
-                    </Tooltip>
+                    <button
+                        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md hover:bg-accent disabled:opacity-50"
+                        on:click=on_download
+                        disabled=move || downloading.get()
+                    >
+                        {move || if downloading.get() {
+                            view! { <span class="block h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin"/> }.into_any()
+                        } else {
+                            view! { <Icon name="download" class_name="h-4 w-4"/> }.into_any()
+                        }}
+                    </button>
                 </div>
             }.into_any()
         }
@@ -413,6 +631,7 @@ fn message_context_menu_items(
     on_reply: Option<Arc<dyn Fn() + Send + Sync + 'static>>,
     on_edit: Option<Arc<dyn Fn() + Send + Sync + 'static>>,
     on_delete: Option<Arc<dyn Fn() + Send + Sync + 'static>>,
+    on_thread: Option<Arc<dyn Fn() + Send + Sync + 'static>>,
 ) -> Vec<AnyView> {
     let mut views: Vec<AnyView> = Vec::new();
 
@@ -427,9 +646,12 @@ fn message_context_menu_items(
         </ContextMenuItem>
     }.into_any());
 
-    // Reply in thread (stub for now)
+    // Reply in thread — opens the thread panel for this message.
+    let thread_cb = on_thread.map(|f| {
+        Box::new(move || f()) as Box<dyn Fn() + Send + Sync + 'static>
+    });
     views.push(view! {
-        <ContextMenuItem>
+        <ContextMenuItem on_click=thread_cb.unwrap_or_else(|| Box::new(|| {}))>
             <Icon name="message-square" class_name="mr-2 h-4 w-4"/>
             {t(lang, "message.replyThread")}
         </ContextMenuItem>

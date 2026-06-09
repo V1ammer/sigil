@@ -55,7 +55,7 @@ gloo-timers = { workspace = true }
 js-sys = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 wasm-bindgen = { workspace = true }
-web-sys = { workspace = true, features = ["AudioBuffer", "MediaRecorder", "Blob", "BlobPropertyBag", "console"] }
+web-sys = { workspace = true, features = ["AudioBuffer", "AudioContext", "BaseAudioContext", "MediaRecorder", "MediaRecorderOptions", "MediaStream", "MediaStreamTrack", "MediaDevices", "MediaStreamConstraints", "Navigator", "Blob", "BlobEvent", "BlobPropertyBag", "Performance", "Window", "console"] }
 openmls = { workspace = true, optional = true, features = ["js"] }
 openmls_rust_crypto = { workspace = true, optional = true }
 openmls_traits = { workspace = true, optional = true }
@@ -70,6 +70,7 @@ default = ["native"]
 native = ["dep:openmls", "dep:openmls_rust_crypto", "dep:openmls_traits", "dep:tls_codec", "dep:age", "dep:bech32", "messenger-storage/native"]
 web = ["messenger-storage/web"]
 wasm-mls = ["web", "dep:openmls", "dep:openmls_rust_crypto", "dep:openmls_traits", "dep:tls_codec"]
+voice = []
 
 [lints]
 workspace = true

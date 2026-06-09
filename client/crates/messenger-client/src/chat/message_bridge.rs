@@ -9,32 +9,57 @@ use crate::state::messages::{DeliveryStatus, DisplayMessage, MessageBody, Messag
 
 /// Convert a `DisplayMessage` into a `mock::Message` for UI rendering.
 pub fn display_to_mock(msg: &DisplayMessage) -> mock::Message {
+    use base64::Engine as _;
+    let b64 = base64::engine::general_purpose::STANDARD;
+
+    let mut media_attachment_id: Option<String> = None;
+    let mut media_decryption_key: Option<String> = None;
+    let mut media_mime: Option<String> = None;
+
     let (msg_type, content, duration, waveform, transcription, file_name, file_size) =
         match &msg.body {
             MessageBody::Text(t) => ("text".to_string(), t.clone(), None, vec![], None, None, None),
             MessageBody::Voice {
-                duration_secs,
+                attachment_id,
+                decryption_key,
+                duration_ms,
                 waveform: wf,
                 transcription: tr,
-            } => (
-                "voice".to_string(),
-                String::new(),
-                Some(*duration_secs),
-                wf.iter().map(|&b| f64::from(b) / 255.0).collect(),
-                tr.clone(),
-                None,
-                None,
-            ),
-            MessageBody::Image { .. } => {
+            } => {
+                media_attachment_id = Some(attachment_id.to_string());
+                media_decryption_key = Some(b64.encode(decryption_key));
+                media_mime = Some("audio/webm;codecs=opus".to_string());
+                (
+                    "voice".to_string(),
+                    String::new(),
+                    Some(*duration_ms / 1000),
+                    wf.iter().map(|&b| f64::from(b) / 255.0).collect(),
+                    tr.clone(),
+                    None,
+                    None,
+                )
+            }
+            MessageBody::Image {
+                attachment_id,
+                decryption_key,
+                mime,
+                ..
+            } => {
+                media_attachment_id = Some(attachment_id.to_string());
+                media_decryption_key = Some(b64.encode(decryption_key));
+                media_mime = Some(mime.clone());
                 ("image".to_string(), String::new(), None, vec![], None, None, None)
             }
-            MessageBody::Video { .. } => {
-                ("video".to_string(), String::new(), None, vec![], None, None, None)
-            }
             MessageBody::File {
+                attachment_id,
+                decryption_key,
+                mime,
                 name,
                 size,
             } => {
+                media_attachment_id = Some(attachment_id.to_string());
+                media_decryption_key = Some(b64.encode(decryption_key));
+                media_mime = Some(mime.clone());
                 (
                     "file".to_string(),
                     String::new(),
@@ -89,6 +114,9 @@ pub fn display_to_mock(msg: &DisplayMessage) -> mock::Message {
         thumbnail_url: None,
         file_name,
         file_size,
+        mime_type: media_mime,
+        attachment_id: media_attachment_id,
+        decryption_key: media_decryption_key,
         system_action: None,
     }
 }

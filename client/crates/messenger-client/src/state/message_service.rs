@@ -96,6 +96,17 @@ impl MessageService {
         text: &str,
         reply_to: Option<Uuid>,
     ) -> Option<Uuid> {
+        self.send_text_in_thread(group_id, text, reply_to, None).await
+    }
+
+    /// Send a text message with an optional thread root reference.
+    pub async fn send_text_in_thread(
+        &self,
+        group_id: Uuid,
+        text: &str,
+        reply_to: Option<Uuid>,
+        thread_root: Option<Uuid>,
+    ) -> Option<Uuid> {
         let api = match build_api_client() {
             Some(c) => c,
             None => return None,
@@ -113,7 +124,7 @@ impl MessageService {
                 formatted_html: None,
             },
             reply_to_message_id: reply_to,
-            thread_root_id: None,
+            thread_root_id: thread_root,
             created_at: now,
             sender_display_name_override: None,
         };
@@ -132,7 +143,7 @@ impl MessageService {
             mls_ciphertext: ciphertext,
             parent_message_id: None,
             reply_to_message_id: reply_to,
-            thread_root_id: None,
+            thread_root_id: thread_root,
             client_message_id,
         };
 
@@ -147,6 +158,255 @@ impl MessageService {
                 None
             }
         }
+    }
+
+    /// Record + send a voice message.
+    ///
+    /// Pipeline: pick a fresh 32-byte content key → AES-GCM encrypt the Opus blob →
+    /// upload the ciphertext → build & MLS-encrypt the envelope with `attachment_id` and
+    /// the key → post the message → finalize the attachment to bind it to the message.
+    pub async fn send_voice(
+        &self,
+        group_id: Uuid,
+        payload: crate::chat::input_bar::VoicePayload,
+    ) -> Option<Uuid> {
+        use messenger_core::attachment_crypto::encrypt_attachment;
+        use rand::RngCore;
+
+        let api = build_api_client()?;
+
+        // 1. Fresh per-attachment AES-256-GCM key. Lives only inside the MLS envelope.
+        let mut key = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut key);
+
+        let ciphertext = match encrypt_attachment(&key, &payload.bytes) {
+            Ok(ct) => ct,
+            Err(e) => {
+                tracing::warn!("attachment encrypt failed: {e:?}");
+                return None;
+            }
+        };
+        let padded_size = ciphertext.len() as u64;
+        let size_bucket = size_bucket_for(padded_size);
+
+        // 2. Upload the ciphertext blob.
+        let upload = match api.upload_attachment(ciphertext, padded_size, size_bucket).await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!("attachment upload failed: {e}");
+                return None;
+            }
+        };
+
+        // 3. Build & MLS-encrypt the envelope that references the attachment.
+        let client_message_id = Uuid::now_v7();
+        let now = js_sys::Date::now() as i64 / 1000;
+        let envelope = ApplicationEnvelope {
+            client_message_id,
+            kind: AppMessageKind::Voice,
+            body: AppMessageBody::Voice {
+                attachment_id: upload.attachment_id,
+                decryption_key: key.to_vec(),
+                duration_ms: payload.duration_ms,
+                waveform: payload.waveform.clone(),
+            },
+            reply_to_message_id: None,
+            thread_root_id: None,
+            created_at: now,
+            sender_display_name_override: None,
+        };
+        let envelope_ct = self.encrypt_envelope(group_id, &envelope).await?;
+
+        let req = PostMessageRequest {
+            expected_epoch: 0,
+            mls_ciphertext: envelope_ct,
+            parent_message_id: None,
+            reply_to_message_id: None,
+            thread_root_id: None,
+            client_message_id,
+        };
+        let resp = match api.post_message(group_id, &req).await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!(%group_id, error = %e, "voice post_message failed");
+                return None;
+            }
+        };
+
+        // 4. Finalize binds attachment to the message — otherwise GC will reap it.
+        let finalize_req = messenger_proto::attachments::FinalizeAttachmentRequest {
+            message_id: resp.message_id,
+        };
+        if let Err(e) = api
+            .finalize_attachment(upload.attachment_id, &finalize_req)
+            .await
+        {
+            tracing::warn!(error = %e, "finalize_attachment failed");
+        }
+
+        // 5. Optimistic local insert.
+        self.messages.by_group.update(|map| {
+            map.entry(group_id).or_default().push(DisplayMessage {
+                id: resp.message_id,
+                client_message_id,
+                group_id,
+                sender_user_id: Uuid::nil(),
+                sender_device_id: Uuid::nil(),
+                kind: MessageKind::Voice,
+                body: MessageBody::Voice {
+                    attachment_id: upload.attachment_id,
+                    decryption_key: key.to_vec(),
+                    duration_ms: payload.duration_ms,
+                    waveform: payload.waveform,
+                    transcription: None,
+                },
+                reply_to_message_id: None,
+                thread_root_id: None,
+                created_at: now,
+                edited_at: None,
+                deleted_at: None,
+                delivery_status: DeliveryStatus::SentToServer,
+                reactions: Vec::new(),
+            });
+        });
+
+        Some(resp.message_id)
+    }
+
+    /// Send a generic attachment (file or image) — same pipeline as `send_voice` but
+    /// with a `File` or `Image` envelope body.
+    pub async fn send_attachment(
+        &self,
+        group_id: Uuid,
+        payload: crate::chat::input_bar::AttachmentPayload,
+    ) -> Option<Uuid> {
+        use messenger_core::attachment_crypto::encrypt_attachment;
+        use rand::RngCore;
+
+        let api = build_api_client()?;
+
+        let mut key = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut key);
+
+        let ciphertext = match encrypt_attachment(&key, &payload.bytes) {
+            Ok(ct) => ct,
+            Err(e) => {
+                tracing::warn!("attachment encrypt failed: {e:?}");
+                return None;
+            }
+        };
+        let padded_size = ciphertext.len() as u64;
+        let size_bucket = size_bucket_for(padded_size);
+
+        let upload = match api.upload_attachment(ciphertext, padded_size, size_bucket).await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!("attachment upload failed: {e}");
+                return None;
+            }
+        };
+
+        let client_message_id = Uuid::now_v7();
+        let now = js_sys::Date::now() as i64 / 1000;
+        let (kind, body, local_body) = if payload.is_image {
+            (
+                AppMessageKind::Image,
+                AppMessageBody::Image {
+                    attachment_id: upload.attachment_id,
+                    decryption_key: key.to_vec(),
+                    mime: payload.mime.clone(),
+                    // Width/height detection not wired — server doesn't see them
+                    // and the client falls back to natural sizing.
+                    width: 0,
+                    height: 0,
+                    thumb: None,
+                },
+                MessageBody::Image {
+                    attachment_id: upload.attachment_id,
+                    decryption_key: key.to_vec(),
+                    mime: payload.mime.clone(),
+                    width: 0,
+                    height: 0,
+                    thumb: None,
+                },
+            )
+        } else {
+            (
+                AppMessageKind::File,
+                AppMessageBody::File {
+                    attachment_id: upload.attachment_id,
+                    decryption_key: key.to_vec(),
+                    mime: payload.mime.clone(),
+                    filename: payload.name.clone(),
+                    size: payload.size,
+                },
+                MessageBody::File {
+                    attachment_id: upload.attachment_id,
+                    decryption_key: key.to_vec(),
+                    mime: payload.mime.clone(),
+                    name: payload.name.clone(),
+                    size: payload.size,
+                },
+            )
+        };
+
+        let envelope = ApplicationEnvelope {
+            client_message_id,
+            kind,
+            body,
+            reply_to_message_id: None,
+            thread_root_id: None,
+            created_at: now,
+            sender_display_name_override: None,
+        };
+        let envelope_ct = self.encrypt_envelope(group_id, &envelope).await?;
+
+        let req = PostMessageRequest {
+            expected_epoch: 0,
+            mls_ciphertext: envelope_ct,
+            parent_message_id: None,
+            reply_to_message_id: None,
+            thread_root_id: None,
+            client_message_id,
+        };
+        let resp = match api.post_message(group_id, &req).await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!(%group_id, error = %e, "attachment post_message failed");
+                return None;
+            }
+        };
+        let finalize_req = messenger_proto::attachments::FinalizeAttachmentRequest {
+            message_id: resp.message_id,
+        };
+        if let Err(e) = api
+            .finalize_attachment(upload.attachment_id, &finalize_req)
+            .await
+        {
+            tracing::warn!(error = %e, "finalize_attachment failed");
+        }
+
+        let kind_for_display = if payload.is_image { MessageKind::Image } else { MessageKind::File };
+        self.messages.by_group.update(|map| {
+            map.entry(group_id).or_default().push(DisplayMessage {
+                id: resp.message_id,
+                client_message_id,
+                group_id,
+                sender_user_id: Uuid::nil(),
+                sender_device_id: Uuid::nil(),
+                kind: kind_for_display,
+                body: local_body,
+                reply_to_message_id: None,
+                thread_root_id: None,
+                created_at: now,
+                edited_at: None,
+                deleted_at: None,
+                delivery_status: DeliveryStatus::SentToServer,
+                reactions: Vec::new(),
+            });
+        });
+
+        Some(resp.message_id)
     }
 
     /// Edit a message — send a replacement and mark the original as edited.
@@ -544,24 +804,55 @@ impl MessageService {
             AppMessageBody::Text { ref text, .. } => {
                 (MessageKind::Text, MessageBody::Text(text.clone()))
             }
-            AppMessageBody::Voice { .. } => (
+            AppMessageBody::Voice {
+                attachment_id,
+                ref decryption_key,
+                duration_ms,
+                ref waveform,
+            } => (
                 MessageKind::Voice,
                 MessageBody::Voice {
-                    duration_secs: 0,
-                    waveform: vec![],
+                    attachment_id,
+                    decryption_key: decryption_key.clone(),
+                    duration_ms,
+                    waveform: waveform.clone(),
                     transcription: None,
                 },
             ),
-            AppMessageBody::File { ref filename, size, .. } => {
-                (MessageKind::File, MessageBody::File {
+            AppMessageBody::File {
+                attachment_id,
+                ref decryption_key,
+                ref mime,
+                ref filename,
+                size,
+            } => (
+                MessageKind::File,
+                MessageBody::File {
+                    attachment_id,
+                    decryption_key: decryption_key.clone(),
+                    mime: mime.clone(),
                     name: filename.clone(),
                     size,
-                })
-            }
-            AppMessageBody::Image { .. } => (MessageKind::Image, MessageBody::Image {
-                thumbnail: vec![],
-                full: vec![],
-            }),
+                },
+            ),
+            AppMessageBody::Image {
+                attachment_id,
+                ref decryption_key,
+                ref mime,
+                width,
+                height,
+                ref thumb,
+            } => (
+                MessageKind::Image,
+                MessageBody::Image {
+                    attachment_id,
+                    decryption_key: decryption_key.clone(),
+                    mime: mime.clone(),
+                    width,
+                    height,
+                    thumb: thumb.clone(),
+                },
+            ),
             AppMessageBody::SystemNote { ref code, .. } => {
                 (MessageKind::System, MessageBody::System {
                     action: code.clone(),
@@ -589,6 +880,14 @@ impl Default for MessageService {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Bucketed size — coarse classification used by the server for metadata minimization.
+/// Matches the server's bucket spec: powers-of-two from 1 KiB up to 32 MiB.
+fn size_bucket_for(size: u64) -> u32 {
+    let kib = (size / 1024).max(1);
+    let bits = 64u32 - kib.leading_zeros();
+    bits.min(20)
 }
 
 // --- Module-level helpers for SyncService ---

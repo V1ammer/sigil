@@ -71,7 +71,7 @@ impl ApiClient {
         &self,
         provisioning_id: Uuid,
         temp_signing_secret: &[u8; 32],
-        temp_signing_public: &[u8; 32],
+        _temp_signing_public: &[u8; 32],
     ) -> Result<GetBootstrapResponse, ApiError> {
         let path = format!("/v1/provisioning/requests/{provisioning_id}/bootstrap");
         let method = "GET";

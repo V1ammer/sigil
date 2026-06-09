@@ -172,8 +172,9 @@ pub async fn generate_waveform_from_audio(bytes: &[u8], bars: usize) -> Vec<u8> 
         let end = ((b + 1) * bin_size).min(len);
         let mut sum_sq = 0.0f32;
         for i in start..end {
-            let v = channel.get(i as u32);
-            sum_sq += v * v;
+            if let Some(&v) = channel.get(i) {
+                sum_sq += v * v;
+            }
         }
         let rms = (sum_sq / (end - start) as f32).sqrt();
         result.push((rms.min(1.0) * 255.0) as u8);

@@ -132,6 +132,7 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
 
     // Chat list
     m.insert("chat.list.empty", "Нет диалогов");
+    m.insert("chat.list.empty.hint", "Нажми + чтобы начать диалог");
     m.insert("chat.mls.not_ready", "Сообщения недоступны");
     m.insert("chat.mls.hint", "Настройка MLS требуется для просмотра сообщений");
 

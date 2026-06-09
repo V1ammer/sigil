@@ -7,10 +7,11 @@ edition.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["wasm-mls"]
+default = ["wasm-mls", "voice"]
 native = ["messenger-core/native", "dep:openmls", "dep:age"]
 web = ["messenger-core/web", "dep:serde-wasm-bindgen"]
 wasm-mls = ["web", "messenger-core/wasm-mls", "dep:openmls", "dep:openmls_rust_crypto", "dep:openmls_traits"]
+voice = ["messenger-core/voice"]
 
 [dependencies]
 leptos = { workspace = true }
@@ -52,7 +53,7 @@ messenger-storage = { path = "../messenger-storage" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 messenger-storage = { path = "../messenger-storage", features = ["web"] }
-web-sys = { workspace = true, features = ["HtmlVideoElement", "MediaStream", "MediaStreamConstraints", "MediaStreamTrack", "MediaDevices"] }
+web-sys = { workspace = true, features = ["HtmlVideoElement", "HtmlAudioElement", "HtmlInputElement", "MediaStream", "MediaStreamConstraints", "MediaStreamTrack", "MediaDevices", "File", "FileList", "FileReader", "Url", "BlobPropertyBag"] }
 
 [lints]
 workspace = true

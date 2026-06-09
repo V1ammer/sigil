@@ -22,10 +22,12 @@ pub fn MessageList(
     #[prop(optional)] on_edit: Option<Box<dyn Fn(&str) + Send + Sync + 'static>>,
     #[prop(optional)] on_delete: Option<Box<dyn Fn(&str) + Send + Sync + 'static>>,
     #[prop(optional)] on_reaction: Option<Box<dyn Fn(&str, String) + Send + Sync + 'static>>,
+    #[prop(optional)] on_thread_open: Option<Box<dyn Fn(&str) + Send + Sync + 'static>>,
 ) -> impl IntoView {
     let grouped = group_messages_with_dates(&messages, lang.get());
 
     let on_thread_click = on_thread_click.map(Arc::new);
+    let on_thread_open = on_thread_open.map(Arc::new);
     let on_media_click = on_media_click.map(Arc::new);
     let on_avatar_click = on_avatar_click.map(Arc::new);
     let on_reply = on_reply.map(Arc::new);
@@ -49,6 +51,7 @@ pub fn MessageList(
                     MessageGroup::Messages(msg_batch) => {
                         let len = msg_batch.len();
                         let on_thread = on_thread_click.clone();
+                        let on_thread_open_fn = on_thread_open.clone();
                         let on_media = on_media_click.clone();
                         let on_avatar = on_avatar_click.clone();
                         let on_reply = on_reply.clone();
@@ -114,6 +117,13 @@ pub fn MessageList(
                                         let r = on_reaction.clone();
                                         Box::new(move |emoji: String| {
                                             if let Some(ref f) = r { f(&id, emoji); }
+                                        })
+                                    }
+                                    on_thread_open={
+                                        let id = msg_id.clone();
+                                        let t = on_thread_open_fn.clone();
+                                        Box::new(move || {
+                                            if let Some(ref f) = t { f(&id); }
                                         })
                                     }
                                 />

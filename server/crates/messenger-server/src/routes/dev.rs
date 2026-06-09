@@ -6,7 +6,6 @@
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
-use base64::Engine;
 use rand::RngCore;
 use sea_orm::{ActiveModelTrait, EntityTrait, Set};
 use serde::Serialize;

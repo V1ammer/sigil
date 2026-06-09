@@ -132,6 +132,7 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
 
     // Chat list
     m.insert("chat.list.empty", "No conversations yet");
+    m.insert("chat.list.empty.hint", "Tap + to start a new chat");
     m.insert("chat.mls.not_ready", "Messages not available");
     m.insert("chat.mls.hint", "MLS setup is required to view messages");
 

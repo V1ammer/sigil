@@ -175,7 +175,7 @@ async fn start_barcode_wasm(
     let video_obj = js_sys::Object::new();
     js_sys::Reflect::set(&video_obj, &"facingMode".into(), &"environment".into())
         .map_err(|_| "failed to set facingMode")?;
-    constraints.video(&video_obj);
+    constraints.set_video(&video_obj);
 
     let media_devices = window
         .navigator()
