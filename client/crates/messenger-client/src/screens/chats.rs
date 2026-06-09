@@ -167,23 +167,30 @@ pub fn ChatsScreen() -> impl IntoView {
     let sel = selected.clone();
 
     // on_reply callback for MessageList
+    let users_state_for_reply = use_context::<crate::state::users::UsersState>();
     let on_reply_list = Arc::new({
         let msg_svc = msg_svc.clone();
         let preview = preview.clone();
         let sel = sel.clone();
+        let users = users_state_for_reply.clone();
         move |msg_id: &str| {
             // Look up the message content from the store
             let group_id = sel.get_untracked();
             if let (Some(gid), Ok(id)) = (group_id, uuid::Uuid::parse_str(msg_id)) {
                 let msgs = msg_svc.messages.by_group.get_untracked();
                 if let Some(msg) = msgs.get(&gid).and_then(|ms| ms.iter().find(|m| m.id == id)) {
-                    // Show short id as fallback; proper user-name lookup is TODO.
+                    // Prefer the cached display name, fall back to a short id.
                     let sender = msg
-                        .sender_user_id
-                        .to_string()
-                        .chars()
-                        .take(8)
-                        .collect::<String>();
+                        .sender_display_name
+                        .clone()
+                        .or_else(|| users.as_ref().and_then(|u| u.get(msg.sender_user_id)))
+                        .unwrap_or_else(|| {
+                            msg.sender_user_id
+                                .to_string()
+                                .chars()
+                                .take(8)
+                                .collect::<String>()
+                        });
                     let text = match &msg.body {
                         crate::state::messages::MessageBody::Text(t) => t.clone(),
                         _ => msg_id.to_string(),

@@ -86,7 +86,7 @@ pub fn display_to_mock(msg: &DisplayMessage) -> mock::Message {
         id: msg.id.to_string(),
         chat_id: msg.group_id.to_string(),
         sender_id: msg.sender_user_id.to_string(),
-        sender_name: String::new(),
+        sender_name: msg.sender_display_name.clone().unwrap_or_default(),
         sender_avatar: None,
         msg_type,
         content,
@@ -123,13 +123,31 @@ pub fn display_to_mock(msg: &DisplayMessage) -> mock::Message {
 
 /// Convert a slice of `DisplayMessage`s into `mock::Message`s.
 pub fn display_vec_to_mock(msgs: &[DisplayMessage], own_user_id: &str) -> Vec<mock::Message> {
+    use leptos::prelude::use_context;
+    let users = use_context::<crate::state::users::UsersState>();
     msgs.iter()
         .map(|m| {
             let mut mock = display_to_mock(m);
             // Mark as own if the sender is the current user.
-            mock.is_own = m.sender_user_id.to_string() == own_user_id
+            let is_own = m.sender_user_id.to_string() == own_user_id
                 || m.sender_user_id == uuid::Uuid::nil();
+            mock.is_own = is_own;
             mock.sender_id = m.sender_user_id.to_string();
+            // Fill in a display name when the envelope didn't carry one:
+            // fall back to the users cache, then to a short id.
+            if mock.sender_name.is_empty() {
+                if let Some(ref users) = users {
+                    mock.sender_name = users.label_for(m.sender_user_id);
+                } else if !is_own {
+                    mock.sender_name = m
+                        .sender_user_id
+                        .to_string()
+                        .chars()
+                        .take(8)
+                        .collect::<String>()
+                        + "…";
+                }
+            }
             mock
         })
         .collect()

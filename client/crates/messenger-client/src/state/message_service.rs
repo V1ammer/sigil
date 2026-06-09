@@ -18,7 +18,19 @@ use uuid::Uuid;
 use super::messages::{
     DeliveryStatus, DisplayMessage, DisplayReaction, MessageBody, MessageKind, MessagesState,
 };
-use super::session::build_api_client;
+use super::session::{build_api_client, Session, SessionState};
+use super::users::UsersState;
+
+/// Current user's plaintext username, taken from the active session. Used to
+/// fill `sender_display_name_override` on outgoing messages so peers can
+/// identify the sender without a server-side username lookup.
+fn current_username() -> Option<String> {
+    let session = use_context::<Session>()?;
+    match session.state.get_untracked() {
+        SessionState::Authenticated { identity, .. } => Some(identity.username.clone()),
+        _ => None,
+    }
+}
 
 // MLS runtime is cached in a thread-local because `MessengerLocalStore` is ?Send
 // (WASM-compatible async-trait), which means MlsRuntime is not Send+Sync and
@@ -114,6 +126,7 @@ impl MessageService {
 
         let client_message_id = Uuid::now_v7();
         let now = js_sys::Date::now() as i64 / 1000; // seconds
+        let me = current_username();
 
         // Build the MLS application envelope
         let envelope = ApplicationEnvelope {
@@ -126,7 +139,7 @@ impl MessageService {
             reply_to_message_id: reply_to,
             thread_root_id: thread_root,
             created_at: now,
-            sender_display_name_override: None,
+            sender_display_name_override: me.clone(),
         };
 
         let ciphertext = self
@@ -158,6 +171,7 @@ impl MessageService {
                         group_id,
                         sender_user_id: Uuid::nil(),
                         sender_device_id: Uuid::nil(),
+                        sender_display_name: me.clone(),
                         kind: MessageKind::Text,
                         body: MessageBody::Text(text.to_string()),
                         reply_to_message_id: reply_to,
@@ -219,6 +233,7 @@ impl MessageService {
         // 3. Build & MLS-encrypt the envelope that references the attachment.
         let client_message_id = Uuid::now_v7();
         let now = js_sys::Date::now() as i64 / 1000;
+        let me = current_username();
         let envelope = ApplicationEnvelope {
             client_message_id,
             kind: AppMessageKind::Voice,
@@ -231,7 +246,7 @@ impl MessageService {
             reply_to_message_id: None,
             thread_root_id: None,
             created_at: now,
-            sender_display_name_override: None,
+            sender_display_name_override: me.clone(),
         };
         let envelope_ct = self.encrypt_envelope(group_id, &envelope).await?;
 
@@ -270,6 +285,7 @@ impl MessageService {
                 group_id,
                 sender_user_id: Uuid::nil(),
                 sender_device_id: Uuid::nil(),
+                sender_display_name: me.clone(),
                 kind: MessageKind::Voice,
                 body: MessageBody::Voice {
                     attachment_id: upload.attachment_id,
@@ -326,6 +342,7 @@ impl MessageService {
 
         let client_message_id = Uuid::now_v7();
         let now = js_sys::Date::now() as i64 / 1000;
+        let me = current_username();
         let (kind, body, local_body) = if payload.is_image {
             (
                 AppMessageKind::Image,
@@ -375,7 +392,7 @@ impl MessageService {
             reply_to_message_id: None,
             thread_root_id: None,
             created_at: now,
-            sender_display_name_override: None,
+            sender_display_name_override: me.clone(),
         };
         let envelope_ct = self.encrypt_envelope(group_id, &envelope).await?;
 
@@ -412,6 +429,7 @@ impl MessageService {
                 group_id,
                 sender_user_id: Uuid::nil(),
                 sender_device_id: Uuid::nil(),
+                sender_display_name: me.clone(),
                 kind: kind_for_display,
                 body: local_body,
                 reply_to_message_id: None,
@@ -453,7 +471,7 @@ impl MessageService {
             reply_to_message_id: None,
             thread_root_id: None,
             created_at: now,
-            sender_display_name_override: None,
+            sender_display_name_override: current_username(),
         };
 
         let ciphertext = self
@@ -512,7 +530,7 @@ impl MessageService {
             reply_to_message_id: None,
             thread_root_id: None,
             created_at: now,
-            sender_display_name_override: None,
+            sender_display_name_override: current_username(),
         };
 
         let ciphertext = self
@@ -648,6 +666,7 @@ impl MessageService {
             group_id,
             sender_user_id: Uuid::nil(),
             sender_device_id: Uuid::nil(),
+            sender_display_name: current_username(),
             kind: MessageKind::Text,
             body: MessageBody::Text(text.to_string()),
             reply_to_message_id: None,
@@ -751,17 +770,26 @@ impl MessageService {
         };
 
         // Parse the application envelope from decrypted bytes
-        let (kind, body, reply_to, thread_root, created) =
+        let (kind, body, reply_to, thread_root, created, sender_display_name) =
             if let Some(ref plaintext) = decrypted {
                 match rmp_serde::from_slice::<ApplicationEnvelope>(plaintext) {
                     Ok(envelope) => {
                         let (k, b) = Self::envelope_to_display(&envelope);
+                        // Remember the sender's username so reply previews, group
+                        // headers and future messages can show a real label.
+                        if let (Some(users), Some(name)) = (
+                            use_context::<UsersState>(),
+                            envelope.sender_display_name_override.as_deref(),
+                        ) {
+                            users.remember(msg.sender_user_id, name);
+                        }
                         (
                             k,
                             b,
                             envelope.reply_to_message_id,
                             envelope.thread_root_id,
                             envelope.created_at,
+                            envelope.sender_display_name_override.clone(),
                         )
                     }
                     Err(_) => {
@@ -773,6 +801,7 @@ impl MessageService {
                             None,
                             None,
                             msg.created_at,
+                            None,
                         )
                     }
                 }
@@ -789,6 +818,7 @@ impl MessageService {
                     None,
                     None,
                     msg.created_at,
+                    None,
                 )
             };
 
@@ -804,6 +834,7 @@ impl MessageService {
             group_id,
             sender_user_id: msg.sender_user_id,
             sender_device_id: msg.sender_device_id,
+            sender_display_name,
             kind,
             body,
             reply_to_message_id: reply_to.or(msg.reply_to_message_id),

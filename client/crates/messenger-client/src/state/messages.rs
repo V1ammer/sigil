@@ -71,6 +71,10 @@ pub struct DisplayMessage {
     pub group_id: Uuid,
     pub sender_user_id: Uuid,
     pub sender_device_id: Uuid,
+    /// Display name copied from the envelope's `sender_display_name_override`,
+    /// kept here so the UI doesn't have to re-query the users cache for every
+    /// render.
+    pub sender_display_name: Option<String>,
     pub kind: MessageKind,
     pub body: MessageBody,
     pub reply_to_message_id: Option<Uuid>,

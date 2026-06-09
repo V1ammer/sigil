@@ -11,6 +11,7 @@ pub mod ui;
 pub mod settings;
 pub mod connectivity;
 pub mod notifications;
+pub mod users;
 pub mod ws_manager;
 pub mod message_service;
 pub mod sync_service;
@@ -23,6 +24,7 @@ pub use ui::*;
 pub use settings::*;
 pub use connectivity::*;
 pub use notifications::*;
+pub use users::*;
 
 use crate::state::message_service::MessageService;
 use leptos::prelude::*;
@@ -38,5 +40,6 @@ pub fn provide_app_state() {
     provide_context(SettingsState::new());
     provide_context(ConnectivityState::new());
     provide_context(NotificationsState::new());
+    provide_context(UsersState::new());
     provide_context(MessageService::new());
 }
