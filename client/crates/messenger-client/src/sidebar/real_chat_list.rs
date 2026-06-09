@@ -218,9 +218,17 @@ pub fn RealChatList(
                                             <AvatarPlaceholder initials={initials} />
                                             <div class="min-w-0 flex-1">
                                                 <div class="flex items-center justify-between gap-2">
-                                                    <span class="text-sm font-medium text-foreground truncate">
-                                                        {chat.display_name.clone()}
-                                                    </span>
+                                                    <div class="flex items-center gap-1.5 min-w-0">
+                                                        <span class="text-sm font-medium text-foreground truncate">
+                                                            {chat.display_name.clone()}
+                                                        </span>
+                                                        {if chat.muted {
+                                                            view! { <Icon name="bell-off" class_name="h-3 w-3 text-muted-foreground shrink-0"/> }.into_any()
+                                                        } else { view! {}.into_any() }}
+                                                        {if chat.pinned {
+                                                            view! { <Icon name="pin" class_name="h-3 w-3 text-muted-foreground shrink-0"/> }.into_any()
+                                                        } else { view! {}.into_any() }}
+                                                    </div>
                                                     {chat.last_message_at.map(|ts| {
                                                         view! {
                                                             <span class="text-xs text-muted-foreground shrink-0">

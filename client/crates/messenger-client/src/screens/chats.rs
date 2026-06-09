@@ -460,12 +460,12 @@ pub fn ChatsScreen() -> impl IntoView {
                 }.into_any()
             }).unwrap_or_else(|| {
                 view! {
-                    <div class="hidden md:flex flex-1 flex-col items-center justify-center bg-muted/30">
-                        <div class="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    <div class="hidden md:flex flex-1 flex-col items-center justify-center bg-muted/30 p-8">
+                        <div class="flex h-20 w-20 items-center justify-center rounded-full bg-muted/70 mb-5">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
                         </div>
-                        <h2 class="mt-4 text-lg font-medium text-foreground">{t!("welcome.title")}</h2>
-                        <p class="mt-1 text-sm text-muted-foreground">{t!("welcome.hint")}</p>
+                        <h2 class="text-lg font-medium text-foreground text-center">{t!("welcome.title")}</h2>
+                        <p class="mt-2 text-sm text-muted-foreground text-center max-w-sm">{t!("welcome.hint")}</p>
                     </div>
                 }.into_any()
             })}
