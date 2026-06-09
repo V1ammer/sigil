@@ -744,6 +744,9 @@ impl MessageService {
     }
 
     /// Convert stored messages to DisplayMessages with MLS decryption.
+    ///
+    /// MLS control-plane frames (proposals, commits, welcomes) are dropped here
+    /// — only `application` frames carry user content.
     async fn convert_messages(
         &self,
         stored: &[messenger_proto::mls::StoredMessage],
@@ -751,6 +754,9 @@ impl MessageService {
     ) -> Vec<DisplayMessage> {
         let mut result = Vec::with_capacity(stored.len());
         for msg in stored {
+            if msg.wire_format != "application" {
+                continue;
+            }
             result.push(self.convert_one(msg, group_id).await);
         }
         result
