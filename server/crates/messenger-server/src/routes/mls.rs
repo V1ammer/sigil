@@ -192,6 +192,7 @@ pub struct StoredMessage {
     pub parent_message_id: Option<Uuid>,
     pub thread_root_id: Option<Uuid>,
     pub reply_to_message_id: Option<Uuid>,
+    pub client_message_id: Uuid,
     pub created_at: i64,
     pub state: Option<MessageState>,
 }
@@ -1196,6 +1197,7 @@ pub async fn pull_messages(
                 parent_message_id: m.parent_message_id,
                 thread_root_id: m.thread_root_id,
                 reply_to_message_id: m.reply_to_message_id,
+                client_message_id: m.client_message_id,
                 created_at: m.created_at,
                 state: msg_state,
             }
