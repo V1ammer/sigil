@@ -205,7 +205,7 @@ pub fn MessageItem(
                             view! {}.into_any()
                         }}
 
-                        <div class=format!("flex flex-col w-fit max-w-[75%] min-w-0 {}", if is_own { "items-end" } else { "items-start" })>
+                        <div class=format!("flex flex-col w-fit max-w-[75%] {}", if is_own { "items-end" } else { "items-start" })>
                             // Sender name (first in group only)
                             {if show_sender_name {
                                 view! {
@@ -238,7 +238,7 @@ pub fn MessageItem(
                             }}
 
                             // Message bubble
-                            <div class=format!("px-3 py-2 text-sm shadow-sm break-words max-w-full {bubble_class}")>
+                            <div class=format!("px-3 py-2 text-sm shadow-sm break-words w-fit max-w-full {bubble_class}")>
                                 // Message content based on type
                                 {render_content(msg.clone(), on_media_click_arc.clone(), lang.get())}
 

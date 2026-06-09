@@ -41,6 +41,81 @@ pub fn is_tauri_context() -> bool {
     }
 }
 
+/// Store a value in the native Android keystore (via Tauri plugin).
+///
+/// No-op on non-Tauri builds. On desktop Tauri, the plugin currently returns
+/// `ok=true` without actually persisting — the OS keyring path lives elsewhere.
+///
+/// # Errors
+///
+/// Returns an error string if the invoke call fails.
+pub async fn keystore_set(key: &str, value: &str) -> Result<(), String> {
+    if !is_tauri_context() {
+        return Err("not in Tauri context".into());
+    }
+    let args = js_sys::Object::new();
+    js_sys::Reflect::set(&args, &JsValue::from("key"), &JsValue::from(key))
+        .map_err(|_| "set key arg".to_string())?;
+    js_sys::Reflect::set(&args, &JsValue::from("value"), &JsValue::from(value))
+        .map_err(|_| "set value arg".to_string())?;
+    tauri_plugin_invoke("android-keystore", "set", &args).await?;
+    Ok(())
+}
+
+/// Retrieve a value from the native Android keystore.
+///
+/// Returns `Ok(Some(...))` when the key exists, `Ok(None)` when absent,
+/// or `Err(...)` on transport failure. Decodes the base64 payload returned
+/// by the Kotlin side and re-encodes as UTF-8 (the caller stores text).
+///
+/// # Errors
+///
+/// Returns an error string if the invoke call fails.
+pub async fn keystore_get(key: &str) -> Result<Option<String>, String> {
+    if !is_tauri_context() {
+        return Ok(None);
+    }
+    let args = js_sys::Object::new();
+    js_sys::Reflect::set(&args, &JsValue::from("key"), &JsValue::from(key))
+        .map_err(|_| "set key arg".to_string())?;
+    let result = tauri_plugin_invoke("android-keystore", "get", &args).await?;
+    let value = js_sys::Reflect::get(&result, &JsValue::from("value"))
+        .map_err(|_| "no value field".to_string())?;
+    if value.is_null() || value.is_undefined() {
+        return Ok(None);
+    }
+    let b64 = value.as_string().ok_or("value not string")?;
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&b64)
+        .map_err(|e| format!("base64: {e}"))?;
+    Ok(Some(String::from_utf8_lossy(&bytes).into_owned()))
+}
+
+/// Delete a key from the native Android keystore.
+///
+/// # Errors
+///
+/// Returns an error string if the invoke call fails.
+pub async fn keystore_delete(key: &str) -> Result<(), String> {
+    if !is_tauri_context() {
+        return Ok(());
+    }
+    let args = js_sys::Object::new();
+    js_sys::Reflect::set(&args, &JsValue::from("key"), &JsValue::from(key))
+        .map_err(|_| "set key arg".to_string())?;
+    tauri_plugin_invoke("android-keystore", "delete", &args).await?;
+    Ok(())
+}
+
+/// Invoke a Tauri plugin command via `window.__TAURI_INTERNALS__.invoke`.
+///
+/// Builds the canonical `plugin:<plugin>|<command>` name used by Tauri 2.
+async fn tauri_plugin_invoke(plugin: &str, command: &str, args: &js_sys::Object) -> Result<JsValue, String> {
+    let cmd = format!("plugin:{plugin}|{command}");
+    tauri_invoke(&cmd, args).await
+}
+
 /// Encrypt a `BootstrapPayload` for a new device via Tauri's native AGE backend.
 ///
 /// Calls the `age_encrypt_bootstrap` Tauri command.

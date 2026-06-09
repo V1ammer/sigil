@@ -104,6 +104,9 @@ pub fn App() -> impl IntoView {
     // 6. Try session restore in background — full identity recovery.
     let session = use_context::<Session>().expect("Session must be provided");
     spawn_local(async move {
+        // On Android, sync the Keystore copy of credentials back into the
+        // WebView's localStorage if it was cleared (e.g. data-wipe-on-update).
+        crate::state::session::restore_credentials_from_keystore().await;
         web_sys::console::log_1(&"[App] Attempting session restore...".into());
         if let Some(restored) = try_restore_session().await {
             web_sys::console::log_1(&"[App] Session data found, restoring identity...".into());

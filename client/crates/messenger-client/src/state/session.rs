@@ -107,18 +107,74 @@ pub fn build_api_client() -> Option<ApiClient> {
     Some(client)
 }
 
-/// Persist auth credentials to local storage.
+/// Persist auth credentials to local storage AND mirror them into the native
+/// Android Keystore when available.
+///
+/// localStorage stays as a fast synchronous cache so session-restore on app start
+/// can complete without awaiting any Tauri round-trip. The keystore copy provides
+/// hardware-backed encryption on Android (`EncryptedSharedPreferences` via
+/// `tauri-plugin-android-keystore`).
 pub fn persist_auth_credentials(device_id: Uuid, device_signing_secret: &[u8; 32]) {
     use base64::Engine;
+    let device_id_str = device_id.to_string();
+    let secret_b64 = base64::engine::general_purpose::STANDARD.encode(device_signing_secret);
+
     if let Some(storage) = web_sys::window()
         .and_then(|w| w.local_storage().ok())
         .flatten()
     {
-        let _ = storage.set_item("messenger_device_id", &device_id.to_string());
-        let _ = storage.set_item(
-            "messenger_device_signing_secret",
-            &base64::engine::general_purpose::STANDARD.encode(device_signing_secret),
-        );
+        let _ = storage.set_item("messenger_device_id", &device_id_str);
+        let _ = storage.set_item("messenger_device_signing_secret", &secret_b64);
+    }
+
+    // Mirror into the keystore on a fresh task — no-op outside Tauri.
+    if crate::tauri_bridge::is_tauri_context() {
+        let id = device_id_str.clone();
+        let secret = secret_b64.clone();
+        leptos::task::spawn_local(async move {
+            if let Err(e) = crate::tauri_bridge::keystore_set("messenger_device_id", &id).await {
+                tracing::warn!(error = %e, "keystore_set device_id failed");
+            }
+            if let Err(e) =
+                crate::tauri_bridge::keystore_set("messenger_device_signing_secret", &secret).await
+            {
+                tracing::warn!(error = %e, "keystore_set secret failed");
+            }
+        });
+    }
+}
+
+/// Restore credentials from the keystore into localStorage when the WebView's
+/// localStorage has been cleared but the keystore still holds them.
+///
+/// Should be called early in app startup. No-op outside Tauri.
+pub async fn restore_credentials_from_keystore() {
+    if !crate::tauri_bridge::is_tauri_context() {
+        return;
+    }
+    let Some(storage) = web_sys::window().and_then(|w| w.local_storage().ok()).flatten() else {
+        return;
+    };
+    let has_id = storage
+        .get_item("messenger_device_id")
+        .ok()
+        .flatten()
+        .is_some();
+    let has_secret = storage
+        .get_item("messenger_device_signing_secret")
+        .ok()
+        .flatten()
+        .is_some();
+    if has_id && has_secret {
+        return;
+    }
+    if let Ok(Some(id)) = crate::tauri_bridge::keystore_get("messenger_device_id").await {
+        let _ = storage.set_item("messenger_device_id", &id);
+    }
+    if let Ok(Some(secret)) =
+        crate::tauri_bridge::keystore_get("messenger_device_signing_secret").await
+    {
+        let _ = storage.set_item("messenger_device_signing_secret", &secret);
     }
 }
 
