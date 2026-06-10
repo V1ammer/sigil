@@ -5,10 +5,10 @@
 use leptos::ev::PointerEvent;
 use leptos::prelude::*;
 use std::collections::HashMap;
-use std::sync::Arc;
 use wasm_bindgen::JsCast;
 
 use crate::icons::Icon;
+use crate::state::back_stack;
 
 #[derive(Clone, Copy, Default)]
 struct GestureStart {
@@ -132,15 +132,11 @@ pub fn ImageLightbox(
         }
     };
 
-    let close_arc = Arc::new(on_close);
-    let close_handler = {
-        let cf = close_arc.clone();
-        move |_| {
-            if let Some(f) = cf.as_ref() {
-                f();
-            }
-        }
-    };
+    // The X button doesn't call on_close directly — it asks the back stack to
+    // pop, which fires popstate, which runs the handler the opener registered
+    // (that handler sets is_open=false). This keeps history aligned with UI.
+    let _ = on_close;
+    let close_handler = move |_| back_stack::pop();
 
     let style_fn = move || {
         let s = scale.get();
@@ -161,7 +157,7 @@ pub fn ImageLightbox(
             >
                 <button
                     class="absolute top-2 left-2 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-black/40 text-white/90 hover:bg-black/60 transition-colors"
-                    on:click=close_handler.clone()
+                    on:click=close_handler
                 >
                     <Icon name="x" class_name="h-6 w-6"/>
                 </button>

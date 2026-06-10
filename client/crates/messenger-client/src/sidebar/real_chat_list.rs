@@ -209,6 +209,8 @@ pub fn RealChatList(
                                                     triggered.set(false);
                                                     return;
                                                 }
+                                                let sel = selected;
+                                                crate::state::back_stack::push(move || sel.set(None));
                                                 selected.set(Some(chat.group_id));
                                                 if let Some(ref f) = cb {
                                                     f(chat.group_id.to_string());

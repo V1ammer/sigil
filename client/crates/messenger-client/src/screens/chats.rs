@@ -314,13 +314,15 @@ pub fn ChatsScreen() -> impl IntoView {
                 let cs3 = chats_state.clone();
                 let on_archive = Box::new(move || {
                     cs3.toggle_archive(group_id);
-                    // Leaving the chat view after archiving feels natural.
-                    cs3.selected.set(None);
+                    // Pop the back stack so the history entry pushed when this
+                    // chat opened gets cleared along with the UI.
+                    crate::state::back_stack::pop();
                 }) as Box<dyn Fn() + Send + Sync + 'static>;
                 let on_mark_read_cb = Box::new(|| {}) as Box<dyn Fn() + Send + Sync + 'static>;
                 let on_leave_cb = Box::new(|| {}) as Box<dyn Fn() + Send + Sync + 'static>;
                 let on_delete_cb = Box::new(|| {}) as Box<dyn Fn() + Send + Sync + 'static>;
-                let on_back_cb = Box::new(move || selected.set(None)) as Box<dyn Fn() + Send + Sync + 'static>;
+                let on_back_cb = Box::new(|| crate::state::back_stack::pop())
+                    as Box<dyn Fn() + Send + Sync + 'static>;
                 let chat_for_header = state_chat
                     .as_ref()
                     .map(|c| to_mock_chat(c, &name))
