@@ -82,10 +82,22 @@ pub fn ChatsScreen() -> impl IntoView {
     let chats_signal = chats_state.chats;
     let loading_messages = RwSignal::new(false);
 
-    // Load chats from server on mount
+    // Load chats from server on mount, then hydrate each chat's last-message
+    // preview by loading messages — `GroupSummary` from the server only carries
+    // metadata, so the sidebar snippets need a per-chat message fetch.
+    let ms_for_hydrate = message_service.clone();
     spawn_local(async move {
         if let Some(api) = build_api_client() {
             let _ = chats_state_clone.load_from_server(&api).await;
+            let group_ids: Vec<_> = chats_state_clone
+                .chats
+                .get_untracked()
+                .iter()
+                .map(|c| c.group_id)
+                .collect();
+            for gid in group_ids {
+                ms_for_hydrate.load_messages(gid).await;
+            }
         }
     });
 

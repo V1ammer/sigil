@@ -1,5 +1,7 @@
 use serde::Serialize;
 use tauri::{AppHandle, Runtime};
+#[cfg(mobile)]
+use tauri::Manager;
 
 #[derive(Serialize)]
 pub struct KeystoreResponse {
@@ -20,7 +22,7 @@ pub fn set<R: Runtime>(
 ) -> Result<KeystoreResponse, String> {
     #[cfg(mobile)]
     {
-        let keystore = app.state::<mobile::KeystoreMobile<R>>();
+        let keystore = app.state::<crate::mobile::KeystoreMobile<R>>();
         keystore.set(&key, value.as_bytes())
     }
     #[cfg(not(mobile))]
@@ -39,7 +41,7 @@ pub fn get<R: Runtime>(
 ) -> Result<KeystoreGetResponse, String> {
     #[cfg(mobile)]
     {
-        let keystore = app.state::<mobile::KeystoreMobile<R>>();
+        let keystore = app.state::<crate::mobile::KeystoreMobile<R>>();
         keystore.get(&key).map(|opt| {
             use base64::engine::general_purpose::STANDARD as BASE64;
             use base64::Engine;
@@ -63,7 +65,7 @@ pub fn delete<R: Runtime>(
 ) -> Result<KeystoreResponse, String> {
     #[cfg(mobile)]
     {
-        let keystore = app.state::<mobile::KeystoreMobile<R>>();
+        let keystore = app.state::<crate::mobile::KeystoreMobile<R>>();
         keystore.delete(&key)
     }
     #[cfg(not(mobile))]

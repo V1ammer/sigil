@@ -6,6 +6,8 @@
   "permissions": [
     "core:default",
     "core:window:default",
-    "shell:default"
+    "shell:default",
+    "android-keystore:default",
+    "file-saver:default"
   ]
 }

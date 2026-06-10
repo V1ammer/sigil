@@ -1,0 +1,5 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "Default permissions for the file-saver plugin — allows saving attachments to Downloads, looking up saved paths, and opening files with the system viewer."
+permissions = ["allow-fs-save", "allow-fs-is-saved", "allow-fs-open"]

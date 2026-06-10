@@ -3576,7 +3576,6 @@ dependencies = [
 name = "messenger-tauri"
 version = "0.1.0"
 dependencies = [
- "base64 0.22.1",
  "messenger-core",
  "messenger-storage",
  "serde",
@@ -3584,6 +3583,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-android-keystore",
+ "tauri-plugin-file-saver",
  "tauri-plugin-shell",
  "tracing",
 ]
@@ -6159,7 +6159,20 @@ dependencies = [
  "serde",
  "serde_json",
  "tauri",
+ "tauri-plugin",
  "thiserror 1.0.69",
+ "tracing",
+]
+
+[[package]]
+name = "tauri-plugin-file-saver"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
  "tracing",
 ]
 

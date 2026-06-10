@@ -1,5 +1,6 @@
 //! Mobile keystore bridge — Rust → Kotlin via Tauri's PluginHandle.
 
+use base64::Engine;
 use serde_json::json;
 use tauri::plugin::PluginHandle;
 use tauri::Runtime;

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/*", "src-tauri", "src-tauri/tauri-plugin-android-keystore"]
+members = ["crates/*", "src-tauri", "src-tauri/tauri-plugin-android-keystore", "src-tauri/tauri-plugin-file-saver"]
 
 [workspace.package]
 version = "0.1.0"

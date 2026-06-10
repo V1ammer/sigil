@@ -428,7 +428,7 @@ fn render_last_message_preview(chat: &Chat) -> AnyView {
     };
     view! {
         {icon.map(|name| view! {
-            <Icon name=name class_name="h-3 w-3 shrink-0".to_string()/>
+            <Icon name=name class_name="h-4 w-4 shrink-0".to_string()/>
         })}
         <span class="truncate">{label}</span>
     }.into_any()
