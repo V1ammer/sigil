@@ -9,6 +9,7 @@ use crate::i18n::{Language, t, format_time};
 use crate::mock::Message;
 use crate::icons::Icon;
 use super::voice_message::VoiceMessage;
+use super::image_lightbox::ImageLightbox;
 use crate::components::context_menu::{ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem, ContextMenuSeparator};
 use crate::components::sheet::{Sheet, SheetHeader, SheetTitle};
 use crate::components::tooltip::Tooltip;
@@ -405,12 +406,13 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
             }.into_any()
         }
         "image" => {
-            let mc = on_media_click.clone();
+            let _ = on_media_click.clone();
             let attachment_id = msg.attachment_id.clone();
             let decryption_key = msg.decryption_key.clone();
             let mime = msg.mime_type.clone().unwrap_or_else(|| "image/jpeg".into());
             let blob_url: RwSignal<Option<String>> = RwSignal::new(None);
             let err: RwSignal<Option<String>> = RwSignal::new(None);
+            let lightbox_open: RwSignal<bool> = RwSignal::new(false);
 
             // Auto-fetch and decrypt on first render. Caches the object URL.
             if let (Some(aid), Some(key_b64)) = (attachment_id, decryption_key) {
@@ -451,11 +453,15 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                 });
             }
 
+            let on_close_lightbox = Box::new(move || lightbox_open.set(false))
+                as Box<dyn Fn() + Send + Sync + 'static>;
             view! {
                 <button
                     class="block overflow-hidden rounded-lg -mx-1 -mt-1 mb-1"
                     on:click=move |_| {
-                        if let Some(f) = mc.as_ref() { f(); }
+                        if blob_url.get_untracked().is_some() {
+                            lightbox_open.set(true);
+                        }
                     }
                 >
                     <div class="aspect-video max-h-64 w-full bg-muted flex items-center justify-center">
@@ -480,6 +486,11 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                         }}
                     </div>
                 </button>
+                <ImageLightbox
+                    is_open=Signal::derive(move || lightbox_open.get())
+                    on_close=on_close_lightbox
+                    src=Signal::derive(move || blob_url.get())
+                />
             }.into_any()
         }
         "video" => {
