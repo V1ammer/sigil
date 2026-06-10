@@ -298,7 +298,22 @@ impl MessageService {
             created_at: now,
             sender_display_name_override: me.clone(),
         };
-        let envelope_ct = self.encrypt_envelope(group_id, &envelope).await?;
+        // Encrypt or fall back to a plaintext envelope so the message still
+        // delivers when MLS group state isn't set up locally (parity with the
+        // text path's `MLS not ready, sending plaintext`).
+        let envelope_ct = match self.encrypt_envelope(group_id, &envelope).await {
+            Some(ct) => ct,
+            None => match rmp_serde::to_vec_named(&envelope) {
+                Ok(plain) => {
+                    web_sys::console::warn_1(&"[send_voice] MLS not ready, sending plaintext envelope".into());
+                    plain
+                }
+                Err(e) => {
+                    web_sys::console::error_1(&format!("[send_voice] envelope serialize: {e}").into());
+                    return None;
+                }
+            },
+        };
 
         let req = PostMessageRequest {
             expected_epoch: 0,
@@ -311,7 +326,7 @@ impl MessageService {
         let resp = match api.post_message(group_id, &req).await {
             Ok(r) => r,
             Err(e) => {
-                tracing::warn!(%group_id, error = %e, "voice post_message failed");
+                web_sys::console::error_1(&format!("[send_voice] post_message failed: {e}").into());
                 return None;
             }
         };
@@ -444,7 +459,22 @@ impl MessageService {
             created_at: now,
             sender_display_name_override: me.clone(),
         };
-        let envelope_ct = self.encrypt_envelope(group_id, &envelope).await?;
+        // Encrypt or fall back to a plaintext envelope so the message still
+        // delivers when MLS group state isn't set up locally (parity with the
+        // text path's `MLS not ready, sending plaintext`).
+        let envelope_ct = match self.encrypt_envelope(group_id, &envelope).await {
+            Some(ct) => ct,
+            None => match rmp_serde::to_vec_named(&envelope) {
+                Ok(plain) => {
+                    web_sys::console::warn_1(&"[send_attachment] MLS not ready, sending plaintext envelope".into());
+                    plain
+                }
+                Err(e) => {
+                    web_sys::console::error_1(&format!("[send_attachment] envelope serialize: {e}").into());
+                    return None;
+                }
+            },
+        };
 
         let req = PostMessageRequest {
             expected_epoch: 0,
@@ -457,7 +487,7 @@ impl MessageService {
         let resp = match api.post_message(group_id, &req).await {
             Ok(r) => r,
             Err(e) => {
-                tracing::warn!(%group_id, error = %e, "attachment post_message failed");
+                web_sys::console::error_1(&format!("[send_attachment] post_message failed: {e}").into());
                 return None;
             }
         };
@@ -832,64 +862,55 @@ impl MessageService {
         msg: &messenger_proto::mls::StoredMessage,
         group_id: Uuid,
     ) -> DisplayMessage {
-        // Try MLS decryption first
+        // Try MLS decryption first. If that fails (MLS state missing, etc.)
+        // fall back to treating `mls_ciphertext` as a plaintext envelope —
+        // the send path uses the same fallback when MLS isn't ready.
         let decrypted = if !msg.mls_ciphertext.is_empty() {
             self.decrypt_ciphertext(group_id, &msg.mls_ciphertext).await
         } else {
             None
         };
+        let payload: &[u8] = decrypted.as_deref().unwrap_or(&msg.mls_ciphertext);
 
-        // Parse the application envelope from decrypted bytes
+        // Parse the application envelope. Works for both MLS-decrypted bytes
+        // and raw plaintext envelopes sent during the MLS-not-ready fallback.
         let (kind, body, reply_to, thread_root, created, sender_display_name) =
-            if let Some(ref plaintext) = decrypted {
-                match rmp_serde::from_slice::<ApplicationEnvelope>(plaintext) {
-                    Ok(envelope) => {
-                        let (k, b) = Self::envelope_to_display(&envelope);
-                        // Remember the sender's username so reply previews, group
-                        // headers and future messages can show a real label.
-                        if let (Some(users), Some(name)) = (
-                            USERS_STATE.with(|c| c.borrow().clone()),
-                            envelope.sender_display_name_override.as_deref(),
-                        ) {
-                            users.remember(msg.sender_user_id, name);
-                        }
-                        (
-                            k,
-                            b,
-                            envelope.reply_to_message_id,
-                            envelope.thread_root_id,
-                            envelope.created_at,
-                            envelope.sender_display_name_override.clone(),
-                        )
+            match rmp_serde::from_slice::<ApplicationEnvelope>(payload) {
+                Ok(envelope) => {
+                    let (k, b) = Self::envelope_to_display(&envelope);
+                    // Remember the sender's username so reply previews, group
+                    // headers and future messages can show a real label.
+                    if let (Some(users), Some(name)) = (
+                        USERS_STATE.with(|c| c.borrow().clone()),
+                        envelope.sender_display_name_override.as_deref(),
+                    ) {
+                        users.remember(msg.sender_user_id, name);
                     }
-                    Err(_) => {
-                        // Fallback: treat as plaintext
-                        let text = String::from_utf8_lossy(plaintext).to_string();
-                        (
-                            MessageKind::Text,
-                            MessageBody::Text(text),
-                            None,
-                            None,
-                            msg.created_at,
-                            None,
-                        )
-                    }
+                    (
+                        k,
+                        b,
+                        envelope.reply_to_message_id,
+                        envelope.thread_root_id,
+                        envelope.created_at,
+                        envelope.sender_display_name_override.clone(),
+                    )
                 }
-            } else {
-                // No MLS yet — try lossy UTF-8
-                let text = if msg.mls_ciphertext.is_empty() {
-                    String::new()
-                } else {
-                    String::from_utf8_lossy(&msg.mls_ciphertext).to_string()
-                };
-                (
-                    MessageKind::Text,
-                    MessageBody::Text(text),
-                    None,
-                    None,
-                    msg.created_at,
-                    None,
-                )
+                Err(_) => {
+                    // Last resort: treat as plain UTF-8 text (legacy text fallback).
+                    let text = if payload.is_empty() {
+                        String::new()
+                    } else {
+                        String::from_utf8_lossy(payload).to_string()
+                    };
+                    (
+                        MessageKind::Text,
+                        MessageBody::Text(text),
+                        None,
+                        None,
+                        msg.created_at,
+                        None,
+                    )
+                }
             };
 
         // Parse state (edit/delete)
