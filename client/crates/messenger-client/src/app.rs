@@ -103,6 +103,7 @@ pub fn App() -> impl IntoView {
 
     // 6. Try session restore in background — full identity recovery.
     let session = use_context::<Session>().expect("Session must be provided");
+    let msg_svc = use_context::<MessageService>().expect("MessageService must be provided");
     spawn_local(async move {
         // On Android, sync the Keystore copy of credentials back into the
         // WebView's localStorage if it was cleared (e.g. data-wipe-on-update).
@@ -129,9 +130,7 @@ pub fn App() -> impl IntoView {
                 start_ws_connection(&ws);
 
                 // Initialize MLS runtime for message encryption.
-                if let Some(msg_svc) = use_context::<MessageService>() {
-                    msg_svc.init_mls(device_id).await;
-                }
+                msg_svc.init_mls(device_id).await;
 
                 // Start background sync service.
                 sync.start();

@@ -12,6 +12,7 @@ use crate::icons::Icon;
 use crate::components::textarea::Textarea;
 use crate::components::dropdown_menu::{DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem};
 use crate::components::tooltip::Tooltip;
+use crate::state::notifications::{NotificationsState, ToastKind};
 
 #[cfg(feature = "voice")]
 use messenger_core::voice::Recorder;
@@ -36,12 +37,29 @@ pub struct AttachmentPayload {
     pub is_image: bool,
 }
 
+/// Command queued while `Recorder::start()` is still in flight.
+#[cfg(feature = "voice")]
+#[derive(Clone, Copy)]
+enum PendingVoiceCmd {
+    Stop,
+    Cancel,
+}
+
 #[cfg(feature = "voice")]
 thread_local! {
     /// Active recorder for the currently held mic button. There can be at most one.
     /// Stored thread-local because `Recorder` is `!Send` (holds `Rc<RefCell<…>>` for chunks).
     static ACTIVE_RECORDER: RefCell<Option<Recorder>> = const { RefCell::new(None) };
+    /// If the user releases the mic button while `Recorder::start()` is still
+    /// awaiting microphone permission, the stop/cancel is queued here and the
+    /// start task picks it up as soon as the recorder is ready.
+    static PENDING_VOICE_CMD: RefCell<Option<PendingVoiceCmd>> = const { RefCell::new(None) };
 }
+
+/// Minimum duration for a voice message to be sent. Releases under this
+/// threshold are treated as accidental taps and discarded.
+#[cfg(feature = "voice")]
+const VOICE_MIN_DURATION_MS: u32 = 400;
 
 /// Preview mode for the input bar.
 #[derive(Clone, Default)]
@@ -214,6 +232,7 @@ pub fn InputBar(
     };
 
     let start_recording_core = std::sync::Arc::new({
+        let on_send_voice = on_send_voice_arc.clone();
         move || {
             if is_recording.get_untracked() { return; }
             is_recording.set(true);
@@ -234,15 +253,59 @@ pub fn InputBar(
                 }
             }
             #[cfg(feature = "voice")]
-            spawn_local(async move {
-                match Recorder::start().await {
-                    Ok(rec) => ACTIVE_RECORDER.with(|cell| *cell.borrow_mut() = Some(rec)),
-                    Err(e) => {
-                        web_sys::console::error_1(&format!("[InputBar] Recorder::start: {e}").into());
-                        is_recording.set(false);
+            {
+                // Clear any stale pending command from a previous session.
+                PENDING_VOICE_CMD.with(|c| *c.borrow_mut() = None);
+                let on_send_voice = on_send_voice.clone();
+                spawn_local(async move {
+                    let rec = match Recorder::start().await {
+                        Ok(rec) => rec,
+                        Err(e) => {
+                            web_sys::console::error_1(&format!("[InputBar] Recorder::start: {e}").into());
+                            is_recording.set(false);
+                            PENDING_VOICE_CMD.with(|c| *c.borrow_mut() = None);
+                            if let Some(notif) = use_context::<NotificationsState>() {
+                                let lower = e.to_lowercase();
+                                let msg = if lower.contains("notallowed") || lower.contains("permission") || lower.contains("denied") {
+                                    "Доступ к микрофону запрещён. Разрешите его в настройках браузера/приложения."
+                                } else {
+                                    "Не удалось включить микрофон"
+                                };
+                                notif.push(ToastKind::Error, msg);
+                            }
+                            return;
+                        }
+                    };
+                    // The user may have already released / cancelled while we
+                    // were awaiting microphone permission. Pick that up here.
+                    let pending = PENDING_VOICE_CMD.with(|c| c.borrow_mut().take());
+                    match pending {
+                        Some(PendingVoiceCmd::Cancel) => {
+                            rec.cancel();
+                        }
+                        Some(PendingVoiceCmd::Stop) => {
+                            let recording = rec.stop().await;
+                            if !recording.bytes.is_empty()
+                                && recording.duration_ms >= VOICE_MIN_DURATION_MS
+                            {
+                                if let Some(f) = on_send_voice.as_ref() {
+                                    f(VoicePayload {
+                                        bytes: recording.bytes,
+                                        mime: recording.mime,
+                                        duration_ms: recording.duration_ms,
+                                        waveform: recording.waveform,
+                                    });
+                                }
+                            }
+                        }
+                        None => {
+                            ACTIVE_RECORDER.with(|cell| *cell.borrow_mut() = Some(rec));
+                        }
                     }
-                }
-            });
+                });
+            }
+            #[cfg(not(feature = "voice"))]
+            { let _ = on_send_voice.clone(); }
         }
     }) as std::sync::Arc<dyn Fn() + Send + Sync + 'static>;
 
@@ -258,10 +321,17 @@ pub fn InputBar(
                 let on_send_voice = on_send_voice.clone();
                 spawn_local(async move {
                     let rec_opt = ACTIVE_RECORDER.with(|cell| cell.borrow_mut().take());
-                    let Some(rec) = rec_opt else { return };
+                    let Some(rec) = rec_opt else {
+                        // Recorder hasn't started yet — queue a stop so the
+                        // start task finishes the recording and sends.
+                        PENDING_VOICE_CMD.with(|c| *c.borrow_mut() = Some(PendingVoiceCmd::Stop));
+                        return;
+                    };
                     let recording = rec.stop().await;
-                    if recording.bytes.is_empty() {
-                        web_sys::console::warn_1(&"[InputBar] empty recording, skip send".into());
+                    if recording.bytes.is_empty()
+                        || recording.duration_ms < VOICE_MIN_DURATION_MS
+                    {
+                        web_sys::console::warn_1(&"[InputBar] short/empty recording, skip send".into());
                         return;
                     }
                     if let Some(f) = on_send_voice.as_ref() {
@@ -288,6 +358,10 @@ pub fn InputBar(
             {
                 if let Some(rec) = ACTIVE_RECORDER.with(|cell| cell.borrow_mut().take()) {
                     rec.cancel();
+                } else {
+                    // Recorder still starting — queue a cancel so it's torn
+                    // down as soon as it's ready.
+                    PENDING_VOICE_CMD.with(|c| *c.borrow_mut() = Some(PendingVoiceCmd::Cancel));
                 }
             }
             recording_duration.set(0);

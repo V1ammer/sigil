@@ -21,15 +21,64 @@ use super::messages::{
 use super::session::{build_api_client, Session, SessionState};
 use super::users::UsersState;
 
-/// Current user's plaintext username, taken from the active session. Used to
-/// fill `sender_display_name_override` on outgoing messages so peers can
-/// identify the sender without a server-side username lookup.
+/// Current user's plaintext username, taken from the session state stored on
+/// `MessageService`. Used to fill `sender_display_name_override` on outgoing
+/// messages so peers can identify the sender without a server-side lookup.
+///
+/// Reads through a `RwSignal` rather than `use_context::<Session>()` so it
+/// works from inside nested `spawn_local` tasks where the leptos owner is
+/// gone (voice/attachment pipelines call back into us across two awaits).
 fn current_username() -> Option<String> {
-    let session = use_context::<Session>()?;
-    match session.state.get_untracked() {
-        SessionState::Authenticated { identity, .. } => Some(identity.username.clone()),
-        _ => None,
+    SESSION_STATE.with(|c| c.borrow().as_ref().and_then(|s| {
+        match s.get_untracked() {
+            SessionState::Authenticated { identity, .. } => Some(identity.username.clone()),
+            _ => None,
+        }
+    }))
+}
+
+thread_local! {
+    static SESSION_STATE: RefCell<Option<RwSignal<SessionState>>> = const { RefCell::new(None) };
+    static USERS_STATE: RefCell<Option<UsersState>> = const { RefCell::new(None) };
+}
+
+/// Take the `MlsRuntime` out of `MLS_CACHE`, polling until it's available.
+///
+/// MLS is held by a single `thread_local!` slot. Several async paths
+/// (encrypt/decrypt/join_welcome) need exclusive access across awaits, so
+/// they `take()` it for the duration of the call and put it back. If another
+/// task is already holding the runtime, polling here yields to the runtime
+/// every ~5 ms instead of dropping the operation.
+///
+/// Returns `None` only if the runtime was never initialized at all.
+async fn take_mls_runtime() -> Option<MlsRuntime> {
+    if MLS_CACHE.with(|c| c.borrow().is_none()) {
+        return None;
     }
+    let mut attempts = 0u32;
+    loop {
+        if let Some(rt) = MLS_CACHE.with(|c| c.borrow_mut().take()) {
+            return Some(rt);
+        }
+        attempts += 1;
+        // Give up after ~5 s — something is wrong if we waited this long.
+        if attempts > 1_000 {
+            web_sys::console::error_1(&"[take_mls_runtime] gave up after 5s of contention".into());
+            return None;
+        }
+        gloo_timers::future::TimeoutFuture::new(5).await;
+    }
+}
+
+/// Wire up session/users state for use from detached async tasks.
+///
+/// Must be called once at app startup, after `provide_session()` and
+/// `provide_context(UsersState::new())`. Required because `MessageService`
+/// is reached from nested `spawn_local` tasks (voice/attachment pipelines)
+/// where the leptos owner — and therefore `use_context` — is gone.
+pub fn init_message_service_context(session: &Session, users: UsersState) {
+    SESSION_STATE.with(|c| *c.borrow_mut() = Some(session.state));
+    USERS_STATE.with(|c| *c.borrow_mut() = Some(users));
 }
 
 // MLS runtime is cached in a thread-local because `MessengerLocalStore` is ?Send
@@ -61,19 +110,20 @@ impl MessageService {
     pub async fn init_mls(&self, device_id: Uuid) {
         let already_initialized = MLS_CACHE.with(|c| c.borrow().is_some());
         if already_initialized {
-            tracing::debug!("mls already initialized");
+            web_sys::console::log_1(&"[init_mls] already initialized".into());
             return;
         }
 
+        web_sys::console::log_1(&"[init_mls] starting...".into());
         match messenger_storage::init_storage("default").await {
             Ok(local) => {
                 let local: Arc<dyn messenger_storage::traits::MessengerLocalStore> = local.into();
                 let runtime = MlsRuntime::new(local, device_id);
                 MLS_CACHE.with(|c| *c.borrow_mut() = Some(runtime));
-                tracing::debug!("mls runtime initialized");
+                web_sys::console::log_1(&"[init_mls] runtime installed in MLS_CACHE".into());
             }
             Err(e) => {
-                tracing::warn!(error = %e, "failed to init local storage for MLS");
+                web_sys::console::error_1(&format!("[init_mls] storage init failed: {e}").into());
             }
         }
     }
@@ -689,31 +739,45 @@ impl MessageService {
         group_id: Uuid,
         envelope: &ApplicationEnvelope,
     ) -> Option<Vec<u8>> {
-        let plaintext = rmp_serde::to_vec_named(envelope).ok()?;
+        let plaintext = match rmp_serde::to_vec_named(envelope) {
+            Ok(p) => p,
+            Err(e) => {
+                web_sys::console::error_1(&format!("[encrypt_envelope] rmp_serde encode failed: {e}").into());
+                return None;
+            }
+        };
 
-        // Get ClientIdentity from session
-        let session = use_context::<super::session::Session>()?;
-        let identity = match session.state.get_untracked() {
+        // Get ClientIdentity from session (stored at app init so it works from
+        // nested spawn_local tasks where leptos context is gone).
+        let Some(state) = SESSION_STATE.with(|c| c.borrow().as_ref().copied()) else {
+            web_sys::console::error_1(&"[encrypt_envelope] SESSION_STATE not initialized".into());
+            return None;
+        };
+        let identity = match state.get_untracked() {
             super::session::SessionState::Authenticated { identity, .. } => identity,
-            _ => return None,
+            _ => {
+                web_sys::console::error_1(&"[encrypt_envelope] session not authenticated".into());
+                return None;
+            }
         };
 
-        // Run encryption inside the thread-local accessor.
-        // We hand the runtime to the async block by taking it out of the cache
-        // temporarily and putting it back after.
-        let (ct, runtime) = {
-            let rt = MLS_CACHE.with(|c| c.borrow_mut().take())?;
-            let result = rt
-                .encrypt_application_message(group_id, &identity, &plaintext)
-                .await;
-            (result, rt)
+        // Wait for the MLS runtime to be available — another task (welcome
+        // join, message decrypt) may currently hold it. The runtime is moved
+        // out of the cache for the duration of the await because the inner
+        // future borrows it.
+        let Some(rt) = take_mls_runtime().await else {
+            web_sys::console::error_1(&"[encrypt_envelope] MLS_CACHE empty (runtime not initialized)".into());
+            return None;
         };
-        MLS_CACHE.with(|c| *c.borrow_mut() = Some(runtime));
+        let result = rt
+            .encrypt_application_message(group_id, &identity, &plaintext)
+            .await;
+        MLS_CACHE.with(|c| *c.borrow_mut() = Some(rt));
 
-        match ct {
+        match result {
             Ok(ct) => Some(ct),
             Err(e) => {
-                tracing::warn!(%group_id, error = %e, "MLS encrypt failed");
+                web_sys::console::error_1(&format!("[encrypt_envelope] MLS encrypt failed for {group_id}: {e}").into());
                 None
             }
         }
@@ -726,7 +790,7 @@ impl MessageService {
         ciphertext: &[u8],
     ) -> Option<Vec<u8>> {
         let (result, runtime) = {
-            let rt = MLS_CACHE.with(|c| c.borrow_mut().take())?;
+            let rt = take_mls_runtime().await?;
             let res = rt
                 .decrypt_application_message(group_id, ciphertext)
                 .await;
@@ -784,7 +848,7 @@ impl MessageService {
                         // Remember the sender's username so reply previews, group
                         // headers and future messages can show a real label.
                         if let (Some(users), Some(name)) = (
-                            use_context::<UsersState>(),
+                            USERS_STATE.with(|c| c.borrow().clone()),
                             envelope.sender_display_name_override.as_deref(),
                         ) {
                             users.remember(msg.sender_user_id, name);
@@ -960,7 +1024,7 @@ pub fn is_mls_initialized() -> bool {
 /// Returns `true` if the join succeeded.
 pub async fn join_welcome(welcome_id: Uuid, welcome_ciphertext: &[u8]) -> bool {
     let (result, runtime) = {
-        let rt = match MLS_CACHE.with(|c| c.borrow_mut().take()) {
+        let rt = match take_mls_runtime().await {
             Some(r) => r,
             None => {
                 tracing::warn!("MLS not initialized, cannot join welcome");
@@ -969,9 +1033,8 @@ pub async fn join_welcome(welcome_id: Uuid, welcome_ciphertext: &[u8]) -> bool {
         };
 
         let identity = {
-            use super::session::Session;
-            let session = use_context::<Session>();
-            match session.and_then(|s| match s.state.get_untracked() {
+            let state = SESSION_STATE.with(|c| c.borrow().as_ref().copied());
+            match state.and_then(|s| match s.get_untracked() {
                 super::session::SessionState::Authenticated { identity, .. } => Some(identity),
                 _ => None,
             }) {

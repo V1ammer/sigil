@@ -26,13 +26,13 @@ pub use connectivity::*;
 pub use notifications::*;
 pub use users::*;
 
-use crate::state::message_service::MessageService;
+use crate::state::message_service::{init_message_service_context, MessageService};
 use leptos::prelude::*;
 
 /// Provide every piece of global state into the context hierarchy.
 /// Must be called once at the top of `<App />`.
 pub fn provide_app_state() {
-    session::provide_session();
+    let session = session::provide_session();
     provide_context(ChatsState::new());
     provide_context(MessagesState::new());
     provide_context(ThreadsState::new());
@@ -40,6 +40,10 @@ pub fn provide_app_state() {
     provide_context(SettingsState::new());
     provide_context(ConnectivityState::new());
     provide_context(NotificationsState::new());
-    provide_context(UsersState::new());
+    let users = UsersState::new();
+    provide_context(users.clone());
     provide_context(MessageService::new());
+    // Wire up state for code paths that run outside the leptos owner
+    // (nested spawn_local tasks in the voice/attachment pipelines).
+    init_message_service_context(&session, users);
 }
