@@ -7,7 +7,7 @@ use leptos::task::spawn_local;
 use leptos_router::hooks::use_navigate;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
-use crate::i18n::{format_duration, t, Language};
+use crate::i18n::{format_duration, use_i18n, Language};
 use crate::icons::Icon;
 use crate::state::session::build_api_client;
 use crate::state::NotificationsState;
@@ -42,6 +42,11 @@ pub fn VoiceMessage(
     let live_transcript: RwSignal<Option<String>> = RwSignal::new(None);
     let transcribing = RwSignal::new(false);
     let lang = use_context::<RwSignal<Language>>().unwrap_or_default();
+    // I18n context tracks the *user-selected* locale (set in Settings →
+    // Appearance), not the WebView's navigator.language which on Android
+    // defaults to en regardless of the device locale. Use it for our toast
+    // and button strings so Russian users see Russian.
+    let i18n = use_i18n();
     let notifications = use_context::<NotificationsState>();
     let navigate = use_navigate();
 
@@ -212,57 +217,82 @@ pub fn VoiceMessage(
     };
 
     let nav_for_trx = navigate.clone();
+    let i18n_for_trx = i18n.clone();
     let on_transcribe = move |_| {
         if transcribing.get_untracked() {
+            web_sys::console::log_1(&"[transcribe] already in progress, skip".into());
             return;
         }
-        let l = lang.get();
+        web_sys::console::log_1(&"[transcribe] tapped".into());
+        let i18n = i18n_for_trx.clone();
         let notif = notifications.clone();
         let nav = nav_for_trx.clone();
         let fetch = ensure_plain_audio.clone();
         spawn_local(async move {
             // 1. Make sure a model is selected.
             match tauri_bridge::transcription_get_active().await {
-                Ok(Some(_)) => {}
-                _ => {
+                Ok(Some(m)) => {
+                    web_sys::console::log_1(&format!("[transcribe] active model = {m}").into());
+                }
+                Ok(None) => {
+                    web_sys::console::log_1(&"[transcribe] no active model, redirecting".into());
                     if let Some(n) = notif.as_ref() {
-                        n.push(ToastKind::Info, t(l, "voice.noModel"));
+                        n.push(ToastKind::Info, i18n.t("voice.noModel"));
                     }
                     nav("/settings/voice", Default::default());
                     return;
                 }
+                Err(e) => {
+                    web_sys::console::log_1(&format!("[transcribe] get_active err: {e}").into());
+                    if let Some(n) = notif.as_ref() {
+                        n.push(ToastKind::Error, format!("{}: {e}", i18n.t("voice.transcribeFailed")));
+                    }
+                    return;
+                }
             }
             transcribing.set(true);
+            web_sys::console::log_1(&"[transcribe] fetching+decrypting audio…".into());
             let bytes = match fetch().await {
-                Ok(b) => b,
+                Ok(b) => {
+                    web_sys::console::log_1(&format!("[transcribe] got {} bytes", b.len()).into());
+                    b
+                }
                 Err(e) => {
+                    web_sys::console::log_1(&format!("[transcribe] fetch err: {e}").into());
                     transcribing.set(false);
                     if let Some(n) = notif.as_ref() {
-                        n.push(ToastKind::Error, format!("{}: {e}", t(l, "voice.transcribeFailed")));
+                        n.push(ToastKind::Error, format!("{}: {e}", i18n.t("voice.transcribeFailed")));
                     }
                     return;
                 }
             };
             // 2. Decode webm/opus → PCM f32 via the WebView's AudioContext.
             let (samples, rate) = match decode_to_f32_mono(&bytes).await {
-                Ok(v) => v,
+                Ok(v) => {
+                    web_sys::console::log_1(&format!("[transcribe] decoded {} samples @ {} Hz", v.0.len(), v.1).into());
+                    v
+                }
                 Err(e) => {
+                    web_sys::console::log_1(&format!("[transcribe] decode err: {e}").into());
                     transcribing.set(false);
                     if let Some(n) = notif.as_ref() {
-                        n.push(ToastKind::Error, format!("{}: {e}", t(l, "voice.transcribeFailed")));
+                        n.push(ToastKind::Error, format!("{}: {e}", i18n.t("voice.transcribeFailed")));
                     }
                     return;
                 }
             };
             // 3. Send to Tauri whisper.
+            web_sys::console::log_1(&"[transcribe] calling Tauri whisper…".into());
             match tauri_bridge::transcription_transcribe(&samples, rate, None).await {
                 Ok(text) => {
+                    web_sys::console::log_1(&format!("[transcribe] OK, text len = {}", text.len()).into());
                     live_transcript.set(Some(text));
                     show_transcription.set(true);
                 }
                 Err(e) => {
+                    web_sys::console::log_1(&format!("[transcribe] whisper err: {e}").into());
                     if let Some(n) = notif.as_ref() {
-                        n.push(ToastKind::Error, format!("{}: {e}", t(l, "voice.transcribeFailed")));
+                        n.push(ToastKind::Error, format!("{}: {e}", i18n.t("voice.transcribeFailed")));
                     }
                 }
             }
@@ -283,7 +313,16 @@ pub fn VoiceMessage(
     };
 
     view! {
-        <div class="flex flex-col gap-1 w-56 max-w-full">
+        <div
+            class=move || {
+                let base = "flex flex-col gap-1 w-56 max-w-full transition-shadow rounded-md";
+                if transcribing.get() {
+                    format!("{base} ring-2 ring-primary/60 animate-pulse")
+                } else {
+                    base.to_string()
+                }
+            }
+        >
             <div class="flex items-center gap-2">
                 <button
                     class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:bg-accent/50 active:bg-accent/70 transition-colors disabled:opacity-50"
@@ -355,17 +394,20 @@ pub fn VoiceMessage(
             //  - no transcript yet → "Транскрибировать" (runs whisper, only in Tauri)
             //  - already transcribed → "Скрыть/Показать" toggles the panel below
             // `effective` prefers a fresh whisper run over any server-provided text.
+            // Empty server-provided strings are filtered out — `unwrap_or_default()`
+            // upstream turns missing transcripts into `Some("")`, which would
+            // otherwise make the button act as a no-op toggle on blank text.
             {
-                let prop_text = transcription.clone();
+                let prop_text = transcription.clone().filter(|s| !s.trim().is_empty());
                 let effective = {
                     let prop = prop_text.clone();
                     Signal::derive(move || live_transcript.get().or_else(|| prop.clone()))
                 };
                 let in_tauri = tauri_bridge::is_tauri_context();
                 let on = on_transcribe.clone();
+                let i18n_btn = i18n.clone();
                 view! {
                     {move || {
-                        let l = lang.get();
                         let has = effective.get().is_some();
                         let trx = transcribing.get();
                         let shown = show_transcription.get();
@@ -376,13 +418,13 @@ pub fn VoiceMessage(
                             return view! {}.into_any();
                         }
                         let label = if trx {
-                            t(l, "voice.transcribing")
+                            i18n_btn.t("voice.transcribing")
                         } else if has && shown {
-                            t(l, "voice.hide")
+                            i18n_btn.t("voice.hide")
                         } else if has {
-                            t(l, "voice.transcript")
+                            i18n_btn.t("voice.transcript")
                         } else {
-                            t(l, "voice.transcribe")
+                            i18n_btn.t("voice.transcribe")
                         };
                         let click = move |ev: leptos::ev::MouseEvent| {
                             if has {
@@ -393,12 +435,25 @@ pub fn VoiceMessage(
                         };
                         view! {
                             <button
-                                class="mt-1 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                                class=if trx {
+                                    "mt-1 flex items-center gap-1.5 text-xs text-primary disabled:opacity-100"
+                                } else {
+                                    "mt-1 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                                }
                                 on:click=click
                                 disabled=move || transcribing.get()
                             >
                                 {if trx {
-                                    view! { <span class="block h-3 w-3 rounded-full border-2 border-current border-t-transparent animate-spin"/> }.into_any()
+                                    // Bouncing-dots indicator: three small dots
+                                    // staggered so they form a clear "working"
+                                    // signal even when the spinner is too small.
+                                    view! {
+                                        <span class="inline-flex items-end gap-0.5 h-3">
+                                            <span class="block h-1.5 w-1.5 rounded-full bg-current animate-bounce" style="animation-delay: -0.32s"/>
+                                            <span class="block h-1.5 w-1.5 rounded-full bg-current animate-bounce" style="animation-delay: -0.16s"/>
+                                            <span class="block h-1.5 w-1.5 rounded-full bg-current animate-bounce"/>
+                                        </span>
+                                    }.into_any()
                                 } else {
                                     view! { <Icon name="file-text" class_name="h-3 w-3"/> }.into_any()
                                 }}
