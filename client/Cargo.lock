@@ -3576,6 +3576,7 @@ dependencies = [
 name = "messenger-tauri"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "messenger-core",
  "messenger-storage",
  "serde",

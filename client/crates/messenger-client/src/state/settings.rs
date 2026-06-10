@@ -69,6 +69,12 @@ pub struct SettingsState {
     pub quiet_hours_enabled: RwSignal<bool>,
     pub quiet_hours_from: RwSignal<String>,
     pub quiet_hours_to: RwSignal<String>,
+    /// When true, files at or below `auto_download_max_mb` are auto-fetched as
+    /// soon as the message is rendered.
+    pub auto_download_files: RwSignal<bool>,
+    /// Maximum size (in MB, as a string for stable storage) that auto-download
+    /// applies to. Stored as string for parity with the other text-based settings.
+    pub auto_download_max_mb: RwSignal<String>,
 }
 
 /// localStorage key prefixes.
@@ -92,6 +98,8 @@ impl SettingsState {
             quiet_hours_enabled: RwSignal::new(load_bool(&format!("{PREFIX}quiet_hours_enabled"), false)),
             quiet_hours_from: RwSignal::new(load_setting(&format!("{PREFIX}quiet_hours_from"), "22:00")),
             quiet_hours_to: RwSignal::new(load_setting(&format!("{PREFIX}quiet_hours_to"), "08:00")),
+            auto_download_files: RwSignal::new(load_bool(&format!("{PREFIX}auto_download_files"), false)),
+            auto_download_max_mb: RwSignal::new(load_setting(&format!("{PREFIX}auto_download_max_mb"), "10")),
         };
 
         // Wire persistence effects
@@ -147,6 +155,14 @@ impl SettingsState {
             let n = s.quiet_hours_to;
             Effect::new(move |_| save_str(&format!("{PREFIX}quiet_hours_to"), &n.get()));
         }
+        {
+            let n = s.auto_download_files;
+            Effect::new(move |_| save_str(&format!("{PREFIX}auto_download_files"), if n.get() { "true" } else { "false" }));
+        }
+        {
+            let n = s.auto_download_max_mb;
+            Effect::new(move |_| save_str(&format!("{PREFIX}auto_download_max_mb"), &n.get()));
+        }
 
         s
     }
@@ -158,6 +174,7 @@ impl SettingsState {
             "notification_vibration", "notification_filter", "message_preview",
             "read_receipts", "typing_indicators", "history_retention", "auto_delete",
             "quiet_hours_enabled", "quiet_hours_from", "quiet_hours_to",
+            "auto_download_files", "auto_download_max_mb",
         ];
         for k in &keys {
             remove_key(&format!("{PREFIX}{k}"));

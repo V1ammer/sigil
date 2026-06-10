@@ -284,6 +284,11 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.privacy.historyWeek", "1 неделя");
     m.insert("settings.privacy.historyYear", "1 год");
     m.insert("settings.privacy.title", "Приватность");
+    m.insert("settings.privacy.autoDownloadFiles", "Автозагрузка файлов");
+    m.insert("settings.privacy.autoDownloadFilesDesc", "Автоматически скачивать файлы из чатов");
+    m.insert("settings.privacy.autoDownloadMaxSize", "Максимальный размер");
+    m.insert("message.file.savedToDownloads", "Сохранено в Downloads");
+    m.insert("message.file.saveFailed", "Не удалось сохранить");
 
     // Admin invites
     m.insert("admin.invites", "Приглашения");

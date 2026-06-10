@@ -158,6 +158,43 @@ pub fn PrivacySettings() -> impl IntoView {
 
                 <Separator />
 
+                // Auto-download files toggle + size threshold
+                <div class="flex items-center justify-between">
+                    <div class="space-y-0.5">
+                        <Label class="text-foreground">{t!("settings.privacy.autoDownloadFiles")}</Label>
+                        <p class="text-xs text-muted-foreground">{t!("settings.privacy.autoDownloadFilesDesc")}</p>
+                    </div>
+                    <Switch
+                        checked=Signal::derive(move || settings_signal.get().auto_download_files.get())
+                        on_change=Box::new(move |v| settings_signal.get().auto_download_files.set(v))
+                    />
+                </div>
+
+                {move || if settings_signal.get().auto_download_files.get() {
+                    view! {
+                        <div class="space-y-2">
+                            <Label class="text-foreground">{t!("settings.privacy.autoDownloadMaxSize")}</Label>
+                            <Select
+                                on_change=Box::new({
+                                    let s = settings_signal.get().auto_download_max_mb;
+                                    move |v: String| s.set(v)
+                                })
+                                class="w-full max-w-xs"
+                            >
+                                <SelectOption value=String::from("1")>{"1 MB"}</SelectOption>
+                                <SelectOption value=String::from("5")>{"5 MB"}</SelectOption>
+                                <SelectOption value=String::from("10")>{"10 MB"}</SelectOption>
+                                <SelectOption value=String::from("50")>{"50 MB"}</SelectOption>
+                                <SelectOption value=String::from("100")>{"100 MB"}</SelectOption>
+                            </Select>
+                        </div>
+                    }.into_any()
+                } else {
+                    view! {}.into_any()
+                }}
+
+                <Separator />
+
                 // Clear local cache — destructive button with confirmation
                 <div class="space-y-3">
                     <h4 class="text-sm font-medium text-foreground">{t!("settings.privacy.clearCache")}</h4>

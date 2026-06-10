@@ -460,6 +460,7 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                     class="block overflow-hidden rounded-lg -mx-1 -mt-1 mb-1"
                     on:click=move |_| {
                         if blob_url.get_untracked().is_some() {
+                            crate::state::back_stack::push(move || lightbox_open.set(false));
                             lightbox_open.set(true);
                         }
                     }
@@ -526,91 +527,162 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
         }
         "file" => {
             let file_name = msg.file_name.as_deref().unwrap_or("File").to_string();
-            let file_name_for_dl = file_name.clone();
             let attachment_id = msg.attachment_id.clone();
             let decryption_key = msg.decryption_key.clone();
             let mime = msg.mime_type.clone().unwrap_or_else(|| "application/octet-stream".into());
+            let file_size = msg.file_size;
+
+            let saved_path: RwSignal<Option<String>> = RwSignal::new(None);
             let downloading = RwSignal::new(false);
 
-            let on_download = move |_: leptos::ev::MouseEvent| {
-                if downloading.get_untracked() { return; }
-                let aid = match attachment_id.clone() { Some(s) => s, None => return };
-                let key_b64 = match decryption_key.clone() { Some(s) => s, None => return };
-                let mime = mime.clone();
-                let file_name = file_name_for_dl.clone();
-                downloading.set(true);
+            // Probe whether this attachment is already on disk.
+            if let Some(aid) = attachment_id.clone() {
                 leptos::task::spawn_local(async move {
-                    use base64::Engine as _;
-                    let api = match crate::state::session::build_api_client() {
-                        Some(a) => a,
-                        None => { downloading.set(false); return; }
-                    };
-                    let attachment_id = match aid.parse::<uuid::Uuid>() {
-                        Ok(u) => u,
-                        Err(_) => { downloading.set(false); return; }
-                    };
-                    let ct = match api.download_attachment(attachment_id, None).await {
-                        Ok(b) => b,
-                        Err(_) => { downloading.set(false); return; }
-                    };
-                    let key_bytes = match base64::engine::general_purpose::STANDARD.decode(&key_b64) {
-                        Ok(b) if b.len() == 32 => b,
-                        _ => { downloading.set(false); return; }
-                    };
-                    let mut key = [0u8; 32];
-                    key.copy_from_slice(&key_bytes);
-                    let plain = match messenger_core::attachment_crypto::decrypt_attachment(&key, &ct) {
-                        Ok(p) => p,
-                        Err(_) => { downloading.set(false); return; }
-                    };
-                    // Trigger browser download via temporary <a download>.
-                    let u8a = js_sys::Uint8Array::from(plain.as_slice());
-                    let arr = js_sys::Array::new();
-                    arr.push(&u8a.into());
-                    let mut bag = web_sys::BlobPropertyBag::new();
-                    bag.type_(&mime);
-                    if let Ok(blob) = web_sys::Blob::new_with_u8_array_sequence_and_options(&arr, &bag) {
-                        if let Ok(url) = web_sys::Url::create_object_url_with_blob(&blob) {
-                            if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
-                                if let Ok(a) = doc.create_element("a") {
-                                    let a_el: web_sys::HtmlAnchorElement = a.unchecked_into();
-                                    a_el.set_href(&url);
-                                    a_el.set_download(&file_name);
-                                    a_el.click();
+                    if let Ok(Some(p)) = crate::tauri_bridge::file_is_saved(&aid).await {
+                        saved_path.set(Some(p));
+                    }
+                });
+            }
+
+            // Shared decrypt+save closure used by both the explicit tap and auto-download.
+            let run_save = {
+                let attachment_id = attachment_id.clone();
+                let decryption_key = decryption_key.clone();
+                let mime = mime.clone();
+                let file_name = file_name.clone();
+                let notifications = use_context::<crate::state::NotificationsState>();
+                move || {
+                    if downloading.get_untracked() || saved_path.get_untracked().is_some() {
+                        return;
+                    }
+                    let aid = match attachment_id.clone() { Some(s) => s, None => return };
+                    let key_b64 = match decryption_key.clone() { Some(s) => s, None => return };
+                    let mime = mime.clone();
+                    let file_name = file_name.clone();
+                    let notifications = notifications.clone();
+                    downloading.set(true);
+                    leptos::task::spawn_local(async move {
+                        use base64::Engine as _;
+                        let api = match crate::state::session::build_api_client() {
+                            Some(a) => a,
+                            None => { downloading.set(false); return; }
+                        };
+                        let attachment_uuid = match aid.parse::<uuid::Uuid>() {
+                            Ok(u) => u,
+                            Err(_) => { downloading.set(false); return; }
+                        };
+                        let ct = match api.download_attachment(attachment_uuid, None).await {
+                            Ok(b) => b,
+                            Err(_) => { downloading.set(false); return; }
+                        };
+                        let key_bytes = match base64::engine::general_purpose::STANDARD.decode(&key_b64) {
+                            Ok(b) if b.len() == 32 => b,
+                            _ => { downloading.set(false); return; }
+                        };
+                        let mut key = [0u8; 32];
+                        key.copy_from_slice(&key_bytes);
+                        let plain = match messenger_core::attachment_crypto::decrypt_attachment(&key, &ct) {
+                            Ok(p) => p,
+                            Err(_) => { downloading.set(false); return; }
+                        };
+                        match crate::tauri_bridge::file_save(&plain, &file_name, &aid, &mime).await {
+                            Ok(path) => {
+                                saved_path.set(Some(path));
+                                if let Some(n) = notifications.as_ref() {
+                                    n.push(crate::state::notifications::ToastKind::Success,
+                                        format!("{}: {}", t(l, "message.file.savedToDownloads"), file_name));
                                 }
                             }
-                            let _ = web_sys::Url::revoke_object_url(&url);
+                            Err(e) => {
+                                if let Some(n) = notifications.as_ref() {
+                                    n.push(crate::state::notifications::ToastKind::Error,
+                                        format!("{}: {}", t(l, "message.file.saveFailed"), e));
+                                }
+                            }
                         }
+                        downloading.set(false);
+                    });
+                }
+            };
+
+            // Auto-download if user enabled it and the file fits the size limit.
+            if let Some(settings) = use_context::<crate::state::SettingsState>() {
+                let auto = settings.auto_download_files.get_untracked();
+                let max_mb: u64 = settings.auto_download_max_mb.get_untracked().parse().unwrap_or(10);
+                let within = file_size.map_or(false, |s| s <= max_mb.saturating_mul(1024 * 1024));
+                if auto && within && attachment_id.is_some() && decryption_key.is_some() {
+                    // Wait briefly so the is_saved probe can resolve first.
+                    let run_save_dl = run_save.clone();
+                    leptos::task::spawn_local(async move {
+                        gloo_timers::future::TimeoutFuture::new(150).await;
+                        if saved_path.get_untracked().is_none() {
+                            run_save_dl();
+                        }
+                    });
+                }
+            }
+
+            let on_download_click = {
+                let run_save = run_save.clone();
+                move |ev: leptos::ev::MouseEvent| {
+                    ev.stop_propagation();
+                    run_save();
+                }
+            };
+
+            let on_row_click = {
+                let mime = mime.clone();
+                let run_save = run_save.clone();
+                move |_: leptos::ev::MouseEvent| {
+                    if let Some(path) = saved_path.get_untracked() {
+                        let mime = mime.clone();
+                        leptos::task::spawn_local(async move {
+                            let _ = crate::tauri_bridge::file_open(&path, &mime).await;
+                        });
+                    } else if !downloading.get_untracked() {
+                        run_save();
                     }
-                    downloading.set(false);
-                });
+                }
             };
 
             view! {
-                <div class="flex items-center gap-3 rounded-lg -mx-1 -mt-1 mb-1 p-2 bg-muted/30">
+                <button
+                    class="w-full text-left flex items-center gap-3 rounded-lg -mx-1 -mt-1 mb-1 p-2 bg-muted/30 hover:bg-muted/50 transition-colors"
+                    on:click=on_row_click
+                >
                     <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                        <Icon name="file" class_name="h-5 w-5"/>
+                        {move || if saved_path.get().is_some() {
+                            view! { <Icon name="check-circle" class_name="h-5 w-5"/> }.into_any()
+                        } else {
+                            view! { <Icon name="file" class_name="h-5 w-5"/> }.into_any()
+                        }}
                     </div>
                     <div class="min-w-0 flex-1">
-                        <p class="text-sm font-medium truncate">{file_name}</p>
-                        {msg.file_size.map(|size| {
+                        <p class="text-sm font-medium truncate">{file_name.clone()}</p>
+                        {file_size.map(|size| {
                             view! {
                                 <p class="text-xs text-muted-foreground">{format_file_size(size)}</p>
                             }.into_any()
                         }).unwrap_or_else(|| view! {}.into_any())}
                     </div>
-                    <button
-                        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md hover:bg-accent disabled:opacity-50"
-                        on:click=on_download
-                        disabled=move || downloading.get()
-                    >
-                        {move || if downloading.get() {
-                            view! { <span class="block h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin"/> }.into_any()
-                        } else {
-                            view! { <Icon name="download" class_name="h-4 w-4"/> }.into_any()
-                        }}
-                    </button>
-                </div>
+                    {move || if saved_path.get().is_some() {
+                        view! {}.into_any()
+                    } else {
+                        let click = on_download_click.clone();
+                        view! {
+                            <span
+                                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md hover:bg-accent"
+                                on:click=click
+                            >
+                                {move || if downloading.get() {
+                                    view! { <span class="block h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin"/> }.into_any()
+                                } else {
+                                    view! { <Icon name="download" class_name="h-4 w-4"/> }.into_any()
+                                }}
+                            </span>
+                        }.into_any()
+                    }}
+                </button>
             }.into_any()
         }
         _ => {

@@ -284,6 +284,11 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.privacy.historyWeek", "1 week");
     m.insert("settings.privacy.historyYear", "1 year");
     m.insert("settings.privacy.title", "Privacy");
+    m.insert("settings.privacy.autoDownloadFiles", "Auto-download files");
+    m.insert("settings.privacy.autoDownloadFilesDesc", "Automatically download files from chats");
+    m.insert("settings.privacy.autoDownloadMaxSize", "Maximum size");
+    m.insert("message.file.savedToDownloads", "Saved to Downloads");
+    m.insert("message.file.saveFailed", "Save failed");
 
     // Admin invites
     m.insert("admin.invites", "Invitations");

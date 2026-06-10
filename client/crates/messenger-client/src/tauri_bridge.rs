@@ -175,6 +175,93 @@ pub async fn age_decrypt(
     serde_wasm_bindgen::from_value(result).map_err(|e| e.to_string())
 }
 
+/// Save attachment bytes to the platform's Downloads folder via the file-saver plugin.
+///
+/// Returns the saved path / URI string.
+///
+/// # Errors
+///
+/// Returns an error string if not in Tauri context or if save fails.
+pub async fn file_save(
+    bytes: &[u8],
+    file_name: &str,
+    attachment_id: &str,
+    mime: &str,
+) -> Result<String, String> {
+    if !is_tauri_context() {
+        return Err("not in Tauri context".into());
+    }
+    let args = js_sys::Object::new();
+    js_sys::Reflect::set(
+        &args,
+        &JsValue::from("bytes"),
+        &js_sys::Uint8Array::from(bytes),
+    )
+    .map_err(|_| "set bytes".to_string())?;
+    js_sys::Reflect::set(&args, &JsValue::from("fileName"), &JsValue::from(file_name))
+        .map_err(|_| "set fileName".to_string())?;
+    js_sys::Reflect::set(
+        &args,
+        &JsValue::from("attachmentId"),
+        &JsValue::from(attachment_id),
+    )
+    .map_err(|_| "set attachmentId".to_string())?;
+    js_sys::Reflect::set(&args, &JsValue::from("mime"), &JsValue::from(mime))
+        .map_err(|_| "set mime".to_string())?;
+    let result = tauri_invoke("plugin:file-saver|fs_save", &args).await?;
+    let path = js_sys::Reflect::get(&result, &JsValue::from("path"))
+        .map_err(|_| "no path field".to_string())?
+        .as_string()
+        .ok_or("path not a string")?;
+    Ok(path)
+}
+
+/// Check whether an attachment is already saved on disk.
+///
+/// Returns `Ok(Some(path))` if it exists, `Ok(None)` otherwise.
+///
+/// # Errors
+///
+/// Returns an error string if not in Tauri context or if the lookup fails.
+pub async fn file_is_saved(attachment_id: &str) -> Result<Option<String>, String> {
+    if !is_tauri_context() {
+        return Ok(None);
+    }
+    let args = js_sys::Object::new();
+    js_sys::Reflect::set(
+        &args,
+        &JsValue::from("attachmentId"),
+        &JsValue::from(attachment_id),
+    )
+    .map_err(|_| "set attachmentId".to_string())?;
+    let result = tauri_invoke("plugin:file-saver|fs_is_saved", &args).await?;
+    let v = js_sys::Reflect::get(&result, &JsValue::from("path"))
+        .map_err(|_| "no path field".to_string())?;
+    if v.is_null() || v.is_undefined() {
+        Ok(None)
+    } else {
+        Ok(v.as_string())
+    }
+}
+
+/// Open a saved file with the system default handler.
+///
+/// # Errors
+///
+/// Returns an error string if not in Tauri context or if the open call fails.
+pub async fn file_open(path: &str, mime: &str) -> Result<(), String> {
+    if !is_tauri_context() {
+        return Err("not in Tauri context".into());
+    }
+    let args = js_sys::Object::new();
+    js_sys::Reflect::set(&args, &JsValue::from("path"), &JsValue::from(path))
+        .map_err(|_| "set path".to_string())?;
+    js_sys::Reflect::set(&args, &JsValue::from("mime"), &JsValue::from(mime))
+        .map_err(|_| "set mime".to_string())?;
+    tauri_invoke("plugin:file-saver|fs_open", &args).await?;
+    Ok(())
+}
+
 /// Low-level Tauri invoke call via `window.__TAURI_INTERNALS__.invoke()`.
 async fn tauri_invoke(cmd: &str, args: &js_sys::Object) -> Result<JsValue, String> {
     let global = js_sys::global();
