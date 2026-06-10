@@ -1,0 +1,34 @@
+services:
+  server:
+    image: messenger-server:latest
+    container_name: messenger-server
+    restart: unless-stopped
+    environment:
+      MESSENGER_BIND_ADDR: 0.0.0.0:8080
+      MESSENGER_DATABASE_URL: sqlite:///app/data/messenger.db?mode=rwc
+      MESSENGER_DATA_DIR: /app/data
+      MESSENGER_LOG_FORMAT: Pretty
+      RUST_LOG: info,messenger=info
+    volumes:
+      - ./data:/app/data
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2
+    container_name: messenger-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./web:/srv/web:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - server
+
+volumes:
+  caddy_data:
+  caddy_config:

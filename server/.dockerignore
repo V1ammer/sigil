@@ -1,0 +1,8 @@
+target
+data
+dev.db*
+.git
+.direnv
+.envrc
+flake.nix
+flake.lock

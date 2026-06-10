@@ -36,6 +36,11 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("token.error.expired", "Token has expired");
     m.insert("token.error.exhausted", "Token has been used maximum number of times");
 
+    // Invite deep-link
+    m.insert("invite.connecting", "Connecting to server…");
+    m.insert("invite.failed", "Couldn't follow invitation link");
+    m.insert("invite.back", "Back to start");
+
     // QR login
     m.insert("qr.title", "Scan QR code");
     m.insert("qr.instruction", "Open the messenger on the device where you are already signed in, go to Settings → Devices → Add device, and scan this code.");

@@ -20,6 +20,7 @@ pub fn AppRoutes() -> impl IntoView {
                 <Route path=path!("/login/token") view=LoginTokenScreen/>
                 <Route path=path!("/login/qr") view=LoginQrScreen/>
                 <Route path=path!("/register") view=RegisterScreen/>
+                <Route path=path!("/invite") view=InviteScreen/>
 
                 // Authenticated — redirects to "/" if not logged in
                 <Route

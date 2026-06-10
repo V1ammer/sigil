@@ -1,0 +1,21 @@
+77.91.94.236.nip.io {
+    encode gzip zstd
+
+    @api {
+        path /v1/* /health
+    }
+    handle @api {
+        reverse_proxy server:8080
+    }
+
+    handle {
+        root * /srv/web
+        try_files {path} /index.html
+        file_server
+    }
+
+    log {
+        output stdout
+        format console
+    }
+}

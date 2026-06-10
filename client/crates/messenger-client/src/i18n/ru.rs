@@ -36,6 +36,11 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("token.error.expired", "Срок действия токена истёк");
     m.insert("token.error.exhausted", "Токен уже использован максимальное число раз");
 
+    // Invite deep-link
+    m.insert("invite.connecting", "Подключаемся к серверу…");
+    m.insert("invite.failed", "Не удалось перейти по приглашению");
+    m.insert("invite.back", "Назад");
+
     // QR login
     m.insert("qr.title", "Отсканируйте QR код");
     m.insert("qr.instruction", "Откройте мессенджер на устройстве где вы уже вошли, нажмите Настройки → Устройства → Добавить устройство, и отсканируйте этот код.");
