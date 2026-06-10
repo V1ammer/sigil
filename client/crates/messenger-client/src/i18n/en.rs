@@ -312,6 +312,7 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("voice.transcript", "Transcript");
     m.insert("voice.noModel", "Pick a model in voice settings");
     m.insert("voice.transcribeFailed", "Transcription failed");
+    m.insert("voice.hide", "Hide");
 
     // Admin invites
     m.insert("admin.invites", "Invitations");

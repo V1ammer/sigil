@@ -351,59 +351,73 @@ pub fn VoiceMessage(
                 })
             }}
 
-            // Pre-existing transcription (if the server happened to ship one).
-            {if let Some(text) = transcription.clone() {
-                view! {
-                    <div class="mt-1">
-                        <button
-                            class="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                            on:click=move |_| show_transcription.set(!show_transcription.get())
-                        >
-                            <Icon name="file-text" class_name="h-3 w-3"/>
-                            {move || if show_transcription.get() { "Hide" } else { "Transcription" }}
-                        </button>
-                        <Show when=move || show_transcription.get()>
-                            <p class="mt-1 text-xs text-muted-foreground/80 leading-relaxed whitespace-pre-wrap">
-                                {text.clone()}
-                            </p>
-                        </Show>
-                    </div>
-                }.into_any()
-            } else {
-                view! {}.into_any()
-            }}
-
-            // Local "Transcribe" — only in Tauri (whisper runs natively).
-            {move || if tauri_bridge::is_tauri_context() && live_transcript.get().is_none() {
-                let l = lang.get();
+            // Single transcript control:
+            //  - no transcript yet → "Транскрибировать" (runs whisper, only in Tauri)
+            //  - already transcribed → "Скрыть/Показать" toggles the panel below
+            // `effective` prefers a fresh whisper run over any server-provided text.
+            {
+                let prop_text = transcription.clone();
+                let effective = {
+                    let prop = prop_text.clone();
+                    Signal::derive(move || live_transcript.get().or_else(|| prop.clone()))
+                };
+                let in_tauri = tauri_bridge::is_tauri_context();
                 let on = on_transcribe.clone();
                 view! {
-                    <button
-                        class="mt-1 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-                        on:click=on
-                        disabled=move || transcribing.get()
-                    >
-                        {move || if transcribing.get() {
-                            view! { <span class="block h-3 w-3 rounded-full border-2 border-current border-t-transparent animate-spin"/> }.into_any()
+                    {move || {
+                        let l = lang.get();
+                        let has = effective.get().is_some();
+                        let trx = transcribing.get();
+                        let shown = show_transcription.get();
+                        let on = on.clone();
+                        // Don't render anything if there's no transcript and we
+                        // can't produce one (web / no Tauri).
+                        if !has && !in_tauri {
+                            return view! {}.into_any();
+                        }
+                        let label = if trx {
+                            t(l, "voice.transcribing")
+                        } else if has && shown {
+                            t(l, "voice.hide")
+                        } else if has {
+                            t(l, "voice.transcript")
                         } else {
-                            view! { <Icon name="file-text" class_name="h-3 w-3"/> }.into_any()
-                        }}
-                        <span>{if transcribing.get() { t(l, "voice.transcribing") } else { t(l, "voice.transcribe") }}</span>
-                    </button>
-                }.into_any()
-            } else {
-                view! {}.into_any()
-            }}
-
-            {move || live_transcript.get().map(|text| {
-                let l = lang.get();
-                view! {
-                    <div class="mt-1 rounded-md bg-muted/40 p-2">
-                        <p class="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">{t(l, "voice.transcript")}</p>
-                        <p class="text-xs text-foreground leading-relaxed whitespace-pre-wrap">{text}</p>
-                    </div>
+                            t(l, "voice.transcribe")
+                        };
+                        let click = move |ev: leptos::ev::MouseEvent| {
+                            if has {
+                                show_transcription.set(!shown);
+                            } else {
+                                on(ev);
+                            }
+                        };
+                        view! {
+                            <button
+                                class="mt-1 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                                on:click=click
+                                disabled=move || transcribing.get()
+                            >
+                                {if trx {
+                                    view! { <span class="block h-3 w-3 rounded-full border-2 border-current border-t-transparent animate-spin"/> }.into_any()
+                                } else {
+                                    view! { <Icon name="file-text" class_name="h-3 w-3"/> }.into_any()
+                                }}
+                                <span>{label}</span>
+                            </button>
+                        }.into_any()
+                    }}
+                    {move || {
+                        if !show_transcription.get() {
+                            return view! {}.into_any();
+                        }
+                        effective.get().map(|text| view! {
+                            <div class="mt-1 rounded-md bg-muted/40 p-2">
+                                <p class="text-xs text-foreground leading-relaxed whitespace-pre-wrap">{text}</p>
+                            </div>
+                        }.into_any()).unwrap_or_else(|| view! {}.into_any())
+                    }}
                 }
-            })}
+            }
         </div>
     }
 }

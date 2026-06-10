@@ -312,6 +312,7 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("voice.transcript", "Расшифровка");
     m.insert("voice.noModel", "Выберите модель в настройках голосовых сообщений");
     m.insert("voice.transcribeFailed", "Не удалось транскрибировать");
+    m.insert("voice.hide", "Скрыть");
 
     // Admin invites
     m.insert("admin.invites", "Приглашения");
