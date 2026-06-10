@@ -262,6 +262,135 @@ pub async fn file_open(path: &str, mime: &str) -> Result<(), String> {
     Ok(())
 }
 
+// ---------- Voice transcription ----------
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct WhisperModelInfo {
+    pub id: String,
+    pub display_name: String,
+    pub size_mb: u32,
+    pub ram_mb: u32,
+    pub multilingual: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TranscriptionResult {
+    pub text: String,
+}
+
+/// List the static catalogue of Whisper models.
+///
+/// # Errors
+///
+/// Returns an error if not in Tauri context.
+pub async fn transcription_list_models() -> Result<Vec<WhisperModelInfo>, String> {
+    if !is_tauri_context() {
+        return Ok(Vec::new());
+    }
+    let args = js_sys::Object::new();
+    let result = tauri_invoke("transcription_list_models", &args).await?;
+    serde_wasm_bindgen::from_value(result).map_err(|e| e.to_string())
+}
+
+/// List ids of models already downloaded to disk.
+pub async fn transcription_list_downloaded() -> Result<Vec<String>, String> {
+    if !is_tauri_context() {
+        return Ok(Vec::new());
+    }
+    let args = js_sys::Object::new();
+    let result = tauri_invoke("transcription_list_downloaded", &args).await?;
+    serde_wasm_bindgen::from_value(result).map_err(|e| e.to_string())
+}
+
+/// Trigger a model download. Progress is emitted as `transcription://progress` events.
+pub async fn transcription_download_model(model_id: &str) -> Result<String, String> {
+    if !is_tauri_context() {
+        return Err("not in Tauri context".into());
+    }
+    let args = js_sys::Object::new();
+    js_sys::Reflect::set(&args, &JsValue::from("modelId"), &JsValue::from(model_id))
+        .map_err(|_| "set modelId".to_string())?;
+    let result = tauri_invoke("transcription_download_model", &args).await?;
+    result.as_string().ok_or("no path returned".into())
+}
+
+pub async fn transcription_delete_model(model_id: &str) -> Result<(), String> {
+    if !is_tauri_context() {
+        return Ok(());
+    }
+    let args = js_sys::Object::new();
+    js_sys::Reflect::set(&args, &JsValue::from("modelId"), &JsValue::from(model_id))
+        .map_err(|_| "set modelId".to_string())?;
+    tauri_invoke("transcription_delete_model", &args).await?;
+    Ok(())
+}
+
+pub async fn transcription_get_active() -> Result<Option<String>, String> {
+    if !is_tauri_context() {
+        return Ok(None);
+    }
+    let args = js_sys::Object::new();
+    let result = tauri_invoke("transcription_get_active", &args).await?;
+    if result.is_null() || result.is_undefined() {
+        Ok(None)
+    } else {
+        Ok(result.as_string())
+    }
+}
+
+pub async fn transcription_set_active(model_id: &str) -> Result<(), String> {
+    if !is_tauri_context() {
+        return Ok(());
+    }
+    let args = js_sys::Object::new();
+    js_sys::Reflect::set(&args, &JsValue::from("modelId"), &JsValue::from(model_id))
+        .map_err(|_| "set modelId".to_string())?;
+    tauri_invoke("transcription_set_active", &args).await?;
+    Ok(())
+}
+
+/// Transcribe PCM samples on the Tauri side via whisper.
+///
+/// `samples` is `f32` channel data already decoded by the WebView's
+/// `AudioContext`; it gets reinterpreted as little-endian `f32` bytes for the
+/// invoke payload (a `Uint8Array`) so we don't blow up the JSON encoder with
+/// millions of numbers.
+pub async fn transcription_transcribe(
+    samples: &[f32],
+    sample_rate: u32,
+    language: Option<&str>,
+) -> Result<String, String> {
+    if !is_tauri_context() {
+        return Err("not in Tauri context".into());
+    }
+    let mut bytes = Vec::with_capacity(samples.len() * 4);
+    for s in samples {
+        bytes.extend_from_slice(&s.to_le_bytes());
+    }
+    let args = js_sys::Object::new();
+    js_sys::Reflect::set(
+        &args,
+        &JsValue::from("samplesBytes"),
+        &js_sys::Uint8Array::from(bytes.as_slice()),
+    )
+    .map_err(|_| "set samplesBytes".to_string())?;
+    js_sys::Reflect::set(
+        &args,
+        &JsValue::from("sampleRate"),
+        &JsValue::from(sample_rate),
+    )
+    .map_err(|_| "set sampleRate".to_string())?;
+    if let Some(lang) = language {
+        js_sys::Reflect::set(&args, &JsValue::from("language"), &JsValue::from(lang))
+            .map_err(|_| "set language".to_string())?;
+    }
+    let result = tauri_invoke("transcription_transcribe", &args).await?;
+    let parsed: TranscriptionResult =
+        serde_wasm_bindgen::from_value(result).map_err(|e| e.to_string())?;
+    Ok(parsed.text)
+}
+
 /// Low-level Tauri invoke call via `window.__TAURI_INTERNALS__.invoke()`.
 async fn tauri_invoke(cmd: &str, args: &js_sys::Object) -> Result<JsValue, String> {
     let global = js_sys::global();

@@ -4,10 +4,15 @@
 //! and feeds it to an `<audio>` element via an object URL.
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use leptos_router::hooks::use_navigate;
 use wasm_bindgen::JsCast;
-use crate::i18n::format_duration;
+use wasm_bindgen_futures::JsFuture;
+use crate::i18n::{format_duration, t, Language};
 use crate::icons::Icon;
 use crate::state::session::build_api_client;
+use crate::state::NotificationsState;
+use crate::state::notifications::ToastKind;
+use crate::tauri_bridge;
 
 #[must_use]
 #[component]
@@ -29,6 +34,16 @@ pub fn VoiceMessage(
     let blob_url: RwSignal<Option<String>> = RwSignal::new(None);
     let loading = RwSignal::new(false);
     let error: RwSignal<Option<String>> = RwSignal::new(None);
+    // Plain bytes of the decrypted audio, kept around once fetched so a
+    // subsequent "transcribe" click doesn't re-download.
+    let plain_audio: RwSignal<Option<Vec<u8>>> = RwSignal::new(None);
+    // Locally-produced transcript (separate from any server-side `transcription`
+    // prop — the prop only carries pre-existing text, this is fresh whisper output).
+    let live_transcript: RwSignal<Option<String>> = RwSignal::new(None);
+    let transcribing = RwSignal::new(false);
+    let lang = use_context::<RwSignal<Language>>().unwrap_or_default();
+    let notifications = use_context::<NotificationsState>();
+    let navigate = use_navigate();
 
     let audio_ref: NodeRef<leptos::html::Audio> = NodeRef::new();
     let duration_total = duration_ms.max(1);
@@ -104,6 +119,7 @@ pub fn VoiceMessage(
                     return;
                 }
             };
+            plain_audio.set(Some(plain.clone()));
             // Wrap in Blob → object URL.
             let u8a = js_sys::Uint8Array::from(plain.as_slice());
             let arr = js_sys::Array::new();
@@ -159,6 +175,100 @@ pub fn VoiceMessage(
             }
         }
     });
+
+    // Fetch + decrypt the attachment if we don't have plaintext bytes yet.
+    // Returns the bytes (cached in `plain_audio`) or `Err` on any pipeline step.
+    let attachment_id_for_trx = attachment_id.clone();
+    let decryption_key_for_trx = decryption_key.clone();
+    let ensure_plain_audio = move || -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, String>>>> {
+        let aid = attachment_id_for_trx.clone();
+        let key_b64 = decryption_key_for_trx.clone();
+        Box::pin(async move {
+            if let Some(p) = plain_audio.get_untracked() {
+                return Ok(p);
+            }
+            use base64::Engine as _;
+            let aid = aid.ok_or("missing attachment id")?;
+            let key_b64 = key_b64.ok_or("missing decryption key")?;
+            let api = build_api_client().ok_or("no api client")?;
+            let attachment_id = aid.parse::<uuid::Uuid>().map_err(|e| e.to_string())?;
+            let ct = api
+                .download_attachment(attachment_id, None)
+                .await
+                .map_err(|e| e.to_string())?;
+            let key_bytes = base64::engine::general_purpose::STANDARD
+                .decode(&key_b64)
+                .map_err(|e| e.to_string())?;
+            if key_bytes.len() != 32 {
+                return Err("bad key length".into());
+            }
+            let mut key = [0u8; 32];
+            key.copy_from_slice(&key_bytes);
+            let plain = messenger_core::attachment_crypto::decrypt_attachment(&key, &ct)
+                .map_err(|e| format!("decrypt: {e:?}"))?;
+            plain_audio.set(Some(plain.clone()));
+            Ok(plain)
+        })
+    };
+
+    let nav_for_trx = navigate.clone();
+    let on_transcribe = move |_| {
+        if transcribing.get_untracked() {
+            return;
+        }
+        let l = lang.get();
+        let notif = notifications.clone();
+        let nav = nav_for_trx.clone();
+        let fetch = ensure_plain_audio.clone();
+        spawn_local(async move {
+            // 1. Make sure a model is selected.
+            match tauri_bridge::transcription_get_active().await {
+                Ok(Some(_)) => {}
+                _ => {
+                    if let Some(n) = notif.as_ref() {
+                        n.push(ToastKind::Info, t(l, "voice.noModel"));
+                    }
+                    nav("/settings/voice", Default::default());
+                    return;
+                }
+            }
+            transcribing.set(true);
+            let bytes = match fetch().await {
+                Ok(b) => b,
+                Err(e) => {
+                    transcribing.set(false);
+                    if let Some(n) = notif.as_ref() {
+                        n.push(ToastKind::Error, format!("{}: {e}", t(l, "voice.transcribeFailed")));
+                    }
+                    return;
+                }
+            };
+            // 2. Decode webm/opus → PCM f32 via the WebView's AudioContext.
+            let (samples, rate) = match decode_to_f32_mono(&bytes).await {
+                Ok(v) => v,
+                Err(e) => {
+                    transcribing.set(false);
+                    if let Some(n) = notif.as_ref() {
+                        n.push(ToastKind::Error, format!("{}: {e}", t(l, "voice.transcribeFailed")));
+                    }
+                    return;
+                }
+            };
+            // 3. Send to Tauri whisper.
+            match tauri_bridge::transcription_transcribe(&samples, rate, None).await {
+                Ok(text) => {
+                    live_transcript.set(Some(text));
+                    show_transcription.set(true);
+                }
+                Err(e) => {
+                    if let Some(n) = notif.as_ref() {
+                        n.push(ToastKind::Error, format!("{}: {e}", t(l, "voice.transcribeFailed")));
+                    }
+                }
+            }
+            transcribing.set(false);
+        });
+    };
 
     // Drive the position counter from the audio element's timeupdate event.
     let on_time_update = move |ev: leptos::ev::Event| {
@@ -241,6 +351,7 @@ pub fn VoiceMessage(
                 })
             }}
 
+            // Pre-existing transcription (if the server happened to ship one).
             {if let Some(text) = transcription.clone() {
                 view! {
                     <div class="mt-1">
@@ -261,6 +372,62 @@ pub fn VoiceMessage(
             } else {
                 view! {}.into_any()
             }}
+
+            // Local "Transcribe" — only in Tauri (whisper runs natively).
+            {move || if tauri_bridge::is_tauri_context() && live_transcript.get().is_none() {
+                let l = lang.get();
+                let on = on_transcribe.clone();
+                view! {
+                    <button
+                        class="mt-1 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                        on:click=on
+                        disabled=move || transcribing.get()
+                    >
+                        {move || if transcribing.get() {
+                            view! { <span class="block h-3 w-3 rounded-full border-2 border-current border-t-transparent animate-spin"/> }.into_any()
+                        } else {
+                            view! { <Icon name="file-text" class_name="h-3 w-3"/> }.into_any()
+                        }}
+                        <span>{if transcribing.get() { t(l, "voice.transcribing") } else { t(l, "voice.transcribe") }}</span>
+                    </button>
+                }.into_any()
+            } else {
+                view! {}.into_any()
+            }}
+
+            {move || live_transcript.get().map(|text| {
+                let l = lang.get();
+                view! {
+                    <div class="mt-1 rounded-md bg-muted/40 p-2">
+                        <p class="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">{t(l, "voice.transcript")}</p>
+                        <p class="text-xs text-foreground leading-relaxed whitespace-pre-wrap">{text}</p>
+                    </div>
+                }
+            })}
         </div>
     }
+}
+
+/// Decode arbitrary container audio bytes (webm/opus, ogg, wav, ...) to mono
+/// `f32` samples via the WebView's `AudioContext`. Returns the channel data
+/// and the source sample rate.
+async fn decode_to_f32_mono(bytes: &[u8]) -> Result<(Vec<f32>, u32), String> {
+    let ctx = web_sys::AudioContext::new().map_err(|_| "AudioContext unavailable".to_string())?;
+    let u8a = js_sys::Uint8Array::from(bytes);
+    let buffer = u8a.buffer();
+    let decode_promise = ctx
+        .decode_audio_data(&buffer)
+        .map_err(|_| "decode_audio_data failed".to_string())?;
+    let decoded = JsFuture::from(decode_promise)
+        .await
+        .map_err(|_| "audio decode rejected".to_string())?;
+    let audio_buffer: web_sys::AudioBuffer = decoded
+        .dyn_into()
+        .map_err(|_| "not an AudioBuffer".to_string())?;
+    let channel = audio_buffer
+        .get_channel_data(0)
+        .map_err(|_| "channel data unavailable".to_string())?;
+    let sample_rate = audio_buffer.sample_rate() as u32;
+    let _ = ctx.close();
+    Ok((channel, sample_rate))
 }

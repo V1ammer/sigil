@@ -30,6 +30,7 @@ pub fn SettingsScreen() -> impl IntoView {
             ("appearance", "settings.appearance"),
             ("notifications", "settings.notifications"),
             ("privacy", "settings.privacy"),
+            ("voice", "settings.voice"),
             ("about", "settings.about"),
         ];
         if is_admin {
@@ -53,6 +54,7 @@ pub fn SettingsScreen() -> impl IntoView {
             "appearance" => view! { <AppearanceSettings /> }.into_any(),
             "notifications" => view! { <NotificationsSettings /> }.into_any(),
             "privacy" => view! { <PrivacySettings /> }.into_any(),
+            "voice" => view! { <VoiceSettings /> }.into_any(),
             "admin-invites" => view! { <AdminInvitesSettings /> }.into_any(),
             "admin-users" => view! { <AdminUsersSettings /> }.into_any(),
             "about" => view! { <AboutSettings /> }.into_any(),

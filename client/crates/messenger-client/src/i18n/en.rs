@@ -293,6 +293,25 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("chat.preview.video", "Video");
     m.insert("chat.preview.voice", "Voice message");
     m.insert("chat.preview.file", "File");
+    m.insert("settings.voice", "Voice messages");
+    m.insert("settings.voice.title", "Voice transcription");
+    m.insert("settings.voice.description", "Local transcription using Whisper. Audio never leaves the device.");
+    m.insert("settings.voice.privacyNote", "Models and transcripts stay on the device. Whisper is MIT-licensed.");
+    m.insert("settings.voice.download", "Download");
+    m.insert("settings.voice.downloading", "Downloading…");
+    m.insert("settings.voice.downloaded", "Model downloaded");
+    m.insert("settings.voice.downloadFailed", "Download failed");
+    m.insert("settings.voice.delete", "Delete");
+    m.insert("settings.voice.select", "Select");
+    m.insert("settings.voice.activeBadge", "Active");
+    m.insert("settings.voice.multilingual", "multilingual");
+    m.insert("settings.voice.englishOnly", "English only");
+    m.insert("settings.voice.unavailableWeb", "Transcription is not available in the web version. Use the mobile or desktop build.");
+    m.insert("voice.transcribe", "Transcribe");
+    m.insert("voice.transcribing", "Transcribing…");
+    m.insert("voice.transcript", "Transcript");
+    m.insert("voice.noModel", "Pick a model in voice settings");
+    m.insert("voice.transcribeFailed", "Transcription failed");
 
     // Admin invites
     m.insert("admin.invites", "Invitations");
@@ -417,9 +436,6 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.account.title", "Account");
     m.insert("settings.account.usernameHint", "Username cannot be changed");
 
-    // Settings — voice
-    m.insert("settings.voice.description", "Voice message settings");
-    m.insert("settings.voice.title", "Voice");
 
     // Sidebar
     m.insert("sidebar.chatList.archive", "Archive");

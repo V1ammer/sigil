@@ -24,6 +24,8 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 messenger-core = { path = "../crates/messenger-core" }
 messenger-storage = { path = "../crates/messenger-storage" }
+messenger-transcription = { path = "../crates/messenger-transcription" }
+tokio = { workspace = true, features = ["rt-multi-thread"] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

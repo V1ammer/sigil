@@ -293,6 +293,25 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("chat.preview.video", "Видео");
     m.insert("chat.preview.voice", "Голосовое сообщение");
     m.insert("chat.preview.file", "Файл");
+    m.insert("settings.voice", "Голосовые сообщения");
+    m.insert("settings.voice.title", "Транскрибация голосовых");
+    m.insert("settings.voice.description", "Локальная транскрибация моделями Whisper. Аудио не покидает устройство.");
+    m.insert("settings.voice.privacyNote", "Модели и расшифровки хранятся только на устройстве. Whisper выпущен под лицензией MIT.");
+    m.insert("settings.voice.download", "Скачать");
+    m.insert("settings.voice.downloading", "Скачивание…");
+    m.insert("settings.voice.downloaded", "Модель скачана");
+    m.insert("settings.voice.downloadFailed", "Ошибка скачивания");
+    m.insert("settings.voice.delete", "Удалить");
+    m.insert("settings.voice.select", "Выбрать");
+    m.insert("settings.voice.activeBadge", "Активна");
+    m.insert("settings.voice.multilingual", "многоязычная");
+    m.insert("settings.voice.englishOnly", "только английский");
+    m.insert("settings.voice.unavailableWeb", "Транскрибация недоступна в браузерной версии. Используйте мобильное или десктоп-приложение.");
+    m.insert("voice.transcribe", "Транскрибировать");
+    m.insert("voice.transcribing", "Транскрибация…");
+    m.insert("voice.transcript", "Расшифровка");
+    m.insert("voice.noModel", "Выберите модель в настройках голосовых сообщений");
+    m.insert("voice.transcribeFailed", "Не удалось транскрибировать");
 
     // Admin invites
     m.insert("admin.invites", "Приглашения");
@@ -417,9 +436,6 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.account.title", "Аккаунт");
     m.insert("settings.account.usernameHint", "Username нельзя изменить");
 
-    // Settings — voice
-    m.insert("settings.voice.description", "Настройки голосовых сообщений");
-    m.insert("settings.voice.title", "Голосовые сообщения");
 
     // Sidebar
     m.insert("sidebar.chatList.archive", "Архив");

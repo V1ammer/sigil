@@ -8,6 +8,7 @@ pub mod appearance;
 pub mod devices;
 pub mod notifications;
 pub mod privacy;
+pub mod voice;
 
 pub use about::AboutSettings;
 pub use account::AccountSettings;
@@ -17,3 +18,4 @@ pub use appearance::AppearanceSettings;
 pub use devices::DevicesSettings;
 pub use notifications::NotificationsSettings;
 pub use privacy::PrivacySettings;
+pub use voice::VoiceSettings;

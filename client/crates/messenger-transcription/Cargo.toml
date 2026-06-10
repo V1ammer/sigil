@@ -1,0 +1,24 @@
+[package]
+name = "messenger-transcription"
+version.workspace = true
+edition.workspace = true
+
+# Native-only crate — whisper-rs is an FFI to whisper.cpp (C++), incompatible
+# with wasm32. The WASM frontend reaches this code through Tauri commands.
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+whisper-rs = "0.13"
+reqwest = { version = "0.12", default-features = false, features = ["stream", "rustls-tls"] }
+futures-util = { workspace = true }
+sha2 = "0.10"
+rubato = "0.16"
+dirs = "5"
+tokio = { workspace = true, features = ["rt", "macros", "sync", "io-util", "fs"] }
+num_cpus = "1"
+
+[lints]
+workspace = true

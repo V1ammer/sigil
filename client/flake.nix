@@ -41,6 +41,9 @@
             tailwindcss
             nodejs_20  # tauri-cli npm-packages
             pkg-config
+            cmake
+            clang
+            llvmPackages.libclang
             openssl
             sqlite
             cargo-tauri
@@ -79,6 +82,9 @@
             export AR_x86_64_linux_android="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
             export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="$CC_x86_64_linux_android"
             # PKG_CONFIG_PATH is managed automatically by mkShell via nativeBuildInputs
+
+            # whisper-rs build needs LIBCLANG_PATH for bindgen.
+            export LIBCLANG_PATH="${pkgs.llvmPackages.libclang.lib}/lib"
           '';
         };
       });
