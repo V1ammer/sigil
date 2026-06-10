@@ -173,7 +173,7 @@ pub fn VoiceMessage(
     };
 
     view! {
-        <div class="flex flex-col gap-1 min-w-[220px] max-w-full">
+        <div class="flex flex-col gap-1 w-56 max-w-full">
             <div class="flex items-center gap-2">
                 <button
                     class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:bg-accent/50 active:bg-accent/70 transition-colors disabled:opacity-50"

@@ -1,6 +1,7 @@
 //! Scrollable message list with date separators and grouped messages.
 use leptos::prelude::*;
 use std::sync::Arc;
+use wasm_bindgen::JsCast;
 use crate::i18n::{Language, t, format_date};
 use crate::mock::Message;
 use super::message_item::MessageItem;
@@ -8,6 +9,11 @@ use super::message_item::MessageItem;
 /// Grouped messages — shows messages from the same sender within 5 minutes without
 /// the avatar/name repeated.
 const GROUP_TIME_WINDOW_MS: f64 = 5.0 * 60.0 * 1000.0;
+
+/// Threshold (px) for "near bottom" — only auto-scroll if the user is
+/// already close to the latest message, so they aren't yanked while
+/// scrolled up reading history.
+const AUTOSCROLL_THRESHOLD_PX: f64 = 120.0;
 
 #[must_use]
 #[component]
@@ -35,8 +41,33 @@ pub fn MessageList(
     let on_delete = on_delete.map(Arc::new);
     let on_reaction = on_reaction.map(Arc::new);
 
+    let container_ref: NodeRef<leptos::html::Div> = NodeRef::new();
+    let initial_jump_done = StoredValue::new(false);
+    let messages_len = messages.len();
+
+    // Jump straight to the latest message when the list first appears with
+    // content. Subsequent updates (new incoming/outgoing) only auto-scroll if
+    // the user is already near the bottom — otherwise we'd yank them out of
+    // history they're reading.
+    Effect::new(move |_| {
+        let Some(el) = container_ref.get() else { return };
+        let div: web_sys::HtmlElement = el.unchecked_into();
+        let scroll_height = f64::from(div.scroll_height());
+        let scroll_top = f64::from(div.scroll_top());
+        let client_height = f64::from(div.client_height());
+        let near_bottom = scroll_height - scroll_top - client_height < AUTOSCROLL_THRESHOLD_PX;
+
+        let first_time = !initial_jump_done.get_value();
+        if first_time && messages_len > 0 {
+            initial_jump_done.set_value(true);
+        }
+        if first_time || near_bottom {
+            div.set_scroll_top(div.scroll_height());
+        }
+    });
+
     view! {
-        <div class="flex-1 overflow-y-auto px-4 py-3 space-y-1" id="message-list">
+        <div node_ref=container_ref class="flex-1 overflow-y-auto px-4 py-3 space-y-1" id="message-list">
             {grouped.into_iter().map(|group| {
                 match group {
                     MessageGroup::DateSeparator(date_str) => {

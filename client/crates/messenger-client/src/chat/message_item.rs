@@ -170,13 +170,17 @@ pub fn MessageItem(
 
     view! {
         <div class=format!("flex {} relative group mb-0.5", align)>
+            // 75% cap lives here on a wrapper sized from the stable list column.
+            // On the nested flex-col it caused a recursive sizing loop that
+            // shrank bubbles to min-content and forced mid-word wraps.
+            <div class="max-w-[75%]">
             // Action menu wrapper — same bottom sheet on desktop right-click and mobile long-press.
             <ContextMenu
                 menu=menu_content
             >
                 <ContextMenuTrigger>
                     <div
-                        class="flex items-end gap-2 max-w-full"
+                        class="flex items-end gap-2"
                         style="touch-action: pan-y"
                         on:pointerdown=on_pointerdown
                         on:pointermove=on_pointermove
@@ -205,7 +209,7 @@ pub fn MessageItem(
                             view! {}.into_any()
                         }}
 
-                        <div class=format!("flex flex-col max-w-[75%] {}", if is_own { "items-end" } else { "items-start" })>
+                        <div class=format!("flex flex-col min-w-0 {}", if is_own { "items-end" } else { "items-start" })>
                             // Sender name (first in group only)
                             {if show_sender_name {
                                 view! {
@@ -237,8 +241,7 @@ pub fn MessageItem(
                                 view! {}.into_any()
                             }}
 
-                            // Message bubble
-                            <div class=format!("px-3 py-2 text-sm shadow-sm break-words max-w-full {bubble_class}")>
+                            <div class=format!("px-3 py-2 text-sm shadow-sm break-words {bubble_class}")>
                                 // Message content based on type
                                 {render_content(msg.clone(), on_media_click_arc.clone(), lang.get())}
 
@@ -329,6 +332,7 @@ pub fn MessageItem(
                     </div>
                 </ContextMenuTrigger>
             </ContextMenu>
+            </div>
         </div>
 
         // Mobile action sheet (bottom sheet)
