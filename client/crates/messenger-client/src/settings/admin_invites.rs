@@ -180,12 +180,13 @@ pub fn AdminInvitesSettings() -> impl IntoView {
                 match api {
                     Some(client) => match client.create_invite(&req).await {
                         Ok(resp) => {
-                            let hex: String = resp
-                                .token
-                                .iter()
-                                .map(|b| format!("{:02x}", b))
-                                .collect();
-                            tok_hex.set(hex);
+                            // Server hashes BLAKE3(base64url_nopad(token_bytes)) and stores
+                            // that. The "display" string we show to the admin (and that gets
+                            // pasted back as the token query param) must use the same encoding.
+                            use base64::Engine;
+                            let display = base64::engine::general_purpose::URL_SAFE_NO_PAD
+                                .encode(&resp.token);
+                            tok_hex.set(display);
                             show_tok.set(true);
                             show.set(false);
 

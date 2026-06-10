@@ -88,7 +88,10 @@ pub fn RegisterScreen() -> impl IntoView {
                 .and_then(|q| q.token.clone())
         });
         let token: String = match token_raw {
-            Some(t) if !t.is_empty() => t.chars().filter(|c| c.is_ascii_alphanumeric()).collect(),
+            // Bootstrap/admin tokens are base64url-no-pad, so '-' and '_' are part of
+            // the token alphabet. Drop only whitespace to allow accidental wrapping/copy
+            // without mangling the payload.
+            Some(t) if !t.is_empty() => t.chars().filter(|c| !c.is_whitespace()).collect(),
             _ => {
                 error.set(Some(t!("token.error.invalid").to_string()));
                 return;
