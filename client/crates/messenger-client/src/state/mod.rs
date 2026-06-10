@@ -33,7 +33,8 @@ use leptos::prelude::*;
 /// Must be called once at the top of `<App />`.
 pub fn provide_app_state() {
     let session = session::provide_session();
-    provide_context(ChatsState::new());
+    let chats = ChatsState::new();
+    provide_context(chats.clone());
     provide_context(MessagesState::new());
     provide_context(ThreadsState::new());
     provide_context(UiState::new());
@@ -45,5 +46,5 @@ pub fn provide_app_state() {
     provide_context(MessageService::new());
     // Wire up state for code paths that run outside the leptos owner
     // (nested spawn_local tasks in the voice/attachment pipelines).
-    init_message_service_context(&session, users);
+    init_message_service_context(&session, users, chats);
 }

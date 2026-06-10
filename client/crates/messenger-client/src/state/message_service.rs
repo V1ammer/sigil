@@ -40,6 +40,18 @@ fn current_username() -> Option<String> {
 thread_local! {
     static SESSION_STATE: RefCell<Option<RwSignal<SessionState>>> = const { RefCell::new(None) };
     static USERS_STATE: RefCell<Option<UsersState>> = const { RefCell::new(None) };
+    static CHATS_STATE: RefCell<Option<crate::state::chats::ChatsState>> = const { RefCell::new(None) };
+}
+
+/// Bump a chat's `last_message_at` if `ts_ms` is newer than what's stored.
+/// Safe to call from detached async tasks — uses the thread-local copy of
+/// `ChatsState` mirrored at startup.
+fn touch_chat_last_message(group_id: Uuid, ts_ms: i64) {
+    CHATS_STATE.with(|c| {
+        if let Some(chats) = c.borrow().as_ref() {
+            chats.touch_last_message(group_id, ts_ms);
+        }
+    });
 }
 
 /// Take the `MlsRuntime` out of `MLS_CACHE`, polling until it's available.
@@ -76,9 +88,10 @@ async fn take_mls_runtime() -> Option<MlsRuntime> {
 /// `provide_context(UsersState::new())`. Required because `MessageService`
 /// is reached from nested `spawn_local` tasks (voice/attachment pipelines)
 /// where the leptos owner — and therefore `use_context` — is gone.
-pub fn init_message_service_context(session: &Session, users: UsersState) {
+pub fn init_message_service_context(session: &Session, users: UsersState, chats: crate::state::chats::ChatsState) {
     SESSION_STATE.with(|c| *c.borrow_mut() = Some(session.state));
     USERS_STATE.with(|c| *c.borrow_mut() = Some(users));
+    CHATS_STATE.with(|c| *c.borrow_mut() = Some(chats));
 }
 
 // MLS runtime is cached in a thread-local because `MessengerLocalStore` is ?Send
@@ -138,9 +151,13 @@ impl MessageService {
         match api.list_messages(group_id, None, None).await {
             Ok(resp) => {
                 let display_messages = self.convert_messages(&resp.messages, group_id).await;
+                let latest_s = display_messages.iter().map(|m| m.created_at).max();
                 self.messages.by_group.update(|map| {
                     map.insert(group_id, display_messages);
                 });
+                if let Some(s) = latest_s {
+                    touch_chat_last_message(group_id, s * 1000);
+                }
                 tracing::debug!(%group_id, count = resp.messages.len(), "messages loaded");
             }
             Err(e) => {
@@ -233,6 +250,7 @@ impl MessageService {
                         reactions: Vec::new(),
                     });
                 });
+                touch_chat_last_message(group_id, now * 1000);
                 Some(resp.message_id)
             }
             Err(e) => {
@@ -368,6 +386,7 @@ impl MessageService {
                 reactions: Vec::new(),
             });
         });
+        touch_chat_last_message(group_id, now * 1000);
 
         Some(resp.message_id)
     }
@@ -521,6 +540,7 @@ impl MessageService {
                 reactions: Vec::new(),
             });
         });
+        touch_chat_last_message(group_id, now * 1000);
 
         Some(resp.message_id)
     }
@@ -761,6 +781,7 @@ impl MessageService {
         self.messages.by_group.update(|map| {
             map.entry(group_id).or_default().push(msg);
         });
+        touch_chat_last_message(group_id, created_at * 1000);
     }
 
     /// Encrypt an `ApplicationEnvelope` via MLS, falling back to plaintext.

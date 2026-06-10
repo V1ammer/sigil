@@ -297,6 +297,19 @@ impl ChatsState {
             list
         }
     }
+
+    /// Bump a chat's `last_message_at` if `ts_ms` is newer than what's stored.
+    /// Called from every code path that inserts a message into `MessagesState`
+    /// so the sidebar order tracks freshness without coupling to messages state.
+    pub fn touch_last_message(&self, group_id: Uuid, ts_ms: i64) {
+        self.chats.update(|list| {
+            if let Some(chat) = list.iter_mut().find(|c| c.group_id == group_id) {
+                if chat.last_message_at.map_or(true, |cur| ts_ms > cur) {
+                    chat.last_message_at = Some(ts_ms);
+                }
+            }
+        });
+    }
 }
 
 impl Default for ChatsState {
