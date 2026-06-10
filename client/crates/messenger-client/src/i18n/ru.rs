@@ -289,6 +289,10 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.privacy.autoDownloadMaxSize", "Максимальный размер");
     m.insert("message.file.savedToDownloads", "Сохранено в Downloads");
     m.insert("message.file.saveFailed", "Не удалось сохранить");
+    m.insert("chat.preview.image", "Фотография");
+    m.insert("chat.preview.video", "Видео");
+    m.insert("chat.preview.voice", "Голосовое сообщение");
+    m.insert("chat.preview.file", "Файл");
 
     // Admin invites
     m.insert("admin.invites", "Приглашения");

@@ -7,6 +7,8 @@ use messenger_core::api::client::ApiClient;
 use messenger_proto::mls::GroupSummary;
 use uuid::Uuid;
 
+use crate::state::messages::MessageKind;
+
 #[derive(Clone, Debug)]
 pub enum AvatarSource {
     Initials(String),
@@ -26,6 +28,9 @@ pub struct Chat {
     pub display_name: String,
     pub avatar: Option<AvatarSource>,
     pub last_message_preview: Option<String>,
+    /// Kind of the latest message — used by the chat list to render an icon
+    /// prefix (📷, 🎤, 📎...) for non-text bodies.
+    pub last_message_kind: Option<MessageKind>,
     pub last_message_at: Option<i64>,
     pub unread_count: u32,
     pub muted: bool,
@@ -191,6 +196,7 @@ impl ChatsState {
                     display_name,
                     avatar: None,
                     last_message_preview: None,
+                    last_message_kind: None,
                     last_message_at: None,
                     unread_count: 0,
                     muted: p.muted,
@@ -306,6 +312,27 @@ impl ChatsState {
             if let Some(chat) = list.iter_mut().find(|c| c.group_id == group_id) {
                 if chat.last_message_at.map_or(true, |cur| ts_ms > cur) {
                     chat.last_message_at = Some(ts_ms);
+                }
+            }
+        });
+    }
+
+    /// Update last-message metadata (timestamp + preview text + kind) when the
+    /// incoming timestamp is newer than what's stored. Preview drives the
+    /// Telegram-style snippet in the sidebar.
+    pub fn set_last_message(
+        &self,
+        group_id: Uuid,
+        ts_ms: i64,
+        preview: Option<String>,
+        kind: Option<MessageKind>,
+    ) {
+        self.chats.update(|list| {
+            if let Some(chat) = list.iter_mut().find(|c| c.group_id == group_id) {
+                if chat.last_message_at.map_or(true, |cur| ts_ms >= cur) {
+                    chat.last_message_at = Some(ts_ms);
+                    chat.last_message_preview = preview;
+                    chat.last_message_kind = kind;
                 }
             }
         });

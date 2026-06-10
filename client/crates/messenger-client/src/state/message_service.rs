@@ -54,6 +54,39 @@ fn touch_chat_last_message(group_id: Uuid, ts_ms: i64) {
     });
 }
 
+/// Same as [`touch_chat_last_message`] but also publishes a preview snippet
+/// and the message kind so the sidebar can render a Telegram-style preview.
+fn set_chat_last_message(
+    group_id: Uuid,
+    ts_ms: i64,
+    preview: Option<String>,
+    kind: Option<MessageKind>,
+) {
+    CHATS_STATE.with(|c| {
+        if let Some(chats) = c.borrow().as_ref() {
+            chats.set_last_message(group_id, ts_ms, preview, kind);
+        }
+    });
+}
+
+/// Extract a short snippet for the chat list from a decoded message body.
+fn preview_from_body(body: &MessageBody) -> String {
+    match body {
+        MessageBody::Text(t) => {
+            let trimmed = t.trim();
+            if trimmed.chars().count() > 80 {
+                trimmed.chars().take(80).collect::<String>() + "…"
+            } else {
+                trimmed.to_string()
+            }
+        }
+        MessageBody::Voice { .. }
+        | MessageBody::Image { .. } => String::new(),
+        MessageBody::File { name, .. } => name.clone(),
+        MessageBody::System { action } => action.clone(),
+    }
+}
+
 /// Take the `MlsRuntime` out of `MLS_CACHE`, polling until it's available.
 ///
 /// MLS is held by a single `thread_local!` slot. Several async paths
@@ -151,12 +184,17 @@ impl MessageService {
         match api.list_messages(group_id, None, None).await {
             Ok(resp) => {
                 let display_messages = self.convert_messages(&resp.messages, group_id).await;
-                let latest_s = display_messages.iter().map(|m| m.created_at).max();
+                let latest = display_messages.iter().max_by_key(|m| m.created_at).cloned();
                 self.messages.by_group.update(|map| {
                     map.insert(group_id, display_messages);
                 });
-                if let Some(s) = latest_s {
-                    touch_chat_last_message(group_id, s * 1000);
+                if let Some(m) = latest {
+                    set_chat_last_message(
+                        group_id,
+                        m.created_at * 1000,
+                        Some(preview_from_body(&m.body)),
+                        Some(m.kind),
+                    );
                 }
                 tracing::debug!(%group_id, count = resp.messages.len(), "messages loaded");
             }
@@ -250,7 +288,12 @@ impl MessageService {
                         reactions: Vec::new(),
                     });
                 });
-                touch_chat_last_message(group_id, now * 1000);
+                set_chat_last_message(
+                    group_id,
+                    now * 1000,
+                    Some(preview_from_body(&MessageBody::Text(text.to_string()))),
+                    Some(MessageKind::Text),
+                );
                 Some(resp.message_id)
             }
             Err(e) => {
@@ -386,7 +429,7 @@ impl MessageService {
                 reactions: Vec::new(),
             });
         });
-        touch_chat_last_message(group_id, now * 1000);
+        set_chat_last_message(group_id, now * 1000, Some(String::new()), Some(MessageKind::Voice));
 
         Some(resp.message_id)
     }
@@ -521,6 +564,7 @@ impl MessageService {
         }
 
         let kind_for_display = if payload.is_image { MessageKind::Image } else { MessageKind::File };
+        let preview = Some(preview_from_body(&local_body));
         self.messages.by_group.update(|map| {
             map.entry(group_id).or_default().push(DisplayMessage {
                 id: resp.message_id,
@@ -540,7 +584,7 @@ impl MessageService {
                 reactions: Vec::new(),
             });
         });
-        touch_chat_last_message(group_id, now * 1000);
+        set_chat_last_message(group_id, now * 1000, preview, Some(kind_for_display));
 
         Some(resp.message_id)
     }
@@ -778,10 +822,12 @@ impl MessageService {
             reactions: Vec::new(),
         };
 
+        let preview = Some(preview_from_body(&msg.body));
+        let kind = msg.kind;
         self.messages.by_group.update(|map| {
             map.entry(group_id).or_default().push(msg);
         });
-        touch_chat_last_message(group_id, created_at * 1000);
+        set_chat_last_message(group_id, created_at * 1000, preview, Some(kind));
     }
 
     /// Encrypt an `ApplicationEnvelope` via MLS, falling back to plaintext.

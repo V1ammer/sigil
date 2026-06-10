@@ -14,7 +14,7 @@ pub enum DeliveryStatus {
 }
 
 /// High-level message kind used for UI rendering.
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MessageKind {
     Text,
     Voice,

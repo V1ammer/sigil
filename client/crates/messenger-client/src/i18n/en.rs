@@ -289,6 +289,10 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.privacy.autoDownloadMaxSize", "Maximum size");
     m.insert("message.file.savedToDownloads", "Saved to Downloads");
     m.insert("message.file.saveFailed", "Save failed");
+    m.insert("chat.preview.image", "Photo");
+    m.insert("chat.preview.video", "Video");
+    m.insert("chat.preview.voice", "Voice message");
+    m.insert("chat.preview.file", "File");
 
     // Admin invites
     m.insert("admin.invites", "Invitations");

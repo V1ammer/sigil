@@ -8,6 +8,7 @@ use wasm_bindgen::JsCast;
 use crate::components::sheet::{Sheet, SheetHeader, SheetTitle};
 use crate::icons::Icon;
 use crate::state::chats::{Chat, ChatsState};
+use crate::state::messages::MessageKind;
 use crate::state::session::build_api_client;
 use crate::i18n::I18n;
 use crate::t;
@@ -240,9 +241,9 @@ pub fn RealChatList(
                                                     })}
                                                 </div>
                                                 <div class="flex items-center justify-between gap-2 mt-0.5">
-                                                    <p class="text-xs text-muted-foreground truncate">
-                                                        {chat.last_message_preview.clone().unwrap_or_default()}
-                                                    </p>
+                                                    <div class="flex items-center gap-1 min-w-0 text-xs text-muted-foreground">
+                                                        {render_last_message_preview(&chat)}
+                                                    </div>
                                                     {if chat.unread_count > 0 {
                                                         view! {
                                                             <span class="inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-medium min-w-[18px] h-[18px] px-1 shrink-0">
@@ -402,6 +403,35 @@ pub fn RealChatList(
             }.into_any()
         }}
     }
+}
+
+/// Render the chat-list last-message snippet — a small icon for media kinds
+/// followed by either the body text (truncated) or a localized label.
+fn render_last_message_preview(chat: &Chat) -> AnyView {
+    let preview = chat.last_message_preview.clone().unwrap_or_default();
+    let (icon, label) = match chat.last_message_kind {
+        Some(MessageKind::Image) => (Some("image"), t!("chat.preview.image")),
+        Some(MessageKind::Video) => (Some("film"), t!("chat.preview.video")),
+        Some(MessageKind::Voice) => (Some("mic"), t!("chat.preview.voice")),
+        Some(MessageKind::File) => (
+            Some("paperclip"),
+            if preview.is_empty() { t!("chat.preview.file") } else { preview.clone() },
+        ),
+        _ => (None, preview.clone()),
+    };
+    let label = if matches!(chat.last_message_kind, Some(MessageKind::Image | MessageKind::Video | MessageKind::Voice))
+        && !preview.is_empty()
+    {
+        preview
+    } else {
+        label
+    };
+    view! {
+        {icon.map(|name| view! {
+            <Icon name=name class_name="h-3 w-3 shrink-0".to_string()/>
+        })}
+        <span class="truncate">{label}</span>
+    }.into_any()
 }
 
 fn get_initials(name: &str) -> String {
