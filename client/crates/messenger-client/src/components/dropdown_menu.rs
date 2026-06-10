@@ -1,27 +1,37 @@
+use leptos::html::{Div, Span};
 use leptos::prelude::*;
 
-/// Simple dropdown menu with a trigger and content.
+/// Context shared between trigger and content so the content can measure the
+/// trigger's bounding rect when it opens and position itself within the
+/// viewport (flipping above the trigger when there's no room below).
+#[derive(Clone, Copy)]
+struct DropdownCtx {
+    is_open: RwSignal<bool>,
+    trigger_ref: NodeRef<Span>,
+}
+
 #[must_use]
 #[component]
-pub fn DropdownMenu(
-    children: Children,
-) -> impl IntoView {
+pub fn DropdownMenu(children: Children) -> impl IntoView {
     let is_open = RwSignal::new(false);
-    provide_context(is_open);
+    let trigger_ref: NodeRef<Span> = NodeRef::new();
+    provide_context(DropdownCtx { is_open, trigger_ref });
     view! { {children()} }
 }
 
 #[must_use]
 #[component]
-pub fn DropdownMenuTrigger(
-    children: Children,
-) -> impl IntoView {
-    let is_open = use_context::<RwSignal<bool>>().expect("DropdownMenuTrigger must be inside DropdownMenu");
+pub fn DropdownMenuTrigger(children: Children) -> impl IntoView {
+    let ctx = use_context::<DropdownCtx>().expect("DropdownMenuTrigger must be inside DropdownMenu");
+    let is_open = ctx.is_open;
     view! {
         <span
+            node_ref=ctx.trigger_ref
             on:click=move |_| is_open.update(|v| *v = !*v)
             role="button"
             tabindex="0"
+            // `display: contents` keeps the original layout of the wrapped
+            // button — the menu measures the span's first real child instead.
             style="display: contents;"
             on:keydown=move |ev: leptos::ev::KeyboardEvent| {
                 if ev.key() == "Enter" || ev.key() == " " {
@@ -41,16 +51,65 @@ pub fn DropdownMenuContent(
     #[prop(optional, into)] align: String,
     children: Children,
 ) -> impl IntoView {
-    let is_open = use_context::<RwSignal<bool>>().expect("DropdownMenuContent must be inside DropdownMenu");
-    let align_class = match align.as_str() {
-        "start" => "left-0",
-        "end" => "right-0",
-        _ => "left-0",
-    };
+    let ctx = use_context::<DropdownCtx>().expect("DropdownMenuContent must be inside DropdownMenu");
+    let is_open = ctx.is_open;
+    let trigger_ref = ctx.trigger_ref;
+    let content_ref: NodeRef<Div> = NodeRef::new();
+    let align_end = align == "end";
+
+    // (top_px, left_px) once measured. `None` while invisible so the menu
+    // doesn't flash at the wrong position before placement.
+    let pos = RwSignal::<Option<(f64, f64)>>::new(None);
+
+    Effect::new(move |_| {
+        if !is_open.get() {
+            pos.set(None);
+            return;
+        }
+        let Some(trigger_span) = trigger_ref.get() else { return };
+        let Some(content_el) = content_ref.get() else { return };
+
+        // The trigger span uses `display: contents`, so its own rect is
+        // empty — measure the first real child element instead.
+        let trigger_box = trigger_span
+            .first_element_child()
+            .map(|el| el.get_bounding_client_rect())
+            .unwrap_or_else(|| trigger_span.get_bounding_client_rect());
+        let content_rect = content_el.get_bounding_client_rect();
+        let Some(win) = web_sys::window() else { return };
+        let vw = win.inner_width().ok().and_then(|v| v.as_f64()).unwrap_or(360.0);
+        let vh = win.inner_height().ok().and_then(|v| v.as_f64()).unwrap_or(640.0);
+
+        let gap = 4.0;
+        let safe = 8.0;
+        let needed_h = content_rect.height().max(1.0);
+        let needed_w = content_rect.width().max(1.0);
+
+        let space_below = vh - trigger_box.bottom();
+        let space_above = trigger_box.top();
+        let top = if space_below >= needed_h + gap + safe || space_below >= space_above {
+            (trigger_box.bottom() + gap).min((vh - needed_h - safe).max(safe))
+        } else {
+            (trigger_box.top() - gap - needed_h).max(safe)
+        };
+
+        let left_raw = if align_end {
+            trigger_box.right() - needed_w
+        } else {
+            trigger_box.left()
+        };
+        let left = left_raw.clamp(safe, (vw - needed_w - safe).max(safe));
+
+        pos.set(Some((top, left)));
+    });
+
     let content_class = format!(
-        "absolute z-50 mt-1 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md {} {}",
-        align_class, class,
+        "z-50 min-w-[8rem] max-w-[calc(100vw-1rem)] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md {class}",
     );
+    let style_fn = move || match pos.get() {
+        Some((top, left)) => format!("position: fixed; top: {top}px; left: {left}px;"),
+        None => "position: fixed; top: 0; left: 0; visibility: hidden;".to_string(),
+    };
     let children = children();
     view! {
         <div style:display=move || if is_open.get() { "block" } else { "none" }>
@@ -58,7 +117,11 @@ pub fn DropdownMenuContent(
                 class="fixed inset-0 z-40"
                 on:click=move |_| is_open.set(false)
             />
-            <div class=content_class>
+            <div
+                node_ref=content_ref
+                class=content_class
+                style=style_fn
+            >
                 {children}
             </div>
         </div>
@@ -72,7 +135,9 @@ pub fn DropdownMenuItem(
     #[prop(optional)] on_click: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     children: Children,
 ) -> impl IntoView {
-    let is_open = use_context::<RwSignal<bool>>().expect("DropdownMenuItem must be inside DropdownMenu");
+    let is_open = use_context::<DropdownCtx>()
+        .expect("DropdownMenuItem must be inside DropdownMenu")
+        .is_open;
     let handler = move |_| {
         is_open.set(false);
         if let Some(ref f) = on_click {
