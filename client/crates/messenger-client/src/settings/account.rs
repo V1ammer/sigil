@@ -104,6 +104,10 @@ pub fn AccountSettings() -> impl IntoView {
                 },
             );
             // Deliver the change (or removal) to every existing chat.
+            #[cfg(target_arch = "wasm32")]
+            web_sys::console::log_1(
+                &format!("[avatar] settings change, svc present: {}", msg_svc.is_some()).into(),
+            );
             if let Some(svc) = msg_svc.clone() {
                 spawn_local(async move {
                     svc.broadcast_avatar_all().await;

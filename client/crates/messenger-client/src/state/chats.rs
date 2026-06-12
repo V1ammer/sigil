@@ -234,6 +234,24 @@ impl ChatsState {
         Ok(resp.group_id)
     }
 
+    /// Set (and persist) a chat's display name, updating the loaded list too.
+    /// Used to backfill names learned from message envelopes — the welcome
+    /// recipient of a direct chat never typed the peer's username.
+    pub fn set_display_name(&self, group_id: Uuid, name: &str) {
+        if name.is_empty() {
+            return;
+        }
+        self.display_name_cache.update(|cache| {
+            cache.insert(group_id, name.to_string());
+        });
+        self.persist_cache();
+        self.chats.update(|list| {
+            if let Some(chat) = list.iter_mut().find(|c| c.group_id == group_id) {
+                chat.display_name = name.to_string();
+            }
+        });
+    }
+
     /// Persist the display-name cache to localStorage.
     fn persist_cache(&self) {
         if let Some(storage) = web_sys::window()

@@ -701,12 +701,26 @@ impl MessageService {
     /// Broadcast the own avatar to every chat in the list (used after a
     /// change in settings).
     pub async fn broadcast_avatar_all(&self) {
-        let groups: Vec<Uuid> = CHATS_STATE
+        let mut groups: Vec<Uuid> = CHATS_STATE
             .with(|c| c.borrow().clone())
             .map(|cs| cs.chats.get_untracked().iter().map(|ch| ch.group_id).collect())
             .unwrap_or_default();
+        // The UI chat list is only populated once the chats screen has been
+        // visited; when settings is opened directly the state is empty, so
+        // fall back to asking the server.
+        if groups.is_empty() {
+            if let Some(api) = build_api_client() {
+                if let Ok(resp) = api.list_groups(None).await {
+                    groups = resp.groups.iter().map(|g| g.id).collect();
+                }
+            }
+        }
+        web_sys::console::log_1(
+            &format!("[avatar] broadcast_all: {} group(s)", groups.len()).into(),
+        );
         for group_id in groups {
-            let _ = self.broadcast_avatar(group_id).await;
+            let ok = self.broadcast_avatar(group_id).await;
+            web_sys::console::log_1(&format!("[avatar] broadcast {group_id}: {ok}").into());
         }
     }
 
@@ -1169,6 +1183,22 @@ impl MessageService {
         });
         if is_direct {
             users.remember_peer(group_id, sender);
+            // The welcome recipient never typed the peer's username, so the
+            // chat may still be labeled with a bare UUID. Backfill it from
+            // the name cache (populated by envelope display-name overrides).
+            if let (Some(cs), Some(name)) = (
+                CHATS_STATE.with(|c| c.borrow().clone()),
+                users.get(sender),
+            ) {
+                let needs_name = cs
+                    .display_name_cache
+                    .get_untracked()
+                    .get(&group_id)
+                    .is_none_or(|n| n.parse::<Uuid>().is_ok());
+                if needs_name {
+                    cs.set_display_name(group_id, &name);
+                }
+            }
         }
     }
 
