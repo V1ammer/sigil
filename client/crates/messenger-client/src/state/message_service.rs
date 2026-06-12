@@ -51,6 +51,20 @@ thread_local! {
     static SESSION_STATE: RefCell<Option<RwSignal<SessionState>>> = const { RefCell::new(None) };
     static USERS_STATE: RefCell<Option<UsersState>> = const { RefCell::new(None) };
     static CHATS_STATE: RefCell<Option<crate::state::chats::ChatsState>> = const { RefCell::new(None) };
+    static MSG_SERVICE: RefCell<Option<MessageService>> = const { RefCell::new(None) };
+}
+
+/// The globally registered `MessageService`, for code paths that run outside
+/// the leptos owner (background sync loop) where `use_context` returns None.
+#[must_use]
+pub fn service_handle() -> Option<MessageService> {
+    MSG_SERVICE.with(|c| c.borrow().clone())
+}
+
+/// The globally registered `ChatsState` — same rationale as [`service_handle`].
+#[must_use]
+pub fn chats_handle() -> Option<crate::state::chats::ChatsState> {
+    CHATS_STATE.with(|c| c.borrow().clone())
 }
 
 /// Bump a chat's `last_message_at` if `ts_ms` is newer than what's stored.
@@ -131,10 +145,16 @@ async fn take_mls_runtime() -> Option<MlsRuntime> {
 /// `provide_context(UsersState::new())`. Required because `MessageService`
 /// is reached from nested `spawn_local` tasks (voice/attachment pipelines)
 /// where the leptos owner — and therefore `use_context` — is gone.
-pub fn init_message_service_context(session: &Session, users: UsersState, chats: crate::state::chats::ChatsState) {
+pub fn init_message_service_context(
+    session: &Session,
+    users: UsersState,
+    chats: crate::state::chats::ChatsState,
+    svc: MessageService,
+) {
     SESSION_STATE.with(|c| *c.borrow_mut() = Some(session.state));
     USERS_STATE.with(|c| *c.borrow_mut() = Some(users));
     CHATS_STATE.with(|c| *c.borrow_mut() = Some(chats));
+    MSG_SERVICE.with(|c| *c.borrow_mut() = Some(svc));
 }
 
 // MLS runtime is cached in a thread-local because `MessengerLocalStore` is ?Send
@@ -695,7 +715,43 @@ impl MessageService {
                 tracing::warn!(error = %e, "avatar finalize failed");
             }
         }
+        crate::state::avatar_store::mark_announced(
+            group_id,
+            &crate::state::avatar_store::avatar_fingerprint(me_id),
+        );
         true
+    }
+
+    /// Make sure every group has received the current avatar — the safety net
+    /// behind the event-driven broadcasts (settings change, chat creation,
+    /// welcome join), which all miss chats created after the avatar was set
+    /// or joined without MLS. Cheap when nothing changed; called from the
+    /// sync loop.
+    pub async fn ensure_avatar_broadcasts(&self) {
+        let Some(me_id) = current_user_id() else {
+            web_sys::console::log_1(&"[avatar] ensure: no user".into());
+            return;
+        };
+        let Some(api) = build_api_client() else { return };
+        let fingerprint = crate::state::avatar_store::avatar_fingerprint(me_id);
+        let announced = crate::state::avatar_store::announced_map();
+
+        let Ok(resp) = api.list_groups(None).await else { return };
+        for group in resp.groups {
+            let prev = announced.get(&group.id).map(String::as_str);
+            if prev == Some(fingerprint.as_str()) {
+                continue;
+            }
+            // Never-announced group + no avatar: nothing to deliver, don't
+            // spam removal notices.
+            if prev.is_none() && fingerprint == "none" {
+                continue;
+            }
+            let ok = self.broadcast_avatar(group.id).await;
+            web_sys::console::log_1(
+                &format!("[avatar] ensure: re-announce to {}: {ok}", group.id).into(),
+            );
+        }
     }
 
     /// Broadcast the own avatar to every chat in the list (used after a

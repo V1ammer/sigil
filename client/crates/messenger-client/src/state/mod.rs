@@ -45,8 +45,10 @@ pub fn provide_app_state() {
     provide_context(NotificationsState::new());
     let users = UsersState::new();
     provide_context(users.clone());
-    provide_context(MessageService::new());
+    let msg_svc = MessageService::new();
+    provide_context(msg_svc.clone());
     // Wire up state for code paths that run outside the leptos owner
-    // (nested spawn_local tasks in the voice/attachment pipelines).
-    init_message_service_context(&session, users, chats);
+    // (nested spawn_local tasks in the voice/attachment pipelines,
+    // the background sync loop).
+    init_message_service_context(&session, users, chats, msg_svc);
 }

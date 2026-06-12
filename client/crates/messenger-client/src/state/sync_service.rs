@@ -52,7 +52,17 @@ impl SyncService {
                 // 2. Refresh chat list
                 Self::sync_chats().await;
 
-                // 3. Sleep for the interval
+                // 3. Deliver the own avatar to any group that hasn't seen
+                // the current one (covers chats created after the avatar
+                // was set and welcome joins that bypassed the MLS hook).
+                match crate::state::message_service::service_handle() {
+                    Some(svc) => svc.ensure_avatar_broadcasts().await,
+                    None => web_sys::console::log_1(
+                        &"[avatar] ensure skipped: no MessageService handle".into(),
+                    ),
+                }
+
+                // 4. Sleep for the interval
                 gloo_timers::future::TimeoutFuture::new((SYNC_INTERVAL_SECS * 1000) as u32).await;
             }
 
@@ -72,8 +82,10 @@ impl SyncService {
             None => return,
         };
 
-        let msg_svc = use_context::<MessageService>();
-        let chats = use_context::<ChatsState>();
+        // Thread-local handles, not use_context — this runs in a detached
+        // spawn_local loop where the leptos owner may be gone.
+        let msg_svc = crate::state::message_service::service_handle();
+        let chats = crate::state::message_service::chats_handle();
 
         match api.list_welcomes(None).await {
             Ok(resp) if !resp.welcomes.is_empty() => {
@@ -124,7 +136,7 @@ impl SyncService {
 
     /// Refresh the chat list from the server.
     async fn sync_chats() {
-        let chats = use_context::<ChatsState>();
+        let chats = crate::state::message_service::chats_handle();
         if let Some(ref c) = chats {
             if let Some(api) = build_api_client() {
                 let _ = c.load_from_server(&api).await;

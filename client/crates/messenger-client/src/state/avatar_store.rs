@@ -29,6 +29,54 @@ pub fn clear_own_avatar(user_id: Uuid) {
     }
 }
 
+// --- Учёт «в какие группы текущий аватар уже разослан» ---
+//
+// Доставка через одноразовые события (смена аватара, создание чата, join по
+// welcome) ненадёжна: чат может появиться позже смены аватара, а join-хук не
+// срабатывает при неудачном MLS-join. Поэтому клиент хранит отпечаток
+// разосланного аватара per-group и периодически досылает недостающее.
+
+const ANNOUNCED_KEY: &str = "messenger_avatar_announced";
+
+/// Отпечаток текущего аватара пользователя ("none", если аватара нет).
+#[must_use]
+pub fn avatar_fingerprint(user_id: Uuid) -> String {
+    match load_own_avatar(user_id) {
+        Some(data_url) => blake3::hash(data_url.as_bytes()).to_hex()[..16].to_string(),
+        None => "none".to_string(),
+    }
+}
+
+/// Map group_id → отпечаток аватара, который туда уже разослан.
+#[must_use]
+pub fn announced_map() -> std::collections::HashMap<Uuid, String> {
+    let Some(s) = storage() else { return std::collections::HashMap::new() };
+    let Ok(Some(json)) = s.get_item(ANNOUNCED_KEY) else {
+        return std::collections::HashMap::new();
+    };
+    serde_json::from_str::<Vec<(String, String)>>(&json)
+        .map(|entries| {
+            entries
+                .into_iter()
+                .filter_map(|(id, fp)| id.parse::<Uuid>().ok().map(|id| (id, fp)))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Запомнить, что в группу разослан аватар с данным отпечатком.
+pub fn mark_announced(group_id: Uuid, fingerprint: &str) {
+    let mut map = announced_map();
+    map.insert(group_id, fingerprint.to_string());
+    if let Some(s) = storage() {
+        let entries: Vec<(String, String)> =
+            map.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+        if let Ok(json) = serde_json::to_string(&entries) {
+            let _ = s.set_item(ANNOUNCED_KEY, &json);
+        }
+    }
+}
+
 /// `data:image/jpeg;base64,...` → (mime, сырые байты).
 #[must_use]
 pub fn data_url_to_bytes(data_url: &str) -> Option<(String, Vec<u8>)> {
