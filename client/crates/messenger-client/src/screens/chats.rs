@@ -297,6 +297,7 @@ pub fn ChatsScreen() -> impl IntoView {
             {/* Main area */}
             {
                 let messages_state_for_main = messages_state.clone();
+                let users_state_for_header = use_context::<crate::state::users::UsersState>();
                 let messages_state_for_thread = messages_state.clone();
                 let msg_svc_for_thread = msg_svc.clone();
                 let sel_for_thread = sel.clone();
@@ -335,10 +336,22 @@ pub fn ChatsScreen() -> impl IntoView {
                 let on_delete_cb = Box::new(|| {}) as Box<dyn Fn() + Send + Sync + 'static>;
                 let on_back_cb = Box::new(|| crate::state::back_stack::pop())
                     as Box<dyn Fn() + Send + Sync + 'static>;
-                let chat_for_header = state_chat
+                let mut chat_for_header = state_chat
                     .as_ref()
                     .map(|c| to_mock_chat(c, &name))
                     .unwrap_or_else(|| placeholder_mock_chat(group_id, &name));
+                // Direct chats: show the peer's E2E-delivered avatar. Reads
+                // tracked signals, so the header refreshes when one lands.
+                chat_for_header.avatar_url = users_state_for_header.as_ref().and_then(|us| {
+                    let is_direct = state_chat
+                        .as_ref()
+                        .is_none_or(|c| c.chat_type == ChatType::Direct);
+                    if !is_direct {
+                        return None;
+                    }
+                    let peer = us.peer_by_group.get().get(&group_id).copied()?;
+                    us.avatar_by_id.get().get(&peer).cloned()
+                });
 
                 view! {
                     <div class=move || {

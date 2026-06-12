@@ -81,6 +81,7 @@ pub fn AccountSettings() -> impl IntoView {
     let avatar_sig = RwSignal::new(my_user_id.and_then(crate::state::avatar_store::load_own_avatar));
     {
         let notifications = notifications.clone();
+        let msg_svc = use_context::<crate::state::message_service::MessageService>();
         let last_seen = StoredValue::new(avatar_sig.get_untracked());
         Effect::new(move |_| {
             let current = avatar_sig.get();
@@ -102,6 +103,12 @@ pub fn AccountSettings() -> impl IntoView {
                     t!("settings.account.avatarSaved")
                 },
             );
+            // Deliver the change (or removal) to every existing chat.
+            if let Some(svc) = msg_svc.clone() {
+                spawn_local(async move {
+                    svc.broadcast_avatar_all().await;
+                });
+            }
         });
     }
 

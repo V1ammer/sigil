@@ -95,6 +95,9 @@ impl SyncService {
                             .await;
                             if joined {
                                 tracing::debug!(welcome_id = ?welcome.id, "joined via welcome");
+                                // Introduce ourselves: deliver our avatar to
+                                // the freshly joined group.
+                                let _ = svc.broadcast_avatar(welcome.group_id).await;
                             } else {
                                 tracing::warn!(welcome_id = ?welcome.id, "failed to join via welcome");
                             }

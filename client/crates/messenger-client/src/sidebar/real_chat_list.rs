@@ -23,6 +23,8 @@ pub fn RealChatList(
 ) -> impl IntoView {
     let _i18n = use_context::<I18n>().expect("I18n must be provided");
     let chats_state = use_context::<ChatsState>().expect("ChatsState must be provided");
+    let msg_svc = use_context::<crate::state::message_service::MessageService>();
+    let users_state = use_context::<crate::state::users::UsersState>();
     let chats = chats_state.filtered();
     let selected = chats_state.selected;
     let navigate = use_navigate();
@@ -65,14 +67,20 @@ pub fn RealChatList(
         loading.set(true);
         error_msg.set(String::new());
         let cs = chats_state.clone();
+        let svc = msg_svc.clone();
         spawn_local(async move {
             let api = build_api_client();
             match api {
                 Some(api) => {
                     match cs.create_direct_chat(&api, username.trim()).await {
-                        Ok(_group_id) => {
+                        Ok(group_id) => {
                             show_dialog.set(false);
                             username_input.set(String::new());
+                            // Introduce ourselves: deliver our avatar to the
+                            // new chat so the peer sees it right away.
+                            if let Some(svc) = svc {
+                                let _ = svc.broadcast_avatar(group_id).await;
+                            }
                         }
                         Err(e) => {
                             error_msg.set(e);
@@ -123,6 +131,7 @@ pub fn RealChatList(
             </div>
             <div class="flex-1 overflow-y-auto">
                 {move || {
+                    let users_for_rows = users_state.clone();
                     let list = chats();
                     if list.is_empty() {
                         view! {
@@ -144,6 +153,21 @@ pub fn RealChatList(
                                     let cb = on_select.clone();
                                     let is_selected = move || selected.get() == Some(chat.group_id);
                                     let initials = get_initials(&chat.display_name);
+                                    // Peer avatar (direct chats): reactive so it
+                                    // pops in as soon as an AvatarUpdate lands.
+                                    let avatar_src = {
+                                        let users = users_for_rows.clone();
+                                        let group_id = chat.group_id;
+                                        let is_direct = chat.chat_type == crate::state::chats::ChatType::Direct;
+                                        Signal::derive(move || {
+                                            if !is_direct {
+                                                return None;
+                                            }
+                                            let users = users.as_ref()?;
+                                            let peer = users.peer_by_group.get().get(&group_id).copied()?;
+                                            users.avatar_by_id.get().get(&peer).cloned()
+                                        })
+                                    };
 
                                     // Long-press → open the chat action sheet.
                                     let timer_id: RwSignal<Option<i32>> = RwSignal::new(None);
@@ -218,7 +242,7 @@ pub fn RealChatList(
                                                 }
                                             }
                                         >
-                                            <AvatarPlaceholder initials={initials} />
+                                            <AvatarPlaceholder initials={initials} src=avatar_src />
                                             <div class="min-w-0 flex-1">
                                                 <div class="flex items-center justify-between gap-2">
                                                     <div class="flex items-center gap-1.5 min-w-0">
@@ -442,12 +466,20 @@ fn get_initials(name: &str) -> String {
         .to_uppercase()
 }
 
-/// 48×48 avatar circle with initials fallback.
+/// 48×48 avatar circle: peer image when cached, initials fallback otherwise.
 #[component]
-fn AvatarPlaceholder(initials: String) -> impl IntoView {
+fn AvatarPlaceholder(
+    initials: String,
+    #[prop(optional)] src: Option<Signal<Option<String>>>,
+) -> impl IntoView {
     view! {
-        <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-semibold text-muted-foreground">
-            {initials}
+        <div class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-sm font-semibold text-muted-foreground">
+            {move || match src.and_then(|s| s.get()) {
+                Some(url) => view! {
+                    <img class="h-full w-full object-cover" src=url alt=""/>
+                }.into_any(),
+                None => initials.clone().into_any(),
+            }}
         </div>
     }
 }

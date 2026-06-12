@@ -37,6 +37,16 @@ fn current_username() -> Option<String> {
     }))
 }
 
+/// Current user's id — same access pattern as [`current_username`].
+fn current_user_id() -> Option<Uuid> {
+    SESSION_STATE.with(|c| c.borrow().as_ref().and_then(|s| {
+        match s.get_untracked() {
+            SessionState::Authenticated { identity, .. } => Some(identity.user_id),
+            _ => None,
+        }
+    }))
+}
+
 thread_local! {
     static SESSION_STATE: RefCell<Option<RwSignal<SessionState>>> = const { RefCell::new(None) };
     static USERS_STATE: RefCell<Option<UsersState>> = const { RefCell::new(None) };
@@ -589,6 +599,117 @@ impl MessageService {
         Some(resp.message_id)
     }
 
+    /// Broadcast the current (or removed) own avatar to one group as an MLS
+    /// `AvatarUpdate`. Unlike `send_attachment` this is a profile side-channel:
+    /// nothing is added to the local timeline or the chat-list preview.
+    ///
+    /// Returns `false` when there was nothing to send or the send failed.
+    pub async fn broadcast_avatar(&self, group_id: Uuid) -> bool {
+        use messenger_core::attachment_crypto::encrypt_attachment;
+        use rand::RngCore;
+
+        let Some(me_id) = current_user_id() else { return false };
+        let Some(api) = build_api_client() else { return false };
+
+        let own = crate::state::avatar_store::load_own_avatar(me_id);
+        let (body, upload_id) = match own.as_deref().and_then(crate::state::avatar_store::data_url_to_bytes) {
+            Some((mime, bytes)) => {
+                let mut key = [0u8; 32];
+                rand::thread_rng().fill_bytes(&mut key);
+                let ciphertext = match encrypt_attachment(&key, &bytes) {
+                    Ok(ct) => ct,
+                    Err(e) => {
+                        tracing::warn!("avatar encrypt failed: {e:?}");
+                        return false;
+                    }
+                };
+                let padded_size = ciphertext.len() as u64;
+                let size_bucket = size_bucket_for(padded_size);
+                let upload = match api.upload_attachment(ciphertext, padded_size, size_bucket).await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        tracing::warn!(error = %e, "avatar upload failed");
+                        return false;
+                    }
+                };
+                (
+                    AppMessageBody::AvatarUpdate {
+                        avatar_blob_id: Some(upload.attachment_id),
+                        decryption_key: key.to_vec(),
+                        mime,
+                    },
+                    Some(upload.attachment_id),
+                )
+            }
+            // No stored avatar — explicit removal notice.
+            None => (
+                AppMessageBody::AvatarUpdate {
+                    avatar_blob_id: None,
+                    decryption_key: Vec::new(),
+                    mime: String::new(),
+                },
+                None,
+            ),
+        };
+
+        let client_message_id = Uuid::now_v7();
+        let envelope = ApplicationEnvelope {
+            client_message_id,
+            kind: AppMessageKind::AvatarUpdate,
+            body,
+            reply_to_message_id: None,
+            thread_root_id: None,
+            created_at: js_sys::Date::now() as i64 / 1000,
+            sender_display_name_override: current_username(),
+        };
+        let envelope_ct = match self.encrypt_envelope(group_id, &envelope).await {
+            Some(ct) => ct,
+            None => match rmp_serde::to_vec_named(&envelope) {
+                Ok(plain) => plain,
+                Err(e) => {
+                    tracing::warn!("avatar envelope serialize failed: {e}");
+                    return false;
+                }
+            },
+        };
+        let req = PostMessageRequest {
+            expected_epoch: 0,
+            mls_ciphertext: envelope_ct,
+            parent_message_id: None,
+            reply_to_message_id: None,
+            thread_root_id: None,
+            client_message_id,
+        };
+        let resp = match api.post_message(group_id, &req).await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!(%group_id, error = %e, "avatar broadcast failed");
+                return false;
+            }
+        };
+        if let Some(attachment_id) = upload_id {
+            let finalize_req = messenger_proto::attachments::FinalizeAttachmentRequest {
+                message_id: resp.message_id,
+            };
+            if let Err(e) = api.finalize_attachment(attachment_id, &finalize_req).await {
+                tracing::warn!(error = %e, "avatar finalize failed");
+            }
+        }
+        true
+    }
+
+    /// Broadcast the own avatar to every chat in the list (used after a
+    /// change in settings).
+    pub async fn broadcast_avatar_all(&self) {
+        let groups: Vec<Uuid> = CHATS_STATE
+            .with(|c| c.borrow().clone())
+            .map(|cs| cs.chats.get_untracked().iter().map(|ch| ch.group_id).collect())
+            .unwrap_or_default();
+        for group_id in groups {
+            let _ = self.broadcast_avatar(group_id).await;
+        }
+    }
+
     /// Edit a message — send a replacement and mark the original as edited.
     pub async fn edit_message(
         &self,
@@ -918,17 +1039,22 @@ impl MessageService {
             if msg.wire_format != "application" {
                 continue;
             }
-            result.push(self.convert_one(msg, group_id).await);
+            if let Some(dm) = self.convert_one(msg, group_id).await {
+                result.push(dm);
+            }
         }
         result
     }
 
     /// Convert a single stored message, attempting MLS decryption.
+    ///
+    /// Returns `None` for profile side-channel messages (`AvatarUpdate`) —
+    /// they are consumed here and never appear in the timeline.
     async fn convert_one(
         &self,
         msg: &messenger_proto::mls::StoredMessage,
         group_id: Uuid,
-    ) -> DisplayMessage {
+    ) -> Option<DisplayMessage> {
         // Try MLS decryption first. If that fails (MLS state missing, etc.)
         // fall back to treating `mls_ciphertext` as a plaintext envelope —
         // the send path uses the same fallback when MLS isn't ready.
@@ -944,7 +1070,6 @@ impl MessageService {
         let (kind, body, reply_to, thread_root, created, sender_display_name) =
             match rmp_serde::from_slice::<ApplicationEnvelope>(payload) {
                 Ok(envelope) => {
-                    let (k, b) = Self::envelope_to_display(&envelope);
                     // Remember the sender's username so reply previews, group
                     // headers and future messages can show a real label.
                     if let (Some(users), Some(name)) = (
@@ -953,6 +1078,25 @@ impl MessageService {
                     ) {
                         users.remember(msg.sender_user_id, name);
                     }
+                    // Track the direct-chat peer so the chat list can resolve
+                    // the other side's avatar without server lookups.
+                    Self::remember_direct_peer(group_id, msg.sender_user_id);
+                    // Profile side-channel: consume and drop from the timeline.
+                    if let AppMessageBody::AvatarUpdate {
+                        avatar_blob_id,
+                        ref decryption_key,
+                        ref mime,
+                    } = envelope.body
+                    {
+                        Self::apply_avatar_update(
+                            msg.sender_user_id,
+                            avatar_blob_id,
+                            decryption_key.clone(),
+                            mime.clone(),
+                        );
+                        return None;
+                    }
+                    let (k, b) = Self::envelope_to_display(&envelope);
                     (
                         k,
                         b,
@@ -986,7 +1130,7 @@ impl MessageService {
             None => (None, None),
         };
 
-        DisplayMessage {
+        Some(DisplayMessage {
             id: msg.id,
             client_message_id: msg.client_message_id,
             group_id,
@@ -1002,6 +1146,68 @@ impl MessageService {
             deleted_at,
             delivery_status: DeliveryStatus::SentToServer,
             reactions: Vec::new(),
+        })
+    }
+
+    /// Record the sender as the direct-chat peer of `group_id` (no-op for
+    /// own messages and non-direct groups).
+    fn remember_direct_peer(group_id: Uuid, sender: Uuid) {
+        if sender.is_nil() || Some(sender) == current_user_id() {
+            return;
+        }
+        let Some(users) = USERS_STATE.with(|c| c.borrow().clone()) else {
+            return;
+        };
+        let is_direct = CHATS_STATE.with(|c| c.borrow().clone()).is_some_and(|cs| {
+            cs.chats
+                .get_untracked()
+                .iter()
+                .any(|ch| {
+                    ch.group_id == group_id
+                        && ch.chat_type == crate::state::chats::ChatType::Direct
+                })
+        });
+        if is_direct {
+            users.remember_peer(group_id, sender);
+        }
+    }
+
+    /// Fetch + decrypt a peer's avatar blob and cache it as a data URL.
+    /// Own updates are ignored — the local store is the source of truth.
+    fn apply_avatar_update(sender: Uuid, blob_id: Option<Uuid>, key: Vec<u8>, mime: String) {
+        if sender.is_nil() || Some(sender) == current_user_id() {
+            return;
+        }
+        let Some(users) = USERS_STATE.with(|c| c.borrow().clone()) else {
+            return;
+        };
+        match blob_id {
+            None => users.forget_avatar(sender),
+            Some(id) => {
+                spawn_local(async move {
+                    let Some(api) = build_api_client() else { return };
+                    let ciphertext = match api.download_attachment(id, None).await {
+                        Ok(c) => c,
+                        Err(e) => {
+                            tracing::warn!(%id, error = %e, "avatar blob download failed");
+                            return;
+                        }
+                    };
+                    let Ok(key_arr) = <[u8; 32]>::try_from(key.as_slice()) else {
+                        tracing::warn!("avatar update with malformed key");
+                        return;
+                    };
+                    let Ok(plain) =
+                        messenger_core::attachment_crypto::decrypt_attachment(&key_arr, &ciphertext)
+                    else {
+                        tracing::warn!(%id, "avatar blob decrypt failed");
+                        return;
+                    };
+                    let mime = if mime.is_empty() { "image/jpeg".to_string() } else { mime };
+                    let data_url = crate::state::avatar_store::bytes_to_data_url(&mime, &plain);
+                    users.remember_avatar(sender, &data_url);
+                });
+            }
         }
     }
 
