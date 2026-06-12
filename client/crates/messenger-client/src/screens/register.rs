@@ -62,6 +62,7 @@ pub fn RegisterScreen() -> impl IntoView {
 
     let username = RwSignal::new(String::new());
     let display_name = RwSignal::new(String::new());
+    let avatar = RwSignal::new(Option::<String>::None);
     let username_status = RwSignal::new("idle".to_string());
     let is_submitting = RwSignal::new(false);
     let error = RwSignal::new(Option::<String>::None);
@@ -301,13 +302,19 @@ pub fn RegisterScreen() -> impl IntoView {
                 js_log("[register] WASM: skipping keypackages publish (MLS too slow on WASM)");
             }
 
-            // Step 10: Update session state
+            // Step 10: Persist chosen avatar locally (broadcast happens when
+            // chats are created — a fresh account has no groups yet).
+            if let Some(data_url) = avatar.get_untracked() {
+                crate::state::avatar_store::save_own_avatar(resp.user_id, &data_url);
+            }
+
+            // Step 11: Update session state
             sess.state.set(SessionState::Authenticated {
                 identity: Arc::new(identity),
                 role,
             });
 
-            // Step 11: Start WebSocket connection for real-time notifications
+            // Step 12: Start WebSocket connection for real-time notifications
             if let Some(ws) = use_context::<WsManager>() {
                 let url = url.clone();
                 let auth = AuthCredentials {
@@ -347,9 +354,7 @@ pub fn RegisterScreen() -> impl IntoView {
 
                     <div class="space-y-6">
                         <div class="flex flex-col items-center space-y-3">
-                            <div class="flex h-24 w-24 cursor-pointer items-center justify-center rounded-full bg-muted">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="17"/></svg>
-                            </div>
+                            <crate::components::avatar_picker::AvatarPicker value=avatar size_class="h-24 w-24"/>
                             <p class="text-sm text-muted-foreground">{t!("register.avatar.hint")}</p>
                         </div>
 

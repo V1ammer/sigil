@@ -16,6 +16,7 @@ pub mod ws_manager;
 pub mod message_service;
 pub mod sync_service;
 pub mod back_stack;
+pub mod avatar_store;
 
 pub use session::*;
 pub use chats::*;

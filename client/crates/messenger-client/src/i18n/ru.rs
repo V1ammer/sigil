@@ -174,6 +174,10 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     // Account settings
     m.insert("settings.account.displayName", "Отображаемое имя");
     m.insert("settings.account.username", "Имя пользователя");
+    m.insert("settings.account.changeAvatar", "Изменить аватар");
+    m.insert("settings.account.removeAvatar", "Удалить аватар");
+    m.insert("settings.account.avatarSaved", "Аватар обновлён");
+    m.insert("settings.account.avatarRemoved", "Аватар удалён");
     m.insert("settings.account.bio", "О себе");
     m.insert("settings.account.cancel", "Отмена");
     m.insert("settings.account.confirm", "Подтвердить");

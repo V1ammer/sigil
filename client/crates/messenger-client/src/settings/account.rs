@@ -5,7 +5,7 @@ use leptos_router::hooks::use_navigate;
 use messenger_core::blind_index::username_blind_index;
 use messenger_core::api::ApiError;
 use messenger_proto::users::ChangeUsernameRequest;
-use crate::components::avatar::Avatar;
+use crate::components::avatar_picker::AvatarPicker;
 use crate::components::button::{Button, ButtonVariant};
 use crate::components::input::Input;
 use crate::components::separator::Separator;
@@ -75,11 +75,35 @@ pub fn AccountSettings() -> impl IntoView {
     // Username (read-only from session)
     let username = RwSignal::new(identity.as_ref().map_or_else(String::new, |id| id.username.clone()));
 
-    // Avatar initials
-    let initials = RwSignal::new(identity.as_ref().map_or_else(
-        String::new,
-        |id| crate::components::avatar::get_initials(&id.username),
-    ));
+    // Avatar — initialized from the local store; saving/broadcasting happens
+    // in the change effect below (the initial value must not re-trigger it).
+    let my_user_id = identity.as_ref().map(|id| id.user_id);
+    let avatar_sig = RwSignal::new(my_user_id.and_then(crate::state::avatar_store::load_own_avatar));
+    {
+        let notifications = notifications.clone();
+        let last_seen = StoredValue::new(avatar_sig.get_untracked());
+        Effect::new(move |_| {
+            let current = avatar_sig.get();
+            if last_seen.get_value() == current {
+                return;
+            }
+            last_seen.set_value(current.clone());
+            let Some(uid) = my_user_id else { return };
+            let removed = current.is_none();
+            match current {
+                Some(ref data_url) => crate::state::avatar_store::save_own_avatar(uid, data_url),
+                None => crate::state::avatar_store::clear_own_avatar(uid),
+            }
+            notifications.push(
+                ToastKind::Success,
+                if removed {
+                    t!("settings.account.avatarRemoved")
+                } else {
+                    t!("settings.account.avatarSaved")
+                },
+            );
+        });
+    }
 
     // --- Handlers ---
 
@@ -210,27 +234,22 @@ pub fn AccountSettings() -> impl IntoView {
 
             <Separator />
 
-            // Avatar section
+            // Avatar section — picker saves locally and (when chats exist)
+            // broadcasts the new avatar to every group via MLS.
             <div class="flex items-center gap-4">
-                <Avatar
-                    src={None::<String>}
-                    alt=username.get()
-                    class="h-16 w-16"
-                >
-                    <span class="text-lg font-semibold text-foreground">
-                        {initials.get()}
-                    </span>
-                </Avatar>
+                <AvatarPicker value=avatar_sig size_class="h-16 w-16"/>
                 <div class="space-y-1">
                     <p class="text-sm font-medium text-foreground">{display_name.get()}</p>
                     <p class="text-xs text-muted-foreground">@{username.get()}</p>
-                    <Button
-                        variant=Signal::derive(move || ButtonVariant::Outline)
-                        size=Signal::derive(move || crate::components::button::ButtonSize::Sm)
-                        disabled=Signal::derive(move || true)
-                    >
-                        {t!("settings.account.changeAvatar")}
-                    </Button>
+                    {move || avatar_sig.get().map(|_| view! {
+                        <Button
+                            variant=Signal::derive(move || ButtonVariant::Outline)
+                            size=Signal::derive(move || crate::components::button::ButtonSize::Sm)
+                            on_click=Box::new(move |_| avatar_sig.set(None))
+                        >
+                            {t!("settings.account.removeAvatar")}
+                        </Button>
+                    })}
                 </div>
             </div>
 

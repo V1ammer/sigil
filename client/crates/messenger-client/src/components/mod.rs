@@ -1,6 +1,7 @@
 //! UI components — shadcn/ui-style basic building blocks.
 
 pub mod avatar;
+pub mod avatar_picker;
 pub mod button;
 pub mod input;
 pub mod textarea;
