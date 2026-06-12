@@ -173,6 +173,8 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
 
     // Account settings
     m.insert("settings.account.displayName", "Отображаемое имя");
+    m.insert("settings.account.displayNameHint", "Имя, которое видят собеседники");
+    m.insert("settings.account.userId", "ID пользователя");
     m.insert("settings.account.username", "Имя пользователя");
     m.insert("settings.account.changeAvatar", "Изменить аватар");
     m.insert("settings.account.removeAvatar", "Удалить аватар");

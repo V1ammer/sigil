@@ -173,6 +173,8 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
 
     // Account settings
     m.insert("settings.account.displayName", "Display name");
+    m.insert("settings.account.displayNameHint", "The name your contacts see");
+    m.insert("settings.account.userId", "User ID");
     m.insert("settings.account.username", "Username");
     m.insert("settings.account.changeAvatar", "Change avatar");
     m.insert("settings.account.removeAvatar", "Remove avatar");
