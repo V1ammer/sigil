@@ -144,7 +144,9 @@ pub fn SettingsScreen() -> impl IntoView {
                             view! {}.into_any()
                         }
                     }}
-                    {render_content()}
+                    // Передаём замыкание, а не результат вызова — иначе секция
+                    // рендерится один раз и не реагирует на смену :section.
+                    {render_content}
                 </div>
             </div>
         </div>
