@@ -386,7 +386,7 @@ pub fn ChatsScreen() -> impl IntoView {
                                     </div>
                                 }.into_any()
                             } else {
-                                let display_msgs = msgs();
+                                let display_msgs = msgs.get();
                                 if display_msgs.is_empty() {
                                     view! {
                                         <div class="flex-1 flex flex-col items-center justify-center p-8 text-center">

@@ -105,10 +105,15 @@ impl MessagesState {
         }
     }
 
-    /// Returns a derived signal that yields the messages for `group_id`.
-    pub fn for_group(&self, group_id: Uuid) -> impl Fn() -> Vec<DisplayMessage> + 'static {
+    /// Returns a memo that yields the messages for `group_id`.
+    ///
+    /// A `Memo` (not a plain closure) so it dedups by value: `by_group` is one
+    /// shared map signal, so without this every change to *any* chat's messages
+    /// would notify the open chat and rebuild its whole list. The memo only
+    /// fires when *this* group's slice actually changes (needs `PartialEq`).
+    pub fn for_group(&self, group_id: Uuid) -> Memo<Vec<DisplayMessage>> {
         let by = self.by_group;
-        move || by.get().get(&group_id).cloned().unwrap_or_default()
+        Memo::new(move |_| by.with(|m| m.get(&group_id).cloned().unwrap_or_default()))
     }
 }
 

@@ -116,14 +116,12 @@ impl WsManager {
                 tracing::debug!(%group_id, "ws new message");
                 // Thread-local handles: this runs in the WS event loop where
                 // the leptos owner (and use_context) is unavailable.
+                // NB: don't bump last_message_at here. It fired unconditionally
+                // on every frame (including avatar side-channel messages, which
+                // carry no timeline content) with a wall-clock time, churning
+                // the open chat panel. The real last-message time/preview is set
+                // from message content by load_messages / refresh_incoming below.
                 let chats = crate::state::message_service::chats_handle();
-                if let Some(ref chats) = chats {
-                    chats.chats.update(|list| {
-                        if let Some(chat) = list.iter_mut().find(|c| c.group_id == group_id) {
-                            chat.last_message_at = Some(js_sys::Date::now() as i64);
-                        }
-                    });
-                }
                 // If this chat is open and the message isn't ours (our own
                 // sends are already echoed locally with the server id), pull
                 // the new content right away — that is what makes incoming
