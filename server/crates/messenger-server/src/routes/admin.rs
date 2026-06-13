@@ -308,6 +308,8 @@ pub struct AdminUserInfo {
     pub role: String,
     pub status: String,
     pub created_at: i64,
+    /// Активные (неотозванные) устройства — клиентская схема требует это поле.
+    pub devices_count: i32,
 }
 
 /// Ответ на `GET /v1/admin/users`.
@@ -345,9 +347,26 @@ pub async fn list_users(
         .all(&state.db)
         .await?;
 
+    // Активные устройства всех пользователей страницы одним запросом.
+    use sea_orm::{ColumnTrait, QueryFilter};
+    let user_ids: Vec<Uuid> = users.iter().map(|u| u.id).collect();
+    let mut device_counts: std::collections::HashMap<Uuid, i32> =
+        std::collections::HashMap::new();
+    if !user_ids.is_empty() {
+        let devices = messenger_entity::devices::Entity::find()
+            .filter(messenger_entity::devices::Column::UserId.is_in(user_ids))
+            .filter(messenger_entity::devices::Column::RevokedAt.is_null())
+            .all(&state.db)
+            .await?;
+        for d in devices {
+            *device_counts.entry(d.user_id).or_default() += 1;
+        }
+    }
+
     let info: Vec<AdminUserInfo> = users
         .into_iter()
         .map(|u| AdminUserInfo {
+            devices_count: device_counts.get(&u.id).copied().unwrap_or(0),
             id: u.id,
             role: u.role,
             status: u.status,
