@@ -267,8 +267,12 @@ pub fn LoginQrScreen() -> impl IntoView {
                                             role: UserRole::User,
                                         });
 
-                                        // ── Store KeyPackageBundle in provider (native only—too slow on WASM) ──
-                                        #[cfg(feature = "native")]
+                                        // ── Store KeyPackageBundle in provider + join groups via
+                                        // pending welcomes. MLS runs under wasm-mls too (slower,
+                                        // but a one-time provisioning step), so this must run on
+                                        // mobile — otherwise the new device logs in but can't see
+                                        // any chats.
+                                        #[cfg(any(feature = "native", feature = "wasm-mls"))]
                                         if !payload.key_package_bundle.is_empty() {
                                             if let Ok(local) = messenger_storage::init_storage("default").await {
                                                 let local: Arc<dyn messenger_storage::traits::MessengerLocalStore> = local.into();
@@ -296,11 +300,10 @@ pub fn LoginQrScreen() -> impl IntoView {
                                             }
                                         }
 
-                                        #[cfg(not(feature = "native"))]
+                                        #[cfg(not(any(feature = "native", feature = "wasm-mls")))]
                                         if !payload.key_package_bundle.is_empty() {
-                                            // KeyPackage processing not available on WASM.
-                                            // The user can still log in and view messages;
-                                            // MLS group operations require a native build.
+                                            // No MLS backend at all (pure browser) — the device
+                                            // can log in but cannot join encrypted groups.
                                         }
 
                                         notif_clone.push(ToastKind::Success, t!("qr.success"));
