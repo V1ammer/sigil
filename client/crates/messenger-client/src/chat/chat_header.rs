@@ -19,7 +19,6 @@ pub fn ChatHeader(
     #[prop(optional)] on_pin_toggle: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     #[prop(optional)] on_mute_toggle: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     #[prop(optional)] on_mark_read: Option<Box<dyn Fn() + Send + Sync + 'static>>,
-    #[prop(optional)] on_archive: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     #[prop(optional)] on_leave_group: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     #[prop(optional)] on_delete_chat: Option<Box<dyn Fn() + Send + Sync + 'static>>,
 ) -> impl IntoView {
@@ -34,7 +33,6 @@ pub fn ChatHeader(
     let pin_cb = on_pin_toggle.unwrap_or_else(|| Box::new(|| {}));
     let mute_cb = on_mute_toggle.unwrap_or_else(|| Box::new(|| {}));
     let mark_read_cb = on_mark_read.unwrap_or_else(|| Box::new(|| {}));
-    let archive_cb = on_archive.unwrap_or_else(|| Box::new(|| {}));
     let leave_group_cb = on_leave_group.unwrap_or_else(|| Box::new(|| {}));
     let delete_chat_cb = on_delete_chat.unwrap_or_else(|| Box::new(|| {}));
 
@@ -50,11 +48,6 @@ pub fn ChatHeader(
 
     let on_mark_read_cb = {
         let cb = mark_read_cb;
-        Box::new(move || cb()) as Box<dyn Fn() + Send + Sync + 'static>
-    };
-
-    let on_archive_cb = {
-        let cb = archive_cb;
         Box::new(move || cb()) as Box<dyn Fn() + Send + Sync + 'static>
     };
 
@@ -157,11 +150,6 @@ pub fn ChatHeader(
                         </DropdownMenuItem>
 
                         <DropdownMenuSeparator/>
-
-                        <DropdownMenuItem on_click=on_archive_cb>
-                            <Icon name="archive" class_name="mr-2 h-4 w-4"/>
-                            {t(lang.get(), "chat.archiveChat")}
-                        </DropdownMenuItem>
 
                         {if is_group {
                             view! {

@@ -128,6 +128,7 @@ impl WsManager {
                 // messages (and read receipts turning our checkmarks blue)
                 // appear without reopening the chat.
                 let is_open = chats
+                    .as_ref()
                     .map(|c| c.selected.get_untracked() == Some(group_id))
                     .unwrap_or(false);
                 if let Some(svc) = crate::state::message_service::service_handle() {
@@ -140,6 +141,11 @@ impl WsManager {
                     // refreshes inline; a background chat updates its sidebar
                     // preview + unread badge.
                     if !already_known {
+                        // A new message resurrects a "deleted" (hidden) chat so
+                        // the user doesn't silently miss it.
+                        if let Some(ref cs) = chats {
+                            cs.unhide(group_id);
+                        }
                         spawn_local(async move {
                             if is_open {
                                 svc.load_messages(group_id).await;

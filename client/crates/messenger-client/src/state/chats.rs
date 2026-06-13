@@ -130,6 +130,28 @@ impl ChatsState {
         self.update_prefs(group_id, |p| p.archived = !p.archived);
     }
 
+    /// Remove a chat from the list. The server keeps the (deduped) group, so
+    /// `create_direct_chat` with the same peer un-hides and reopens it; this is
+    /// the "deleted" flag the chat list filters out.
+    pub fn delete_chat(&self, group_id: Uuid) {
+        self.update_prefs(group_id, |p| p.archived = true);
+        // Drop the row from the in-memory list immediately so it disappears
+        // without waiting for the next server refresh.
+        self.chats.update(|list| list.retain(|c| c.group_id != group_id));
+    }
+
+    /// Un-hide a previously deleted chat (no-op if it wasn't hidden). Called
+    /// when a new message arrives so a "deleted" chat resurfaces instead of
+    /// silently swallowing messages.
+    pub fn unhide(&self, group_id: Uuid) {
+        let hidden = self
+            .prefs
+            .with_untracked(|m| m.get(&group_id).is_some_and(|p| p.archived));
+        if hidden {
+            self.update_prefs(group_id, |p| p.archived = false);
+        }
+    }
+
     fn persist_prefs(&self) {
         if let Some(storage) = web_sys::window()
             .and_then(|w| w.local_storage().ok())
@@ -262,6 +284,10 @@ impl ChatsState {
                 cache.insert(resp.group_id, username.to_string());
             });
         self.persist_cache();
+        // The server dedups direct chats: if one already exists (even one the
+        // user "deleted"), it returns that group. Clear the deleted/hidden flag
+        // so it reappears instead of silently staying hidden.
+        self.update_prefs(resp.group_id, |p| p.archived = false);
         // Reload chats from server to include the new group
         self.load_from_server(api).await?;
         Ok(resp.group_id)

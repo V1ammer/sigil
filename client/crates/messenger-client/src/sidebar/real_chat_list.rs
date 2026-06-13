@@ -79,6 +79,8 @@ pub fn RealChatList(
                         Ok(group_id) => {
                             show_dialog.set(false);
                             username_input.set(String::new());
+                            // Open the (new or reopened) chat right away.
+                            cs.selected.set(Some(group_id));
                             // Introduce ourselves: deliver our avatar to the
                             // new chat so the peer sees it right away.
                             if let Some(svc) = svc {

@@ -339,16 +339,29 @@ pub fn ChatsScreen() -> impl IntoView {
                 let on_pin_toggle = Box::new(move || cs.toggle_pin(group_id)) as Box<dyn Fn() + Send + Sync + 'static>;
                 let cs2 = chats_state.clone();
                 let on_mute_toggle = Box::new(move || cs2.toggle_mute(group_id)) as Box<dyn Fn() + Send + Sync + 'static>;
-                let cs3 = chats_state.clone();
-                let on_archive = Box::new(move || {
-                    cs3.toggle_archive(group_id);
-                    // Pop the back stack so the history entry pushed when this
-                    // chat opened gets cleared along with the UI.
-                    crate::state::back_stack::pop();
-                }) as Box<dyn Fn() + Send + Sync + 'static>;
                 let on_mark_read_cb = Box::new(|| {}) as Box<dyn Fn() + Send + Sync + 'static>;
-                let on_leave_cb = Box::new(|| {}) as Box<dyn Fn() + Send + Sync + 'static>;
-                let on_delete_cb = Box::new(|| {}) as Box<dyn Fn() + Send + Sync + 'static>;
+                // Delete a chat: drop it from the local list and clear its
+                // messages, then leave the chat view. The server keeps the
+                // (deduped) group, so starting a chat with the same person
+                // again reopens it — create_direct_chat un-hides it.
+                let make_delete = {
+                    let cs = chats_state.clone();
+                    let ms = messages_state_for_inner.clone();
+                    move || {
+                        let cs = cs.clone();
+                        let ms = ms.clone();
+                        Box::new(move || {
+                            cs.delete_chat(group_id);
+                            ms.by_group.update(|m| {
+                                m.remove(&group_id);
+                            });
+                            selected.set(None);
+                            crate::state::back_stack::pop();
+                        }) as Box<dyn Fn() + Send + Sync + 'static>
+                    }
+                };
+                let on_leave_cb = make_delete();
+                let on_delete_cb = make_delete();
                 let on_back_cb = Box::new(|| crate::state::back_stack::pop())
                     as Box<dyn Fn() + Send + Sync + 'static>;
                 let chat_for_header = state_chat
@@ -375,7 +388,6 @@ pub fn ChatsScreen() -> impl IntoView {
                             on_pin_toggle=on_pin_toggle
                             on_mute_toggle=on_mute_toggle
                             on_mark_read=on_mark_read_cb
-                            on_archive=on_archive
                             on_leave_group=on_leave_cb
                             on_delete_chat=on_delete_cb
                         />
