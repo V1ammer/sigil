@@ -86,6 +86,10 @@ pub fn DevicesSettings() -> impl IntoView {
     // Add-device dialog state
     let show_add_dialog = RwSignal::new(false);
     let step = RwSignal::new(ProvisioningStep::Scan);
+    // The scanned QR, kept out of the step enum: the Confirm→Approving
+    // transition replaces the step (dropping the qr it carried), so the
+    // approve task reads it from here instead.
+    let pending_qr: RwSignal<Option<QrPayload>> = RwSignal::new(None);
 
     // QR decode intermediate: when non-empty, triggers processing
     let qr_decode_trigger = RwSignal::new(Option::<String>::None);
@@ -220,11 +224,13 @@ pub fn DevicesSettings() -> impl IntoView {
                         st.set(ProvisioningStep::Error(msg));
                         return;
                     }
-                    // Get the stored QR payload from the previous step
-                    let my_step = st.get_untracked();
-                    let qr = match my_step {
-                        ProvisioningStep::Confirm { qr, .. } => qr,
-                        _ => return,
+                    // The QR captured at confirm time (the step is now Approving).
+                    let qr = match pending_qr.get_untracked() {
+                        Some(q) => q,
+                        None => {
+                            st.set(ProvisioningStep::Error("missing QR payload".into()));
+                            return;
+                        }
                     };
 
                     // Build API client
@@ -673,7 +679,14 @@ pub fn DevicesSettings() -> impl IntoView {
                                         variant=Signal::derive(move || ButtonVariant::Default)
                                         on_click=Box::new({
                                             let st = step;
-                                            move |_| st.set(ProvisioningStep::Approving)
+                                            let qr = qr_clone.clone();
+                                            move |_| {
+                                                // Stash the QR before the step
+                                                // change discards the Confirm
+                                                // variant that held it.
+                                                pending_qr.set(Some(qr.clone()));
+                                                st.set(ProvisioningStep::Approving);
+                                            }
                                         })
                                     >
                                         {t!("scan.confirm")}
