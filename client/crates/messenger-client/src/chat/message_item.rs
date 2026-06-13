@@ -242,7 +242,11 @@ pub fn MessageItem(
                                 view! {}.into_any()
                             }}
 
-                            <div class=format!("px-3 py-2 text-sm shadow-sm break-words {bubble_class}")>
+                            // max-w-full: with items-end/start the column sizes
+                            // children to content, so an unbroken word would
+                            // otherwise stretch the bubble past the screen and
+                            // defeat break-words.
+                            <div class=format!("max-w-full px-3 py-2 text-sm shadow-sm break-words {bubble_class}")>
                                 // Message content based on type
                                 {render_content(msg.clone(), on_media_click_arc.clone(), lang.get())}
 
@@ -438,7 +442,16 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                     key.copy_from_slice(&key_bytes);
                     let plain = match messenger_core::attachment_crypto::decrypt_attachment(&key, &ct) {
                         Ok(p) => p,
-                        Err(e) => { err.set(Some(format!("decrypt: {e:?}"))); return; }
+                        Err(e) => {
+                            // Включаем контекст: по id и длине шифртекста можно
+                            // сопоставить с серверной стороной при разборе.
+                            err.set(Some(format!(
+                                "decrypt: {e:?} (att {}, ct {} B)",
+                                &attachment_id.to_string()[..8],
+                                ct.len()
+                            )));
+                            return;
+                        }
                     };
                     let u8a = js_sys::Uint8Array::from(plain.as_slice());
                     let arr = js_sys::Array::new();

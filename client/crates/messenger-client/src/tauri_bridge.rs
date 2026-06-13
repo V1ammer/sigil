@@ -189,7 +189,9 @@ pub async fn file_save(
     mime: &str,
 ) -> Result<String, String> {
     if !is_tauri_context() {
-        return Err("not in Tauri context".into());
+        // Browser fallback: the web client has no native file-saver plugin,
+        // so trigger an ordinary download via a temporary object URL.
+        return browser_download(bytes, file_name, mime);
     }
     let args = js_sys::Object::new();
     js_sys::Reflect::set(
@@ -214,6 +216,32 @@ pub async fn file_save(
         .as_string()
         .ok_or("path not a string")?;
     Ok(path)
+}
+
+/// Save bytes in a plain browser: Blob → object URL → click on a hidden
+/// `<a download>` — lands in the user's Downloads folder.
+fn browser_download(bytes: &[u8], file_name: &str, mime: &str) -> Result<String, String> {
+    use wasm_bindgen::JsCast;
+    let u8a = js_sys::Uint8Array::from(bytes);
+    let parts = js_sys::Array::new();
+    parts.push(&u8a.into());
+    let bag = web_sys::BlobPropertyBag::new();
+    bag.set_type(mime);
+    let blob = web_sys::Blob::new_with_u8_array_sequence_and_options(&parts, &bag)
+        .map_err(|_| "blob".to_string())?;
+    let url = web_sys::Url::create_object_url_with_blob(&blob).map_err(|_| "url".to_string())?;
+    let doc = web_sys::window()
+        .and_then(|w| w.document())
+        .ok_or("no document")?;
+    let a: web_sys::HtmlAnchorElement = doc
+        .create_element("a")
+        .map_err(|_| "anchor".to_string())?
+        .unchecked_into();
+    a.set_href(&url);
+    a.set_download(file_name);
+    a.click();
+    let _ = web_sys::Url::revoke_object_url(&url);
+    Ok(file_name.to_string())
 }
 
 /// Check whether an attachment is already saved on disk.
