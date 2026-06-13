@@ -49,6 +49,23 @@ async fn finalize_attachment_retrying(
     }
 }
 
+/// Result of converting one stored message for display. Control messages are
+/// consumed (edits/deletes applied to their target, side-channels dropped).
+enum Converted {
+    /// A normal message to show in the timeline.
+    Show(DisplayMessage),
+    /// An edit of an earlier message: replace its text.
+    Edit {
+        original: Uuid,
+        new_text: String,
+        at: i64,
+    },
+    /// A delete of an earlier message: mark it deleted.
+    Delete { target: Uuid },
+    /// A consumed side-channel (avatar/read-receipt) — nothing to show.
+    Drop,
+}
+
 /// Current user's plaintext username, taken from the session state stored on
 /// `MessageService`. Used to fill `sender_display_name_override` on outgoing
 /// messages so peers can identify the sender without a server-side lookup.
@@ -1187,6 +1204,19 @@ impl MessageService {
             tracing::warn!(%original_id, error = %e, "failed to mark message as edited");
         }
 
+        // Optimistic: reflect the edit on the original bubble right away (the
+        // EditNotice is never inserted locally, so nothing appears as a new
+        // message). A later refresh reconciles via the server state.
+        let new_text = new_text.to_string();
+        self.messages.by_group.update(|map| {
+            if let Some(list) = map.get_mut(&group_id) {
+                if let Some(m) = list.iter_mut().find(|m| m.id == original_id) {
+                    m.body = MessageBody::Text(new_text);
+                    m.edited_at = Some(now);
+                }
+            }
+        });
+
         Some(replacement_id)
     }
 
@@ -1449,13 +1479,40 @@ impl MessageService {
         stored: &[messenger_proto::mls::StoredMessage],
         group_id: Uuid,
     ) -> Vec<DisplayMessage> {
+        use std::collections::{HashMap, HashSet};
         let mut result = Vec::with_capacity(stored.len());
+        // Control messages (edit/delete) are consumed, not shown. Messages
+        // arrive in chronological order, so the last edit for an id wins.
+        let mut edits: HashMap<Uuid, (String, i64)> = HashMap::new();
+        let mut deletes: HashSet<Uuid> = HashSet::new();
         for msg in stored {
             if msg.wire_format != "application" {
                 continue;
             }
-            if let Some(dm) = self.convert_one(msg, group_id).await {
-                result.push(dm);
+            match self.convert_one(msg, group_id).await {
+                Converted::Show(dm) => result.push(dm),
+                Converted::Edit { original, new_text, at } => {
+                    edits.insert(original, (new_text, at));
+                }
+                Converted::Delete { target } => {
+                    deletes.insert(target);
+                }
+                Converted::Drop => {}
+            }
+        }
+        // Apply edits/deletes in place so the edit shows on the original message
+        // instead of appearing as a separate new message.
+        if !edits.is_empty() || !deletes.is_empty() {
+            for m in &mut result {
+                if let Some((text, at)) = edits.get(&m.id) {
+                    m.body = MessageBody::Text(text.clone());
+                    if m.edited_at.is_none() {
+                        m.edited_at = Some(*at);
+                    }
+                }
+                if deletes.contains(&m.id) && m.deleted_at.is_none() {
+                    m.deleted_at = Some(m.created_at);
+                }
             }
         }
         result
@@ -1463,13 +1520,14 @@ impl MessageService {
 
     /// Convert a single stored message, attempting MLS decryption.
     ///
-    /// Returns `None` for profile side-channel messages (`AvatarUpdate`) —
-    /// they are consumed here and never appear in the timeline.
+    /// Side-channel/control messages (`AvatarUpdate`, `ReadReceipt`,
+    /// `EditNotice`, `DeleteNotice`) are consumed and never shown directly —
+    /// edits/deletes are applied to the target message by the caller.
     async fn convert_one(
         &self,
         msg: &messenger_proto::mls::StoredMessage,
         group_id: Uuid,
-    ) -> Option<DisplayMessage> {
+    ) -> Converted {
         // Try MLS decryption first. If that fails (MLS state missing, etc.)
         // fall back to treating `mls_ciphertext` as a plaintext envelope —
         // the send path uses the same fallback when MLS isn't ready.
@@ -1509,7 +1567,7 @@ impl MessageService {
                             decryption_key.clone(),
                             mime.clone(),
                         );
-                        return None;
+                        return Converted::Drop;
                     }
                     // Read-receipt side-channel: remember how far the peer
                     // has read so our own bubbles turn blue; never shown.
@@ -1517,7 +1575,27 @@ impl MessageService {
                         if Some(msg.sender_user_id) != current_user_id() {
                             marker_max(PEER_READ_PREFIX, group_id, up_to_message_id);
                         }
-                        return None;
+                        return Converted::Drop;
+                    }
+                    // Edit: carries the new text for an earlier message. Consumed
+                    // here and applied to the original by the caller, so it never
+                    // shows as a separate message.
+                    if let AppMessageBody::EditNotice {
+                        original_message_id,
+                        ref new_text,
+                    } = envelope.body
+                    {
+                        return Converted::Edit {
+                            original: original_message_id,
+                            new_text: new_text.clone(),
+                            at: envelope.created_at,
+                        };
+                    }
+                    // Delete: marks an earlier message deleted; also consumed.
+                    if let AppMessageBody::DeleteNotice { target_message_id } = envelope.body {
+                        return Converted::Delete {
+                            target: target_message_id,
+                        };
                     }
                     let (k, b) = Self::envelope_to_display(&envelope);
                     (
@@ -1553,7 +1631,7 @@ impl MessageService {
             None => (None, None),
         };
 
-        Some(DisplayMessage {
+        Converted::Show(DisplayMessage {
             id: msg.id,
             client_message_id: msg.client_message_id,
             group_id,
