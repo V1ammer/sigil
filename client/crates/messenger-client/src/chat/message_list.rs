@@ -44,6 +44,10 @@ pub fn MessageList(
 
     let container_ref: NodeRef<leptos::html::Div> = NodeRef::new();
     let initial_jump_done = StoredValue::new(false);
+    // Whether the user is parked at the bottom (so we keep them pinned as
+    // late-loading content — images — grows the list).
+    let stick_to_bottom = StoredValue::new(true);
+    let listeners_attached = StoredValue::new(false);
     let messages_len = messages.len();
 
     // Jump straight to the latest message when the list first appears with
@@ -53,6 +57,48 @@ pub fn MessageList(
     Effect::new(move |_| {
         let Some(el) = container_ref.get() else { return };
         let div: web_sys::HtmlElement = el.unchecked_into();
+
+        // Attach scroll/load listeners once per list instance.
+        if !listeners_attached.get_value() {
+            listeners_attached.set_value(true);
+
+            // Keep `stick_to_bottom` in sync with the user's scroll position.
+            {
+                let d = div.clone();
+                let on_scroll = Closure::<dyn FnMut()>::new(move || {
+                    let nb = f64::from(d.scroll_height())
+                        - f64::from(d.scroll_top())
+                        - f64::from(d.client_height())
+                        < AUTOSCROLL_THRESHOLD_PX;
+                    stick_to_bottom.set_value(nb);
+                });
+                let _ = div.add_event_listener_with_callback(
+                    "scroll",
+                    on_scroll.as_ref().unchecked_ref(),
+                );
+                on_scroll.forget();
+            }
+
+            // When an image finishes loading it grows the list, pushing the
+            // bottom further down. If the user is parked at the bottom, follow
+            // it so they stay pinned instead of being left above the newest
+            // message. `load` doesn't bubble, so listen in the capture phase.
+            {
+                let d = div.clone();
+                let on_load = Closure::<dyn FnMut()>::new(move || {
+                    if stick_to_bottom.get_value() {
+                        d.set_scroll_top(d.scroll_height());
+                    }
+                });
+                let _ = div.add_event_listener_with_callback_and_bool(
+                    "load",
+                    on_load.as_ref().unchecked_ref(),
+                    true,
+                );
+                on_load.forget();
+            }
+        }
+
         let scroll_height = f64::from(div.scroll_height());
         let scroll_top = f64::from(div.scroll_top());
         let client_height = f64::from(div.client_height());
@@ -63,6 +109,7 @@ pub fn MessageList(
             initial_jump_done.set_value(true);
         }
         if first_time || near_bottom {
+            stick_to_bottom.set_value(true);
             div.set_scroll_top(div.scroll_height());
             // Defer one more jump to after layout settles. On first open the
             // effect can fire before children have their final height, which
