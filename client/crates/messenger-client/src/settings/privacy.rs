@@ -123,6 +123,7 @@ pub fn PrivacySettings() -> impl IntoView {
                 <div class="space-y-2">
                     <Label class="text-foreground">{t!("settings.privacy.historyRetention")}</Label>
                     <Select
+                        value=Signal::derive(move || settings_signal.get().history_retention.get())
                         on_change=Box::new({
                             let s = settings_signal.get().history_retention;
                             move |v: String| s.set(v)
@@ -141,6 +142,7 @@ pub fn PrivacySettings() -> impl IntoView {
                 <div class="space-y-2">
                     <Label class="text-foreground">{t!("settings.privacy.autoDelete")}</Label>
                     <Select
+                        value=Signal::derive(move || settings_signal.get().auto_delete.get())
                         on_change=Box::new({
                             let s = settings_signal.get().auto_delete;
                             move |v: String| s.set(v)
@@ -175,6 +177,7 @@ pub fn PrivacySettings() -> impl IntoView {
                         <div class="space-y-2">
                             <Label class="text-foreground">{t!("settings.privacy.autoDownloadMaxSize")}</Label>
                             <Select
+                                value=Signal::derive(move || settings_signal.get().auto_download_max_mb.get())
                                 on_change=Box::new({
                                     let s = settings_signal.get().auto_download_max_mb;
                                     move |v: String| s.set(v)

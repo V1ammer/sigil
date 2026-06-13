@@ -83,6 +83,7 @@ pub fn NotificationsSettings() -> impl IntoView {
             <div class="space-y-2">
                 <Label class="text-foreground">{t!("settings.notifications.filter")}</Label>
                 <Select
+                    value=Signal::derive(move || notification_filter.get())
                     on_change=Box::new(move |v| notification_filter.set(v))
                     class="w-full max-w-xs"
                 >
