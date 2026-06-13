@@ -21,6 +21,34 @@ use super::messages::{
 use super::session::{build_api_client, Session, SessionState};
 use super::users::UsersState;
 
+/// Bind an attachment to its message with bounded retries.
+///
+/// Finalize must succeed: until it lands, `attachment.message_id` is NULL and
+/// the server denies download to everyone but the uploader (recipients see a
+/// 403). A single dropped finalize would make the image permanently broken for
+/// peers, so we retry a few times with backoff before giving up.
+async fn finalize_attachment_retrying(
+    api: &ApiClient,
+    attachment_id: Uuid,
+    message_id: Uuid,
+) {
+    let req = messenger_proto::attachments::FinalizeAttachmentRequest { message_id };
+    for (attempt, delay) in [0u32, 300, 800, 2000].into_iter().enumerate() {
+        if delay > 0 {
+            gloo_timers::future::TimeoutFuture::new(delay).await;
+        }
+        match api.finalize_attachment(attachment_id, &req).await {
+            Ok(()) => return,
+            Err(e) => tracing::warn!(
+                error = %e,
+                attempt = attempt + 1,
+                %attachment_id,
+                "finalize_attachment failed"
+            ),
+        }
+    }
+}
+
 /// Current user's plaintext username, taken from the session state stored on
 /// `MessageService`. Used to fill `sender_display_name_override` on outgoing
 /// messages so peers can identify the sender without a server-side lookup.
@@ -588,16 +616,9 @@ impl MessageService {
             }
         };
 
-        // 4. Finalize binds attachment to the message — otherwise GC will reap it.
-        let finalize_req = messenger_proto::attachments::FinalizeAttachmentRequest {
-            message_id: resp.message_id,
-        };
-        if let Err(e) = api
-            .finalize_attachment(upload.attachment_id, &finalize_req)
-            .await
-        {
-            tracing::warn!(error = %e, "finalize_attachment failed");
-        }
+        // 4. Finalize binds attachment to the message — otherwise GC will reap it
+        //    and recipients get 403 on download until it lands.
+        finalize_attachment_retrying(&api, upload.attachment_id, resp.message_id).await;
 
         // 5. Optimistic local insert.
         self.messages.by_group.update(|map| {
@@ -749,15 +770,7 @@ impl MessageService {
                 return None;
             }
         };
-        let finalize_req = messenger_proto::attachments::FinalizeAttachmentRequest {
-            message_id: resp.message_id,
-        };
-        if let Err(e) = api
-            .finalize_attachment(upload.attachment_id, &finalize_req)
-            .await
-        {
-            tracing::warn!(error = %e, "finalize_attachment failed");
-        }
+        finalize_attachment_retrying(&api, upload.attachment_id, resp.message_id).await;
 
         let kind_for_display = if payload.is_image { MessageKind::Image } else { MessageKind::File };
         let preview = Some(preview_from_body(&local_body));
@@ -874,12 +887,7 @@ impl MessageService {
             }
         };
         if let Some(attachment_id) = upload_id {
-            let finalize_req = messenger_proto::attachments::FinalizeAttachmentRequest {
-                message_id: resp.message_id,
-            };
-            if let Err(e) = api.finalize_attachment(attachment_id, &finalize_req).await {
-                tracing::warn!(error = %e, "avatar finalize failed");
-            }
+            finalize_attachment_retrying(&api, attachment_id, resp.message_id).await;
         }
         crate::state::avatar_store::mark_announced(
             group_id,

@@ -430,12 +430,37 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                         Ok(u) => u,
                         Err(_) => { err.set(Some("bad id".into())); return; }
                     };
-                    let ct = match api.download_attachment(attachment_id, None).await {
-                        Ok(b) => b,
-                        // Картинка удалена/недоступна (404/403) или сеть упала —
-                        // показываем понятную плашку, а не сырой текст ошибки.
-                        Err(e) => {
-                            tracing::warn!("image download failed (att {}): {e}", &attachment_id.to_string()[..8]);
+                    // Гонка отправителя: получатель видит сообщение сразу после
+                    // post_message, но attachment ещё не finalize'нут (message_id
+                    // = NULL) → сервер отдаёт 403, пока отправитель не довяжет.
+                    // Ретраим с возрастающей задержкой; finalize обычно успевает
+                    // за доли секунды. Если так и не стало доступно — плашка.
+                    let backoffs_ms = [250u32, 500, 1000, 2000, 3000];
+                    let mut ct: Option<Vec<u8>> = None;
+                    let mut last_err = String::new();
+                    for (attempt, delay) in std::iter::once(0u32).chain(backoffs_ms).enumerate() {
+                        if delay > 0 {
+                            gloo_timers::future::TimeoutFuture::new(delay).await;
+                        }
+                        match api.download_attachment(attachment_id, None).await {
+                            Ok(b) => { ct = Some(b); break; }
+                            Err(e) => {
+                                last_err = e.to_string();
+                                tracing::warn!(
+                                    "image download attempt {} failed (att {}): {e}",
+                                    attempt + 1,
+                                    &attachment_id.to_string()[..8]
+                                );
+                            }
+                        }
+                    }
+                    let ct = match ct {
+                        Some(b) => b,
+                        None => {
+                            tracing::warn!(
+                                "image download gave up (att {}): {last_err}",
+                                &attachment_id.to_string()[..8]
+                            );
                             err.set(Some(t(l, "message.imageUnavailable").to_string()));
                             return;
                         }
