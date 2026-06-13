@@ -110,6 +110,7 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("message.image", "Изображение");
     m.insert("message.imageUnavailable", "Изображение недоступно");
     m.insert("message.video", "Видео");
+    m.insert("message.playAudio", "Слушать");
     m.insert("message.download", "Скачать");
     m.insert("message.react", "Реакция");
     m.insert("message.edit", "Изменить");

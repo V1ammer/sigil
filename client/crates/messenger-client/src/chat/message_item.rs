@@ -666,6 +666,58 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                 </div>
             }.into_any()
         }
+        "audio" => {
+            // A sent audio file (music) — play it inline instead of forcing a
+            // download. Click-to-load (don't fetch every track on chat open),
+            // then an <audio controls> player.
+            let file_name = msg.file_name.as_deref().unwrap_or("Audio").to_string();
+            let attachment_id = msg.attachment_id.clone();
+            let decryption_key = msg.decryption_key.clone();
+            let mime = msg.mime_type.clone().unwrap_or_else(|| "audio/mpeg".into());
+            let blob_url: RwSignal<Option<String>> = RwSignal::new(None);
+            let err: RwSignal<Option<String>> = RwSignal::new(None);
+            let started: RwSignal<bool> = RwSignal::new(false);
+
+            view! {
+                <div class="flex min-w-[220px] max-w-xs flex-col gap-2 rounded-lg bg-muted/40 p-2">
+                    <div class="flex items-center gap-2">
+                        <Icon name="music" class_name="h-5 w-5 shrink-0 text-muted-foreground"/>
+                        <span class="truncate text-sm text-foreground">{file_name.clone()}</span>
+                    </div>
+                    {move || {
+                        if !started.get() {
+                            let aid = attachment_id.clone();
+                            let key = decryption_key.clone();
+                            let m = mime.clone();
+                            view! {
+                                <button
+                                    class="flex items-center gap-1.5 self-start rounded-md bg-primary/10 px-3 py-1 text-xs font-medium text-primary hover:bg-primary/20"
+                                    on:click=move |_| {
+                                        started.set(true);
+                                        load_media_blob(aid.clone(), key.clone(), m.clone(), blob_url, err, l);
+                                    }
+                                >
+                                    <Icon name="play" class_name="h-3.5 w-3.5"/>
+                                    {t(l, "message.playAudio")}
+                                </button>
+                            }.into_any()
+                        } else if let Some(url) = blob_url.get() {
+                            view! {
+                                <audio src=url controls=true autoplay=true class="h-9 w-full"/>
+                            }.into_any()
+                        } else if let Some(e) = err.get() {
+                            view! {
+                                <span class="text-[10px] text-destructive">{e}</span>
+                            }.into_any()
+                        } else {
+                            view! {
+                                <span class="inline-block h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent text-muted-foreground"/>
+                            }.into_any()
+                        }
+                    }}
+                </div>
+            }.into_any()
+        }
         "file" => {
             let file_name = msg.file_name.as_deref().unwrap_or("File").to_string();
             let attachment_id = msg.attachment_id.clone();

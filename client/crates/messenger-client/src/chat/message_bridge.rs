@@ -60,8 +60,14 @@ pub fn display_to_mock(msg: &DisplayMessage) -> mock::Message {
                 media_attachment_id = Some(attachment_id.to_string());
                 media_decryption_key = Some(b64.encode(decryption_key));
                 media_mime = Some(mime.clone());
-                // Video files get an inline player instead of a download row.
-                let kind = if mime.starts_with("video/") { "video" } else { "file" };
+                // Video/audio files get an inline player instead of a download row.
+                let kind = if mime.starts_with("video/") {
+                    "video"
+                } else if mime.starts_with("audio/") {
+                    "audio"
+                } else {
+                    "file"
+                };
                 (
                     kind.to_string(),
                     String::new(),
