@@ -260,6 +260,14 @@ pub fn LoginQrScreen() -> impl IntoView {
                                         let identity_blob = encode_identity_for_qr_blob(&identity);
                                         persist_session(&url, payload.user_id, resp.device_id, &identity_blob, UserRole::User);
 
+                                        // Persist the device signing secret — without it
+                                        // build_api_client has no auth and every API call
+                                        // from the new device fails silently (no chats).
+                                        persist_auth_credentials(
+                                            resp.device_id,
+                                            &identity.device_signing_key.secret_bytes(),
+                                        );
+
                                         // Update session
                                         let identity_arc = Arc::new(identity);
                                         sess_clone.state.set(SessionState::Authenticated {

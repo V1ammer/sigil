@@ -101,6 +101,36 @@ pub fn App() -> impl IntoView {
     let sync = SyncService::new();
     provide_context(sync.clone());
 
+    // 5c. Bring up MLS + sync + WS whenever the session becomes Authenticated,
+    // however that happens: session restore, fresh registration, OR QR device
+    // provisioning. Previously this only ran inside the restore path, so a
+    // provisioned/registered device had no live MLS runtime or sync loop until
+    // the app was restarted — it would log in but never receive group messages.
+    {
+        let session = use_context::<Session>().expect("Session must be provided");
+        let msg_svc = use_context::<MessageService>().expect("MessageService must be provided");
+        let sync = sync.clone();
+        let ws = ws.clone();
+        let started = StoredValue::new(false);
+        Effect::new(move |_| {
+            let device_id = match session.state.get() {
+                SessionState::Authenticated { ref identity, .. } => identity.device_id,
+                _ => return,
+            };
+            if started.get_value() {
+                return;
+            }
+            started.set_value(true);
+            start_ws_connection(&ws);
+            let msg_svc = msg_svc.clone();
+            let sync = sync.clone();
+            spawn_local(async move {
+                msg_svc.init_mls(device_id).await;
+                sync.start();
+            });
+        });
+    }
+
     // 6. Try session restore in background — full identity recovery.
     let session = use_context::<Session>().expect("Session must be provided");
     let msg_svc = use_context::<MessageService>().expect("MessageService must be provided");
@@ -124,16 +154,11 @@ pub fn App() -> impl IntoView {
                     role: restored.role,
                 });
 
-                web_sys::console::log_1(&"[App] Session restored, starting WS, MLS, and Sync".into());
-
-                // Start WebSocket connection after session restore.
-                start_ws_connection(&ws);
-
-                // Initialize MLS runtime for message encryption.
-                msg_svc.init_mls(device_id).await;
-
-                // Start background sync service.
-                sync.start();
+                web_sys::console::log_1(&"[App] Session restored".into());
+                // WS, MLS and sync are brought up by the Authenticated-session
+                // effect above (5c) — shared with the registration and QR
+                // provisioning paths.
+                let _ = device_id;
             } else {
                 web_sys::console::log_1(
                     &"[App] Identity blob malformed, setting ServerConfigured".into(),
