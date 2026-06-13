@@ -542,7 +542,7 @@ pub fn ChatsScreen() -> impl IntoView {
                         .unwrap_or_default()
                 });
 
-                let on_send_reply = Box::new(move |text: String| {
+                let on_send_reply_arc = Arc::new(move |text: String| {
                     let svc = msg_svc.clone();
                     let gid = sel.get_untracked();
                     let root = thread_root.get_untracked();
@@ -552,17 +552,33 @@ pub fn ChatsScreen() -> impl IntoView {
                                 .await;
                         });
                     }
-                }) as Box<dyn Fn(String) + Send + Sync + 'static>;
+                });
+                let on_close_arc = Arc::new(on_close_thread);
 
+                // Rebuild the panel whenever the thread root / replies change —
+                // passing `.get()` snapshots once froze it at "no parent".
                 view! {
-                    <ThreadPanel
-                        lang=locale_for_thread
-                        is_open=thread_is_open
-                        on_close=on_close_thread
-                        parent_message=parent_message.get()
-                        replies=replies.get()
-                        on_send_reply=on_send_reply
-                    />
+                    {move || {
+                        let on_close = {
+                            let a = on_close_arc.clone();
+                            Box::new(move || a()) as Box<dyn Fn() + Send + Sync + 'static>
+                        };
+                        let on_send = {
+                            let a = on_send_reply_arc.clone();
+                            Box::new(move |t: String| a(t))
+                                as Box<dyn Fn(String) + Send + Sync + 'static>
+                        };
+                        view! {
+                            <ThreadPanel
+                                lang=locale_for_thread
+                                is_open=thread_is_open
+                                on_close=on_close
+                                parent_message=parent_message.get()
+                                replies=replies.get()
+                                on_send_reply=on_send
+                            />
+                        }
+                    }}
                 }
             }
             </div>

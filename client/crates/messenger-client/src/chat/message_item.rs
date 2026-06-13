@@ -323,7 +323,7 @@ pub fn MessageItem(
                                         }
                                     >
                                         <Icon name="message-square" class_name="h-3 w-3"/>
-                                        <span>{count} {t(lang.get(), "message.replies")}</span>
+                                        <span>{format!("{count} {}", t(lang.get(), "message.replies"))}</span>
                                     </button>
                                 }.into_any()
                             } else {

@@ -142,13 +142,24 @@ fn quote_snippet(body: &MessageBody) -> String {
     }
 }
 
-/// Convert a slice of `DisplayMessage`s into `mock::Message`s.
+/// Convert a slice of `DisplayMessage`s into `mock::Message`s for the main
+/// timeline: thread replies are folded into a counter badge on their root
+/// (Slack model) instead of appearing inline as ordinary messages.
 pub fn display_vec_to_mock(msgs: &[DisplayMessage], own_user_id: &str) -> Vec<mock::Message> {
     use leptos::prelude::use_context;
     let users = use_context::<crate::state::users::UsersState>();
+    let mut thread_counts: std::collections::HashMap<uuid::Uuid, u32> =
+        std::collections::HashMap::new();
+    for m in msgs {
+        if let Some(root) = m.thread_root_id {
+            *thread_counts.entry(root).or_default() += 1;
+        }
+    }
     msgs.iter()
+        .filter(|m| m.thread_root_id.is_none())
         .map(|m| {
             let mut mock = display_to_mock(m);
+            mock.thread_count = thread_counts.get(&m.id).copied().filter(|&c| c > 0);
             // Resolve the reply quote from the same batch — the bridge used
             // to drop reply_to entirely, so replies looked like plain texts.
             if let Some(orig_id) = m.reply_to_message_id {
