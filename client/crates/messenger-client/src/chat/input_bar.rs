@@ -5,7 +5,9 @@ use leptos::ev::KeyboardEvent;
 use leptos::task::spawn_local;
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::sync::Arc;
+use uuid::Uuid;
 use wasm_bindgen::prelude::JsCast;
 use crate::i18n::{Language, t};
 use crate::icons::Icon;
@@ -86,8 +88,40 @@ pub fn InputBar(
     #[prop(optional)] on_send_voice: Option<Box<dyn Fn(VoicePayload) + Send + Sync + 'static>>,
     #[prop(optional)] on_send_attachment: Option<Box<dyn Fn(AttachmentPayload) + Send + Sync + 'static>>,
     #[prop(optional)] on_cancel_preview: Option<Box<dyn Fn() + Send + Sync + 'static>>,
+    /// Current chat — key for the per-chat draft.
+    #[prop(optional)] group_id: Option<Uuid>,
+    /// Persistent per-chat draft store, owned by the chat screen. Survives the
+    /// re-renders that rebuild this component (incoming messages bump the chat
+    /// list, which rebuilds the whole chat view including the InputBar).
+    #[prop(optional)] drafts: Option<RwSignal<HashMap<Uuid, String>>>,
 ) -> impl IntoView {
-    let text = RwSignal::new(String::new());
+    // Seed the text from the saved draft so a rebuild doesn't wipe it.
+    let initial_draft = match (drafts, group_id) {
+        (Some(d), Some(gid)) => d.with_untracked(|m| m.get(&gid).cloned()).unwrap_or_default(),
+        _ => String::new(),
+    };
+    let text = RwSignal::new(initial_draft.clone());
+
+    // Persist / clear the draft for this chat.
+    let save_draft = move |val: &str| {
+        if let (Some(d), Some(gid)) = (drafts, group_id) {
+            let v = val.to_string();
+            d.update(|m| {
+                if v.trim().is_empty() {
+                    m.remove(&gid);
+                } else {
+                    m.insert(gid, v);
+                }
+            });
+        }
+    };
+    let clear_draft = move || {
+        if let (Some(d), Some(gid)) = (drafts, group_id) {
+            d.update(|m| {
+                m.remove(&gid);
+            });
+        }
+    };
     let is_recording = RwSignal::new(false);
     let recording_duration = RwSignal::new(0u32);
     let recording_timer_id: RwSignal<Option<i32>> = RwSignal::new(None);
@@ -236,6 +270,7 @@ pub fn InputBar(
                 f(msg);
             }
             text.set(String::new());
+            clear_draft();
             // Clear textarea value via node_ref
             if let Some(el) = textarea_ref.get() {
                 let textarea: &web_sys::HtmlTextAreaElement = el.unchecked_ref();
@@ -256,11 +291,18 @@ pub fn InputBar(
                     f(msg);
                 }
                 text.set(String::new());
+                clear_draft();
+                if let Some(el) = textarea_ref.get() {
+                    let textarea: &web_sys::HtmlTextAreaElement = el.unchecked_ref();
+                    textarea.set_value("");
+                    let _ = textarea.set_attribute("style", "height: auto");
+                }
             }
         }
     };
 
     let handle_change = move |val: String| {
+        save_draft(&val);
         text.set(val);
         // Auto-resize
         if let Some(el) = textarea_ref.get() {
@@ -608,6 +650,7 @@ pub fn InputBar(
                         placeholder={t(locale.get(), "message.placeholder")}
                         class="min-h-[36px] max-h-[120px] resize-none py-1.5 text-sm"
                         rows=1u32
+                        value=initial_draft
                         on_change=on_change_cb
                         on_key_down=on_key_down_cb
                         on_paste=on_paste_cb

@@ -81,6 +81,10 @@ pub fn ChatsScreen() -> impl IntoView {
     let chats_state_clone = chats_state.clone();
     let chats_signal = chats_state.chats;
     let loading_messages = RwSignal::new(false);
+    // Per-chat composer drafts, created once so they outlive the re-renders
+    // that rebuild the chat view (incoming messages bump the chat list).
+    let drafts: RwSignal<std::collections::HashMap<Uuid, String>> =
+        RwSignal::new(std::collections::HashMap::new());
 
     // Load chats from server on mount, then hydrate each chat's last-message
     // preview by loading messages — `GroupSummary` from the server only carries
@@ -429,6 +433,8 @@ pub fn ChatsScreen() -> impl IntoView {
                         <div class="shrink-0">
                             <InputBar
                                 locale=locale
+                                group_id=group_id
+                                drafts=drafts
                                 preview=preview.get()
                                 on_send=Box::new({
                                     let os = on_send.clone();
