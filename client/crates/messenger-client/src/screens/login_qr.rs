@@ -439,6 +439,10 @@ pub fn LoginQrScreen() -> impl IntoView {
                                     <div class="flex h-64 w-64 items-center justify-center rounded-2xl border border-border bg-card">
                                         <div inner_html=svg.clone()/>
 
+                                        // Only the success overlay covers the QR —
+                                        // once confirmed there's nothing left to scan.
+                                        // While waiting we must keep the QR visible so
+                                        // the other device can actually scan it.
                                         {move || if is_success.get() {
                                             view! {
                                                 <div class="absolute inset-0 flex items-center justify-center rounded-2xl bg-background/90 backdrop-blur-sm">
@@ -448,19 +452,22 @@ pub fn LoginQrScreen() -> impl IntoView {
                                                     </div>
                                                 </div>
                                             }.into_any()
-                                        } else if is_waiting.get() {
-                                            view! {
-                                                <div class="absolute inset-0 flex items-center justify-center rounded-2xl bg-background/90 backdrop-blur-sm">
-                                                    <div class="flex flex-col items-center gap-2">
-                                                        <span class="h-8 w-8 block rounded-full border-2 border-primary border-t-transparent animate-spin"/>
-                                                        <span class="text-sm text-muted-foreground">{t!("qr.waiting")}</span>
-                                                    </div>
-                                                </div>
-                                            }.into_any()
                                         } else {
                                             view! {}.into_any()
                                         }}
                                     </div>
+
+                                    // Waiting indicator below the code, not over it.
+                                    {move || if is_waiting.get() && !is_success.get() {
+                                        view! {
+                                            <div class="mt-3 flex items-center justify-center gap-2">
+                                                <span class="h-4 w-4 block rounded-full border-2 border-primary border-t-transparent animate-spin"/>
+                                                <span class="text-sm text-muted-foreground">{t!("qr.waiting")}</span>
+                                            </div>
+                                        }.into_any()
+                                    } else {
+                                        view! {}.into_any()
+                                    }}
                                 </div>
 
                                 {move || if !is_success.get() {
