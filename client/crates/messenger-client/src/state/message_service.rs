@@ -1171,10 +1171,19 @@ impl MessageService {
             sender_display_name_override: current_display_name(),
         };
 
-        let ciphertext = self
-            .encrypt_envelope(group_id, &envelope)
-            .await
-            .unwrap_or_else(|| new_text.as_bytes().to_vec());
+        // On the MLS-not-ready fallback, send the SERIALIZED envelope (not the
+        // raw text) — otherwise the EditNotice structure is lost and the edit
+        // arrives as a plain new message instead of replacing the original.
+        let ciphertext = match self.encrypt_envelope(group_id, &envelope).await {
+            Some(ct) => ct,
+            None => match rmp_serde::to_vec_named(&envelope) {
+                Ok(plain) => plain,
+                Err(e) => {
+                    tracing::warn!(error = %e, "edit envelope serialize failed");
+                    return None;
+                }
+            },
+        };
 
         // 1. Post the replacement message
         let post_req = PostMessageRequest {
@@ -1243,10 +1252,18 @@ impl MessageService {
             sender_display_name_override: current_display_name(),
         };
 
-        let ciphertext = self
-            .encrypt_envelope(group_id, &envelope)
-            .await
-            .unwrap_or_default();
+        // Fallback (MLS not ready): send the serialized envelope so the
+        // DeleteNotice survives instead of becoming an empty/plain message.
+        let ciphertext = match self.encrypt_envelope(group_id, &envelope).await {
+            Some(ct) => ct,
+            None => match rmp_serde::to_vec_named(&envelope) {
+                Ok(plain) => plain,
+                Err(e) => {
+                    tracing::warn!(error = %e, "delete envelope serialize failed");
+                    return false;
+                }
+            },
+        };
 
         // 1. Post the delete notice as an MLS message
         let post_req = PostMessageRequest {
