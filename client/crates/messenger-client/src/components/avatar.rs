@@ -16,10 +16,21 @@ pub fn Avatar(
                 src=src.clone().unwrap_or_default()
                 alt=alt
                 on:error=|ev| {
-                    // Hide the image on error
+                    // Hide a broken image so the initials fallback shows.
                     if let Some(target) = ev.target() {
                         if let Some(el) = target.dyn_ref::<web_sys::HtmlElement>() {
                             let _ = el.style().set_property("display", "none");
+                        }
+                    }
+                }
+                on:load=|ev| {
+                    // Un-hide on a successful load. Without this, an earlier
+                    // error (a transient empty src, or a reused element that was
+                    // hidden once) would leave a perfectly valid avatar hidden
+                    // forever — which is exactly the chat-header case.
+                    if let Some(target) = ev.target() {
+                        if let Some(el) = target.dyn_ref::<web_sys::HtmlElement>() {
+                            let _ = el.style().set_property("display", "");
                         }
                     }
                 }
