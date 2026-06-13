@@ -91,7 +91,9 @@ pub fn display_to_mock(msg: &DisplayMessage) -> mock::Message {
         sender_avatar: None,
         msg_type,
         content,
-        timestamp: msg.created_at as f64,
+        // created_at is in seconds; the UI formatters (format_time/format_date,
+        // grouping windows) all expect milliseconds.
+        timestamp: msg.created_at as f64 * 1000.0,
         status: status.to_string(),
         is_own: true, // will be adjusted by the caller
         is_edited: msg.edited_at.is_some(),
