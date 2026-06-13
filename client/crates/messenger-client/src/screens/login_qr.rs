@@ -19,7 +19,7 @@ use crate::t;
 #[must_use]
 #[component]
 pub fn LoginQrScreen() -> impl IntoView {
-    let _i18n = use_context::<I18n>().expect("I18n must be provided");
+    let i18n = use_context::<I18n>().expect("I18n must be provided");
     let session = use_session();
     let navigate = use_navigate();
     let notifications = use_context::<NotificationsState>()
@@ -79,6 +79,9 @@ pub fn LoginQrScreen() -> impl IntoView {
         let err_msg = error_msg;
         let temp_sk = temp_signing_secret;
         let temp_pk = temp_signing_public;
+        // t!() panics inside the nested polling spawn_local (no leptos owner
+        // there) — carry an explicit handle into it.
+        let i18n_h = i18n.clone();
 
         spawn_local(async move {
             let api = match build_api_client() {
@@ -195,6 +198,7 @@ pub fn LoginQrScreen() -> impl IntoView {
             let waiting_clone = waiting;
             let success_clone = success;
             let err_msg_clone = err_msg;
+            let i18n = i18n_h;
 
             spawn_local(async move {
                 let max_polls = 150; // 150 * 2s = 5 minutes
@@ -214,20 +218,24 @@ pub fn LoginQrScreen() -> impl IntoView {
                             // Bootstrap blob received!
                             success_clone.set(true);
 
-                            // Decrypt AGE blob via Tauri bridge (Android/Desktop) or show error
-                            if tauri_bridge::is_tauri_context() {
-                                match tauri_bridge::age_decrypt(
-                                    &resp.encrypted_bootstrap_blob,
-                                    &temp_x25519_secret.to_bytes(),
-                                )
-                                .await
-                                {
-                                    Ok(payload) => {
+                            // Decrypt the bootstrap with the temp X25519 secret.
+                            // Pure-wasm sealed box → works in app AND browser.
+                            let decrypted = messenger_core::bootstrap_seal::open(
+                                &temp_x25519_secret.to_bytes(),
+                                &resp.encrypted_bootstrap_blob,
+                            )
+                            .ok()
+                            .and_then(|bytes| {
+                                rmp_serde::from_slice::<tauri_bridge::BootstrapPayload>(&bytes).ok()
+                            });
+                            {
+                                match decrypted {
+                                    Some(payload) => {
                                         // Create identity for new device using pre-generated seeds
                                         let identity = messenger_core::identity::ClientIdentity::generate_new_device_from_seeds(
                                             payload.user_id,
                                             payload.username.clone(),
-                                            resp.device_id,
+                                            resp.new_device_id,
                                             payload.identity_signing_seed,
                                             payload.device_signing_seed,
                                             payload.device_hpke_seed,
@@ -255,13 +263,13 @@ pub fn LoginQrScreen() -> impl IntoView {
                                         // Persist session
                                         // Encode full identity for blob storage
                                         let identity_blob = encode_identity_for_qr_blob(&identity);
-                                        persist_session(&url, payload.user_id, resp.device_id, &identity_blob, UserRole::User);
+                                        persist_session(&url, payload.user_id, resp.new_device_id, &identity_blob, UserRole::User);
 
                                         // Persist the device signing secret — without it
                                         // build_api_client has no auth and every API call
                                         // from the new device fails silently (no chats).
                                         persist_auth_credentials(
-                                            resp.device_id,
+                                            resp.new_device_id,
                                             &identity.device_signing_key.secret_bytes(),
                                         );
 
@@ -282,7 +290,7 @@ pub fn LoginQrScreen() -> impl IntoView {
                                             if let Ok(local) = messenger_storage::init_storage("default").await {
                                                 let local: Arc<dyn messenger_storage::traits::MessengerLocalStore> = local.into();
                                                 use messenger_core::mls::group::MlsRuntime;
-                                                let runtime = MlsRuntime::new(local.clone(), resp.device_id);
+                                                let runtime = MlsRuntime::new(local.clone(), resp.new_device_id);
                                                 if let Err(e) = runtime.store_keypackage_bundle(&payload.key_package_bundle).await {
                                                     notif_clone.push(ToastKind::Warning, format!("Failed to store keypackage: {e}"));
                                                 }
@@ -311,18 +319,15 @@ pub fn LoginQrScreen() -> impl IntoView {
                                             // can log in but cannot join encrypted groups.
                                         }
 
-                                        notif_clone.push(ToastKind::Success, t!("qr.success"));
+                                        notif_clone.push(ToastKind::Success, i18n.t("qr.success"));
                                         nav_clone("/chats", NavigateOptions { replace: true, ..Default::default() });
                                     }
-                                    Err(e) => {
-                                        err_msg_clone.set(Some(format!("{e}")));
-                                        notif_clone.push(ToastKind::Error, format!("{}: {e}", t!("error.network")));
+                                    None => {
+                                        let msg = i18n.t("scan.error.decryptFailed");
+                                        err_msg_clone.set(Some(msg.clone()));
+                                        notif_clone.push(ToastKind::Error, msg);
                                     }
                                 }
-                            } else {
-                                // In browser, AGE decryption is not available.
-                                err_msg_clone.set(Some(t!("error.network").to_string()));
-                                notif_clone.push(ToastKind::Error, t!("error.network"));
                             }
 
                             waiting_clone.set(false);
@@ -333,8 +338,8 @@ pub fn LoginQrScreen() -> impl IntoView {
                             if e.error_code() == Some("ERR_PROVISIONING_EXPIRED")
                                 || e.error_code() == Some("ERR_PROVISIONING_NOT_FOUND")
                             {
-                                err_msg_clone.set(Some(t!("token.error.expired").to_string()));
-                                notif_clone.push(ToastKind::Warning, t!("token.error.expired"));
+                                err_msg_clone.set(Some(i18n.t("token.error.expired")));
+                                notif_clone.push(ToastKind::Warning, i18n.t("token.error.expired"));
                                 waiting_clone.set(false);
                                 return;
                             }
@@ -346,8 +351,8 @@ pub fn LoginQrScreen() -> impl IntoView {
                 }
 
                 // Timed out
-                err_msg_clone.set(Some(t!("token.error.expired").to_string()));
-                notif_clone.push(ToastKind::Warning, t!("token.error.expired"));
+                err_msg_clone.set(Some(i18n.t("token.error.expired")));
+                notif_clone.push(ToastKind::Warning, i18n.t("token.error.expired"));
                 waiting_clone.set(false);
             });
         });

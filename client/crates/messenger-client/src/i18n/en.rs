@@ -456,6 +456,7 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("scan.error.wrongServer", "QR is from a different server");
     m.insert("scan.error.wrongUser", "QR is for another user");
     m.insert("scan.error.expired", "Provisioning request expired");
+    m.insert("scan.error.decryptFailed", "Could not decrypt sign-in data");
     m.insert("scan.error.browserOnly", "Adding a device is only available in the app, not the browser");
     m.insert("scan.progress.approve", "Approving...");
     m.insert("scan.progress.groups", "Adding to groups");

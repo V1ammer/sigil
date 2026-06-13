@@ -308,9 +308,9 @@ pub fn DevicesSettings() -> impl IntoView {
                     };
 
                     // ── Step B: Build and encrypt bootstrap payload ──
-                    // Encrypt via the native Tauri AGE backend (works on desktop
-                    // and Android) — the `age` crate doesn't build into the WASM
-                    // frontend, so we never call it from here directly.
+                    // Sealed with a pure-wasm box (x25519 + AES-GCM) so the new
+                    // device decrypts it whether it's the app or a browser — no
+                    // native AGE backend required on either side.
                     let bootstrap_payload = crate::tauri_bridge::BootstrapPayload {
                         user_id: identity.user_id,
                         username: identity.username.clone(),
@@ -322,12 +322,17 @@ pub fn DevicesSettings() -> impl IntoView {
 
                     // Encrypt under the new device's temp X25519 pub key (from QR).
                     let temp_x25519_bytes = qr.new_device_temp_x25519_pub;
-                    let blob = match crate::tauri_bridge::age_encrypt(
-                        &bootstrap_payload,
+                    let payload_bytes = match rmp_serde::to_vec_named(&bootstrap_payload) {
+                        Ok(b) => b,
+                        Err(e) => {
+                            st.set(ProvisioningStep::Error(format!("Encode failed: {e}")));
+                            return;
+                        }
+                    };
+                    let blob = match messenger_core::bootstrap_seal::seal(
                         &temp_x25519_bytes,
-                    )
-                    .await
-                    {
+                        &payload_bytes,
+                    ) {
                         Ok(b) => b,
                         Err(e) => {
                             st.set(ProvisioningStep::Error(format!("Encryption failed: {e}")));
@@ -369,7 +374,12 @@ pub fn DevicesSettings() -> impl IntoView {
                     // ── Step E: Publish KeyPackage and add to all groups ──
                     let kp_bytes = gen_kp.key_package_bytes.clone();
                     let pub_req = PublishKeyPackagesRequest {
-                        key_packages: vec![serde_bytes::ByteBuf::from(kp_bytes.clone())],
+                        key_packages: vec![messenger_proto::keypackages::KeyPackageUpload {
+                            key_package: kp_bytes.clone(),
+                            init_key_hash: gen_kp.init_key_hash.clone(),
+                            expires_at: gen_kp.expires_at,
+                            is_last_resort: gen_kp.is_last_resort,
+                        }],
                     };
                     if let Err(e) = api.publish_keypackages(&pub_req).await {
                         nf.push(ToastKind::Warning, format!("KeyPackage publish failed: {e}"));

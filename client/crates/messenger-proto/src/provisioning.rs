@@ -62,9 +62,10 @@ pub struct ApproveProvisioningResponse {
 }
 
 /// Response when fetching bootstrap blob (new device).
+/// Field name must match the server's `BootstrapResponse.new_device_id`.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GetBootstrapResponse {
-    pub device_id: Uuid,
+    pub new_device_id: Uuid,
     #[serde(with = "serde_bytes")]
     pub encrypted_bootstrap_blob: Vec<u8>,
 }

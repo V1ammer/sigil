@@ -456,6 +456,7 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("scan.error.wrongServer", "QR от другого сервера");
     m.insert("scan.error.wrongUser", "QR другого пользователя");
     m.insert("scan.error.expired", "Запрос на добавление просрочен");
+    m.insert("scan.error.decryptFailed", "Не удалось расшифровать данные входа");
     m.insert("scan.error.browserOnly", "Добавление устройства доступно только в приложении (не в браузере)");
     m.insert("scan.progress.approve", "Подтверждение...");
     m.insert("scan.progress.groups", "Добавление в группы");

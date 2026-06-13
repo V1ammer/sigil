@@ -279,14 +279,22 @@ pub fn RegisterScreen() -> impl IntoView {
                 let mls_provider = OpenMlsRustCrypto::default();
                 // Generate 5 initial key packages (1 last-resort + 4 regular).
                 let mut key_packages = Vec::new();
+                let to_upload = |kp: messenger_core::mls::keypackage::GeneratedKeyPackage| {
+                    messenger_proto::keypackages::KeyPackageUpload {
+                        key_package: kp.key_package_bytes,
+                        init_key_hash: kp.init_key_hash,
+                        expires_at: kp.expires_at,
+                        is_last_resort: kp.is_last_resort,
+                    }
+                };
                 // Last-resort KP
                 if let Ok(kp) = generate_keypackage(&mls_provider, &identity, 2_592_000, true) {
-                    key_packages.push(kp.key_package_bytes.into());
+                    key_packages.push(to_upload(kp));
                 }
                 // Regular KPs (7-day lifetime)
                 for _ in 0..4 {
                     if let Ok(kp) = generate_keypackage(&mls_provider, &identity, 604_800, false) {
-                        key_packages.push(kp.key_package_bytes.into());
+                        key_packages.push(to_upload(kp));
                     }
                 }
                 if !key_packages.is_empty() {

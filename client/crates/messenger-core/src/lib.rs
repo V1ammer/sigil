@@ -20,6 +20,7 @@ pub mod mls;
 pub mod prov;
 
 pub mod attachment_crypto;
+pub mod bootstrap_seal;
 
 #[cfg(all(target_arch = "wasm32", feature = "voice"))]
 pub mod voice;
