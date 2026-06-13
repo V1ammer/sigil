@@ -17,7 +17,6 @@ use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter, Set,
-    TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
@@ -184,22 +183,23 @@ pub async fn finalize_attachment(
 ) -> Result<Response, AppError> {
     let req: FinalizeAttachmentRequest = decode_body(&headers, &body)?;
 
-    let txn = state
-        .db
-        .begin_with_config(
-            Some(sea_orm::IsolationLevel::Serializable),
-            Some(sea_orm::AccessMode::ReadWrite),
-        )
-        .await?;
+    // Authorization reads run in autocommit (no read-then-write transaction).
+    // A Serializable transaction that reads then writes triggers WAL
+    // SQLITE_BUSY_SNAPSHOT (error 517) under concurrent writes, which
+    // busy_timeout can't resolve — finalize then 500'd intermittently and the
+    // attachment never bound to its message. The bind is a single atomic
+    // conditional UPDATE instead.
 
-    // 1. Attachment существует, message_id IS NULL
+    // 1. Attachment существует
     let attachment = messenger_entity::attachments::Entity::find_by_id(id)
-        .one(&txn)
+        .one(&state.db)
         .await?
         .ok_or(AppError::NotFound)?;
 
+    // Already finalized (e.g. our own retry, or a concurrent finalize that
+    // already won) — idempotent success, not an error.
     if attachment.message_id.is_some() {
-        return Err(AppError::AttachmentNotFinalized);
+        return Ok(StatusCode::NO_CONTENT.into_response());
     }
 
     // 2. Uploader == ctx.device.id
@@ -209,7 +209,7 @@ pub async fn finalize_attachment(
 
     // 3. Message существует, sender == ctx
     let message = messenger_entity::mls_messages::Entity::find_by_id(req.message_id)
-        .one(&txn)
+        .one(&state.db)
         .await?
         .ok_or(AppError::NotFound)?;
 
@@ -225,25 +225,30 @@ pub async fn finalize_attachment(
                 .add(messenger_entity::mls_group_members::Column::UserId.eq(ctx.user.id))
                 .add(messenger_entity::mls_group_members::Column::LeftAtEpoch.is_null()),
         )
-        .one(&txn)
+        .one(&state.db)
         .await?;
 
     if membership.is_none() {
         return Err(AppError::GroupMembershipRequired);
     }
 
-    // 5. UPDATE — устанавливаем message_id, expires_at в 0 (означает "без срока")
+    // 5. Атомарная привязка: единственный UPDATE с guard `message_id IS NULL`.
     //    GC проверяет message_id IS NULL вместе с expired, так что finalized — в безопасности.
-    messenger_entity::attachments::ActiveModel {
-        id: Set(id),
-        message_id: Set(Some(req.message_id)),
-        expires_at: Set(0),
-        ..Default::default()
-    }
-    .update(&txn)
-    .await?;
-
-    txn.commit().await?;
+    //    rows_affected == 0 означает «уже finalize'нут параллельно» — тоже успех.
+    use sea_orm::sea_query::Expr;
+    messenger_entity::attachments::Entity::update_many()
+        .col_expr(
+            messenger_entity::attachments::Column::MessageId,
+            Expr::value(req.message_id),
+        )
+        .col_expr(
+            messenger_entity::attachments::Column::ExpiresAt,
+            Expr::value(0_i64),
+        )
+        .filter(messenger_entity::attachments::Column::Id.eq(id))
+        .filter(messenger_entity::attachments::Column::MessageId.is_null())
+        .exec(&state.db)
+        .await?;
 
     Ok(StatusCode::NO_CONTENT.into_response())
 }
