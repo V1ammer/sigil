@@ -118,6 +118,39 @@ pub fn persist_session(
     }
 }
 
+/// Rewrite the username inside the persisted identity blob.
+///
+/// The username is client-local truth in this zero-knowledge model (the server
+/// only stores its blind index), so a successful `change_username` must update
+/// the stored blob, otherwise the old name reappears on the next reload.
+/// Returns `true` if the blob was found and rewritten.
+#[must_use]
+pub fn update_persisted_username(new_username: &str) -> bool {
+    let Some(storage) = web_sys::window()
+        .and_then(|w| w.local_storage().ok())
+        .flatten()
+    else {
+        return false;
+    };
+    let Some(identity_b64) = storage.get_item("messenger_identity").ok().flatten() else {
+        return false;
+    };
+    let Ok(bytes) =
+        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &identity_b64)
+    else {
+        return false;
+    };
+    let Ok(mut blob) = rmp_serde::from_slice::<IdentityBlob>(&bytes) else {
+        return false;
+    };
+    blob.username = new_username.to_string();
+    let Ok(reencoded) = rmp_serde::to_vec_named(&blob) else {
+        return false;
+    };
+    let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &reencoded);
+    storage.set_item("messenger_identity", &b64).is_ok()
+}
+
 /// Clear persisted session data (logout).
 pub fn clear_persisted_session() {
     if let Some(storage) = web_sys::window()

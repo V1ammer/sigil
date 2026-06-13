@@ -4,6 +4,8 @@ use leptos::task::spawn_local;
 use leptos_router::hooks::use_navigate;
 use messenger_core::blind_index::username_blind_index;
 use messenger_core::api::ApiError;
+use messenger_core::ed25519::Ed25519Pair;
+use messenger_core::identity::ClientIdentity;
 use messenger_proto::users::ChangeUsernameRequest;
 use crate::components::avatar_picker::AvatarPicker;
 use crate::components::button::{Button, ButtonVariant};
@@ -178,14 +180,36 @@ pub fn AccountSettings() -> impl IntoView {
 
                 match api.change_username(&req).await {
                     Ok(()) => {
+                        // Username is client-local truth here — the server only
+                        // keeps its blind index. Update the persisted blob and
+                        // the live session so the new handle shows immediately
+                        // and survives reload; no re-login needed.
+                        let _ = crate::session::restore::update_persisted_username(&uname);
+                        if let SessionState::Authenticated { identity: id, role } =
+                            session.state.get_untracked()
+                        {
+                            let updated = ClientIdentity {
+                                user_id: id.user_id,
+                                username: uname.clone(),
+                                identity_signing_key: Ed25519Pair::from_seed(
+                                    &id.identity_signing_key.secret_bytes(),
+                                ),
+                                device_id: id.device_id,
+                                device_signing_key: Ed25519Pair::from_seed(
+                                    &id.device_signing_key.secret_bytes(),
+                                ),
+                                device_hpke_seed: id.device_hpke_seed,
+                                device_hpke_public: id.device_hpke_public,
+                            };
+                            session.state.set(SessionState::Authenticated {
+                                identity: Arc::new(updated),
+                                role,
+                            });
+                        }
+                        username.set(uname.clone());
                         notifications.push(
                             ToastKind::Success,
-                            format!("{}", t!("settings.account.usernameChanged")),
-                        );
-                        // Tell user to re-login for the change to fully take effect
-                        notifications.push(
-                            ToastKind::Success,
-                            format!("{}", t!("settings.account.usernameReloginHint")),
+                            t!("settings.account.usernameChanged").to_string(),
                         );
                     }
                     Err(ApiError::Api { status: 409, .. }) => {
