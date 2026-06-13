@@ -423,6 +423,12 @@ pub fn ChatsScreen() -> impl IntoView {
                                                 let t = on_thread_open_list.clone();
                                                 move |id: &str| t(id)
                                             })
+                                            // The reply-count badge under a root
+                                            // message opens the same thread panel.
+                                            on_thread_click=Box::new({
+                                                let t = on_thread_open_list.clone();
+                                                move |id: &str| t(id)
+                                            })
                                         />
                                     }.into_any()
                                 }
