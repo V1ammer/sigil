@@ -175,6 +175,15 @@ impl ChatsState {
         let resp = api.list_groups(None).await?;
         let cache = self.display_name_cache.get_untracked();
         let prefs = self.prefs.get_untracked();
+        // Preserve runtime-only per-group state across refreshes. list_groups
+        // carries no last-message/unread/avatar, so rebuilding from scratch
+        // would wipe the sidebar preview and unread badges on every sync.
+        let prev: std::collections::HashMap<Uuid, Chat> = self
+            .chats
+            .get_untracked()
+            .into_iter()
+            .map(|c| (c.group_id, c))
+            .collect();
         let chats: Vec<Chat> = resp
             .groups
             .into_iter()
@@ -190,15 +199,16 @@ impl ChatsState {
                     .cloned()
                     .unwrap_or_else(|| g.id.to_string());
                 let p = prefs.get(&g.id).cloned().unwrap_or_default();
+                let old = prev.get(&g.id);
                 Chat {
                     group_id: g.id,
                     chat_type,
                     display_name,
-                    avatar: None,
-                    last_message_preview: None,
-                    last_message_kind: None,
-                    last_message_at: None,
-                    unread_count: 0,
+                    avatar: old.and_then(|c| c.avatar.clone()),
+                    last_message_preview: old.and_then(|c| c.last_message_preview.clone()),
+                    last_message_kind: old.and_then(|c| c.last_message_kind),
+                    last_message_at: old.and_then(|c| c.last_message_at),
+                    unread_count: old.map_or(0, |c| c.unread_count),
                     muted: p.muted,
                     pinned: p.pinned,
                     current_epoch: g.current_epoch,
@@ -207,6 +217,15 @@ impl ChatsState {
             .collect();
         self.chats.set(chats);
         Ok(())
+    }
+
+    /// Set the unread badge count for a chat (0 clears it).
+    pub fn set_unread(&self, group_id: Uuid, count: u32) {
+        self.chats.update(|list| {
+            if let Some(chat) = list.iter_mut().find(|c| c.group_id == group_id) {
+                chat.unread_count = count;
+            }
+        });
     }
 
     /// Create a direct chat with a user by username.

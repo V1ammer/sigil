@@ -52,6 +52,11 @@ impl SyncService {
                 // 2. Refresh chat list
                 Self::sync_chats().await;
 
+                // 2b. Refresh sidebar previews + unread badges for every chat.
+                // The WS keeps these live, but this catches messages that
+                // arrived while the app was closed or the socket was down.
+                Self::sync_previews().await;
+
                 // 3. Deliver the own avatar to any group that hasn't seen
                 // the current one (covers chats created after the avatar
                 // was set and welcome joins that bypassed the MLS hook).
@@ -141,6 +146,25 @@ impl SyncService {
             if let Some(api) = build_api_client() {
                 let _ = c.load_from_server(&api).await;
             }
+        }
+    }
+
+    /// Refresh sidebar previews and unread badges for all known chats.
+    async fn sync_previews() {
+        let (Some(chats), Some(svc)) = (
+            crate::state::message_service::chats_handle(),
+            crate::state::message_service::service_handle(),
+        ) else {
+            return;
+        };
+        let group_ids: Vec<_> = chats
+            .chats
+            .get_untracked()
+            .into_iter()
+            .map(|c| c.group_id)
+            .collect();
+        for group_id in group_ids {
+            svc.refresh_incoming(group_id).await;
         }
     }
 }

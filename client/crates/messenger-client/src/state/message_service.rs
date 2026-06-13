@@ -161,6 +161,18 @@ fn marker_max(prefix: &str, group_id: Uuid, id: Uuid) {
 const PEER_READ_PREFIX: &str = "messenger_peer_read_";
 const DELIVERED_PREFIX: &str = "messenger_delivered_";
 const READ_ACKED_PREFIX: &str = "messenger_read_acked_";
+/// Highest foreign message id the user has actually seen (chat opened). Drives
+/// the sidebar unread badge independently of read-receipt settings.
+const SEEN_PREFIX: &str = "messenger_seen_";
+
+/// Update a chat's unread badge through the thread-local `ChatsState`.
+fn set_chat_unread(group_id: Uuid, count: u32) {
+    CHATS_STATE.with(|c| {
+        if let Some(chats) = c.borrow().as_ref() {
+            chats.set_unread(group_id, count);
+        }
+    });
+}
 
 /// Whether the user shares read receipts (privacy setting, default on).
 fn read_receipts_enabled() -> bool {
@@ -304,6 +316,9 @@ impl MessageService {
                         Some(m.kind),
                     );
                 }
+                // Opening a chat marks everything up to the newest foreign
+                // message as seen and clears the unread badge.
+                self.mark_seen(group_id);
                 self.apply_delivery_markers(group_id);
                 self.refresh_delivery_status(group_id);
                 self.acknowledge_read(group_id);
@@ -313,6 +328,83 @@ impl MessageService {
                 tracing::warn!(%group_id, error = %e, "failed to load messages");
             }
         }
+    }
+
+    /// Refresh a chat's sidebar state when a message arrives while the chat is
+    /// NOT open: pull the latest content, update the preview/timestamp and the
+    /// unread badge — without acknowledging read (that only happens on open).
+    ///
+    /// This is what makes "собеседник написал" show up in the chat list
+    /// (preview + unread + reordering) without opening the conversation.
+    pub async fn refresh_incoming(&self, group_id: Uuid) {
+        let Some(api) = build_api_client() else { return };
+        let resp = match api.list_messages(group_id, None, None).await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!(%group_id, error = %e, "refresh_incoming: list failed");
+                return;
+            }
+        };
+        let display_messages = self.convert_messages(&resp.messages, group_id).await;
+        let latest = display_messages.iter().max_by_key(|m| m.created_at).cloned();
+        self.messages.by_group.update(|map| {
+            map.insert(group_id, display_messages);
+        });
+        if let Some(m) = latest {
+            set_chat_last_message(
+                group_id,
+                m.created_at * 1000,
+                Some(preview_from_body(&m.body)),
+                Some(m.kind),
+            );
+        }
+        self.apply_delivery_markers(group_id);
+        self.refresh_delivery_status(group_id);
+        self.recompute_unread(group_id);
+    }
+
+    /// Set the SEEN watermark to the newest foreign message and clear unread.
+    /// Called when the user opens a chat.
+    fn mark_seen(&self, group_id: Uuid) {
+        let me = current_user_id();
+        let newest_foreign = self.messages.by_group.with_untracked(|map| {
+            map.get(&group_id).and_then(|list| {
+                list.iter()
+                    .filter(|m| Some(m.sender_user_id) != me && !m.sender_user_id.is_nil())
+                    .map(|m| m.id)
+                    .max()
+            })
+        });
+        if let Some(up_to) = newest_foreign {
+            marker_max(SEEN_PREFIX, group_id, up_to);
+        }
+        set_chat_unread(group_id, 0);
+    }
+
+    /// Recompute the unread badge = foreign messages newer than the SEEN
+    /// watermark. Skipped (and cleared) for the currently open chat.
+    fn recompute_unread(&self, group_id: Uuid) {
+        let is_open = chats_handle()
+            .map(|c| c.selected.get_untracked() == Some(group_id))
+            .unwrap_or(false);
+        if is_open {
+            self.mark_seen(group_id);
+            return;
+        }
+        let me = current_user_id();
+        let seen = marker_get(SEEN_PREFIX, group_id);
+        let count = self.messages.by_group.with_untracked(|map| {
+            map.get(&group_id).map_or(0, |list| {
+                list.iter()
+                    .filter(|m| {
+                        Some(m.sender_user_id) != me
+                            && !m.sender_user_id.is_nil()
+                            && seen.map_or(true, |s| m.id > s)
+                    })
+                    .count() as u32
+            })
+        });
+        set_chat_unread(group_id, count);
     }
 
     /// Re-stamp own messages with Read / DeliveredToAll based on the stored

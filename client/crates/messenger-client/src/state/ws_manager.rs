@@ -132,17 +132,23 @@ impl WsManager {
                 let is_open = chats
                     .map(|c| c.selected.get_untracked() == Some(group_id))
                     .unwrap_or(false);
-                if is_open {
-                    if let Some(svc) = crate::state::message_service::service_handle() {
-                        let already_known = svc.messages.by_group.with_untracked(|map| {
-                            map.get(&group_id)
-                                .is_some_and(|list| list.iter().any(|m| m.id == message_id))
-                        });
-                        if !already_known {
-                            spawn_local(async move {
+                if let Some(svc) = crate::state::message_service::service_handle() {
+                    let already_known = svc.messages.by_group.with_untracked(|map| {
+                        map.get(&group_id)
+                            .is_some_and(|list| list.iter().any(|m| m.id == message_id))
+                    });
+                    // Skip our own server echo (already in the buffer with the
+                    // server id). Otherwise pull the content: the open chat
+                    // refreshes inline; a background chat updates its sidebar
+                    // preview + unread badge.
+                    if !already_known {
+                        spawn_local(async move {
+                            if is_open {
                                 svc.load_messages(group_id).await;
-                            });
-                        }
+                            } else {
+                                svc.refresh_incoming(group_id).await;
+                            }
+                        });
                     }
                 }
             }
