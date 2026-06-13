@@ -162,9 +162,11 @@ where
     }
 
     if resp.body.is_empty() {
-        // For 204 No Content — try to deserialize empty map.
-        // Callers that expect () will succeed; others will get a parse error.
-        return rmp_serde::from_slice(&[0x80]).map_err(ApiError::Deserialize);
+        // 204 No Content — synthesize a msgpack `nil` so `()` callers parse as
+        // Ok. (An empty map `[0x80]` does NOT deserialize into `()` — that made
+        // every 204 endpoint, e.g. admin suspend/unsuspend, error despite the
+        // server returning success.)
+        return rmp_serde::from_slice(&[0xc0]).map_err(ApiError::Deserialize);
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -181,4 +183,16 @@ where
         js_log(format!("[parse_response] DESERIALIZE ERROR: {e} | status={}, body_hex(truncated): {}", resp.status, truncated));
         ApiError::Deserialize(e)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    /// `()` (what 204 endpoints return) deserializes from msgpack `nil`, not from
+    /// an empty map — so the 204 path must synthesize `nil`. Guards against the
+    /// regression where suspend/unsuspend errored despite the server's success.
+    #[test]
+    fn unit_parses_from_nil_not_empty_map() {
+        assert!(rmp_serde::from_slice::<()>(&[0xc0u8]).is_ok());
+        assert!(rmp_serde::from_slice::<()>(&[0x80u8]).is_err());
+    }
 }

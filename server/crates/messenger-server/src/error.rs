@@ -187,6 +187,14 @@ pub fn typed_response<T: serde::Serialize>(
     status: StatusCode,
     body: &T,
 ) -> Response {
+    // 204 No Content must not carry a body. Serializing `()` produced a 1-byte
+    // body with `Content-Length: 1`; HTTP/2 proxies (Caddy) then strip the body
+    // but leave the mismatched Content-Length, which makes clients error while
+    // reading the response (e.g. admin suspend/unsuspend failed despite a 204).
+    if status == StatusCode::NO_CONTENT {
+        return status.into_response();
+    }
+
     let prefer_json = headers
         .get(header::ACCEPT)
         .and_then(|v| v.to_str().ok())
