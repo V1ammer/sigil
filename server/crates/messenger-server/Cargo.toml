@@ -21,6 +21,7 @@ serde_bytes.workspace = true
 rmp-serde.workspace = true
 uuid.workspace = true
 sea-orm.workspace = true
+sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio-rustls"] }
 figment.workspace = true
 dotenvy.workspace = true
 moka.workspace = true
