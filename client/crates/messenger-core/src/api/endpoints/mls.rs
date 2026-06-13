@@ -24,6 +24,19 @@ impl ApiClient {
         self.send("POST", "/v1/groups/create-direct", Some(&req)).await
     }
 
+    /// List the members of a group (user/device ids + epoch metadata).
+    ///
+    /// # Errors
+    ///
+    /// Returns `ApiError` on network failure or if the group is missing.
+    pub async fn get_group_members(
+        &self,
+        group_id: Uuid,
+    ) -> Result<ListGroupMembersResponse, ApiError> {
+        let path = format!("/v1/groups/{group_id}/members");
+        self.send::<(), _>("GET", &path, None).await
+    }
+
     /// Delete a group (chat) and all its messages and attachments server-side.
     ///
     /// # Errors

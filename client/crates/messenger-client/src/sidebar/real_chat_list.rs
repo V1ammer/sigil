@@ -25,6 +25,10 @@ pub fn RealChatList(
     let chats_state = use_context::<ChatsState>().expect("ChatsState must be provided");
     let msg_svc = use_context::<crate::state::message_service::MessageService>();
     let users_state = use_context::<crate::state::users::UsersState>();
+    // Captured at setup (not inside the async create flow, where use_context
+    // would fail after an await).
+    let own_user_id = use_context::<crate::state::session::Session>()
+        .and_then(|s| s.current_user_id());
     let chats = chats_state.filtered();
     let selected = chats_state.selected;
     let navigate = use_navigate();
@@ -58,7 +62,9 @@ pub fn RealChatList(
         username_input.set(String::new());
     };
 
-    let create_chat = move |_| {
+    let create_chat = {
+        let users_state = users_state.clone();
+        move |_| {
         let username = username_input.get();
         if username.trim().is_empty() {
             error_msg.set(t!("chat.create_direct.empty_username").to_string());
@@ -68,6 +74,7 @@ pub fn RealChatList(
         error_msg.set(String::new());
         let cs = chats_state.clone();
         let svc = msg_svc.clone();
+        let users_state = users_state.clone();
         // Clone the i18n handle into the async block: `t!` resolves context
         // through the leptos owner, which is gone after the first await.
         let i18n = i18n.clone();
@@ -78,7 +85,23 @@ pub fn RealChatList(
                     match cs.create_direct_chat(&api, username.trim()).await {
                         Ok(group_id) => {
                             show_dialog.set(false);
+                            let typed_username = username.trim().to_string();
                             username_input.set(String::new());
+                            // Remember the peer's plaintext username (server is
+                            // blind to it) so the admin user list can label the
+                            // row. Resolve the peer via group members.
+                            if let Some(users) = users_state.clone() {
+                                if let Ok(resp) = api.get_group_members(group_id).await {
+                                    if let Some(peer) = resp
+                                        .members
+                                        .iter()
+                                        .map(|m| m.user_id)
+                                        .find(|uid| Some(*uid) != own_user_id)
+                                    {
+                                        users.remember_username(peer, &typed_username);
+                                    }
+                                }
+                            }
                             // Open the (new or reopened) chat right away.
                             cs.selected.set(Some(group_id));
                             // Introduce ourselves: deliver our avatar to the
@@ -98,6 +121,7 @@ pub fn RealChatList(
             }
             loading.set(false);
         });
+        }
     };
 
     let close_dialog = move |_| {

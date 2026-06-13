@@ -8,13 +8,61 @@ use crate::components::alert_dialog::{
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogDescription, AlertDialogFooter,
     AlertDialogHeader, AlertDialogTitle,
 };
+use crate::components::avatar::Avatar;
 use crate::components::badge::Badge;
 use crate::components::button::{Button, ButtonSize, ButtonVariant};
 use crate::components::separator::Separator;
 use crate::i18n::I18n;
 use crate::state::notifications::{NotificationsState, ToastKind};
-use crate::state::session::build_api_client;
+use crate::state::session::{build_api_client, Session, SessionState};
+use crate::state::users::UsersState;
 use crate::t;
+
+/// Short id label, e.g. `019ebdca…`, used when no username is known.
+fn short_id_ellipsis(id: Uuid) -> String {
+    id.to_string().chars().take(8).collect::<String>() + "…"
+}
+
+/// Best-effort (avatar, display name, secondary line) for a user row.
+/// The server is blind to usernames/avatars, so everything comes from the
+/// admin's local caches: own identity for the admin's own row, and the
+/// `UsersState` cache (peers chatted with) for everyone else. Secondary line
+/// is `@username` when known, otherwise the short id.
+fn resolve_row(
+    id: Uuid,
+    users: Option<&UsersState>,
+    own_id: Option<Uuid>,
+    own_username: &Option<String>,
+    own_name: &Option<String>,
+    own_avatar: &Option<String>,
+) -> (Option<String>, String, String) {
+    let is_own = Some(id) == own_id;
+    let avatar = if is_own {
+        own_avatar.clone()
+    } else {
+        users.and_then(|u| u.avatar_for(id))
+    };
+    let username = if is_own {
+        own_username.clone()
+    } else {
+        users.and_then(|u| u.username_for(id))
+    };
+    let name = if is_own {
+        own_name
+            .clone()
+            .filter(|s| !s.is_empty())
+            .or_else(|| own_username.clone())
+            .unwrap_or_else(|| short_id_ellipsis(id))
+    } else {
+        users
+            .map(|u| u.label_for(id))
+            .unwrap_or_else(|| short_id_ellipsis(id))
+    };
+    let secondary = username
+        .map(|n| format!("@{n}"))
+        .unwrap_or_else(|| short_id_ellipsis(id));
+    (avatar, name, secondary)
+}
 
 /// Format a Unix timestamp as YYYY-MM-DD.
 fn format_ts(ts: i64) -> String {
@@ -157,6 +205,33 @@ pub fn AdminUsersSettings() -> impl IntoView {
     let _i18n = use_context::<I18n>().expect("I18n must be provided");
     let notifications = use_context::<NotificationsState>()
         .expect("NotificationsState must be provided");
+    let users_cache = use_context::<UsersState>();
+
+    // Own identity — the admin's own row is labelled from it (the server is
+    // blind to usernames/avatars/display names).
+    let (own_user_id, own_username) = match use_context::<Session>().map(|s| s.state.get_untracked())
+    {
+        Some(SessionState::Authenticated { identity, .. }) => {
+            (Some(identity.user_id), Some(identity.username.clone()))
+        }
+        _ => (None, None),
+    };
+    let own_name = own_user_id.and_then(crate::state::profile_store::load_display_name);
+    let own_avatar = own_user_id.and_then(crate::state::avatar_store::load_own_avatar);
+    // Seed the cache with our own username so the own row shows it too.
+    if let (Some(cache), Some(uid), Some(uname)) =
+        (users_cache.clone(), own_user_id, own_username.clone())
+    {
+        cache.remember_username(uid, &uname);
+    }
+    // Copy-friendly bundle so the row closures can read it freely.
+    let row_meta = StoredValue::new((
+        users_cache.clone(),
+        own_user_id,
+        own_username.clone(),
+        own_name,
+        own_avatar,
+    ));
 
     // ── State ──────────────────────────────────────────────────────────
     let users = RwSignal::new(Vec::<AdminUserSummary>::new());
@@ -412,7 +487,7 @@ pub fn AdminUsersSettings() -> impl IntoView {
                             <table class="w-full text-sm">
                                 <thead>
                                     <tr class="border-b text-left text-muted-foreground">
-                                        <th class="pb-2 font-medium">{t!("settings.adminUsers.userId")}</th>
+                                        <th class="pb-2 font-medium">{t!("settings.adminUsers.user")}</th>
                                         <th class="pb-2 font-medium">{t!("settings.adminUsers.role")}</th>
                                         <th class="pb-2 font-medium">{t!("settings.adminUsers.status")}</th>
                                         <th class="pb-2 font-medium">{t!("settings.adminUsers.created")}</th>
@@ -423,11 +498,15 @@ pub fn AdminUsersSettings() -> impl IntoView {
                                 <tbody>
                                     {move || users.get().into_iter().map(move |u| {
                                         let user_id = u.id;
-                                        let short_id = user_id.to_string()[..8].to_string();
                                         let is_suspended = u.status == "suspended";
                                         let role_display = user_role(&u.role);
                                         let created_display = format_ts(u.created_at);
                                         let devices_count = u.devices_count;
+
+                                        let (avatar, name, secondary) = {
+                                            let (ref cache, own_id, ref own_uname, ref own_name, ref own_avatar) = row_meta.get_value();
+                                            resolve_row(user_id, cache.as_ref(), own_id, own_uname, own_name, own_avatar)
+                                        };
 
                                         let on_suspend = on_suspend;
                                         let on_unsuspend = on_unsuspend;
@@ -435,7 +514,13 @@ pub fn AdminUsersSettings() -> impl IntoView {
                                         view! {
                                             <tr class="border-b last:border-0">
                                                 <td class="py-3 pr-4">
-                                                    <code class="text-xs text-foreground font-mono">{short_id.clone()}</code>
+                                                    <div class="flex items-center gap-3">
+                                                        <Avatar src=avatar alt=name.clone() class="h-8 w-8 shrink-0" />
+                                                        <div class="min-w-0">
+                                                            <div class="font-medium text-foreground truncate">{name}</div>
+                                                            <div class="text-xs text-muted-foreground font-mono truncate">{secondary}</div>
+                                                        </div>
+                                                    </div>
                                                 </td>
                                                 <td class="py-3 pr-4 capitalize text-foreground">
                                                     {role_display.clone()}

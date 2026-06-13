@@ -14,6 +14,7 @@ use uuid::Uuid;
 const STORAGE_KEY: &str = "messenger_user_display_names";
 const AVATAR_STORAGE_KEY: &str = "messenger_user_avatars";
 const PEER_STORAGE_KEY: &str = "messenger_group_peers";
+const USERNAME_STORAGE_KEY: &str = "messenger_user_usernames";
 
 #[derive(Clone)]
 pub struct UsersState {
@@ -24,6 +25,11 @@ pub struct UsersState {
     /// Learned from incoming message senders; lets the chat list resolve
     /// a peer avatar without any server-side membership lookup.
     pub peer_by_group: RwSignal<HashMap<Uuid, Uuid>>,
+    /// Plaintext usernames learned client-side (own identity, and peers we
+    /// started a direct chat with by username). The server stays blind to
+    /// usernames — this is the only place they're known, used e.g. by the
+    /// admin user list to label rows.
+    pub username_by_id: RwSignal<HashMap<Uuid, String>>,
 }
 
 impl UsersState {
@@ -33,7 +39,29 @@ impl UsersState {
             name_by_id: RwSignal::new(Self::load_map(STORAGE_KEY)),
             avatar_by_id: RwSignal::new(Self::load_map(AVATAR_STORAGE_KEY)),
             peer_by_group: RwSignal::new(Self::load_map(PEER_STORAGE_KEY)),
+            username_by_id: RwSignal::new(Self::load_map(USERNAME_STORAGE_KEY)),
         }
+    }
+
+    pub fn username_for(&self, user_id: Uuid) -> Option<String> {
+        self.username_by_id.get_untracked().get(&user_id).cloned()
+    }
+
+    /// Remember a plaintext username for a user. No-op if empty/unchanged.
+    pub fn remember_username(&self, user_id: Uuid, username: &str) {
+        let username = username.trim();
+        if username.is_empty() {
+            return;
+        }
+        if self.username_by_id.get_untracked().get(&user_id).map(String::as_str)
+            == Some(username)
+        {
+            return;
+        }
+        self.username_by_id.update(|map| {
+            map.insert(user_id, username.to_string());
+        });
+        Self::persist_map(USERNAME_STORAGE_KEY, &self.username_by_id.get_untracked());
     }
 
     pub fn get(&self, user_id: Uuid) -> Option<String> {
