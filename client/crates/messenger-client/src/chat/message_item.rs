@@ -14,6 +14,25 @@ use crate::components::context_menu::{ContextMenu, ContextMenuTrigger, ContextMe
 use crate::components::sheet::{Sheet, SheetHeader, SheetTitle};
 use crate::components::tooltip::Tooltip;
 
+thread_local! {
+    /// Session cache of decoded attachment object URLs, keyed by attachment id.
+    /// The message list rebuilds every MessageItem whenever a message is sent or
+    /// received, which would otherwise re-download and re-decrypt every image.
+    /// Object URLs live for the document's lifetime, so reusing them is free.
+    static ATTACHMENT_URL_CACHE: std::cell::RefCell<std::collections::HashMap<uuid::Uuid, String>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+fn cached_attachment_url(id: uuid::Uuid) -> Option<String> {
+    ATTACHMENT_URL_CACHE.with(|c| c.borrow().get(&id).cloned())
+}
+
+fn cache_attachment_url(id: uuid::Uuid, url: &str) {
+    ATTACHMENT_URL_CACHE.with(|c| {
+        c.borrow_mut().insert(id, url.to_string());
+    });
+}
+
 #[must_use]
 #[component]
 pub fn MessageItem(
@@ -419,8 +438,17 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
             let err: RwSignal<Option<String>> = RwSignal::new(None);
             let lightbox_open: RwSignal<bool> = RwSignal::new(false);
 
+            // Reuse a previously-decoded image instead of re-downloading on
+            // every list rebuild (which happens on each sent/received message).
+            let cached = attachment_id
+                .as_ref()
+                .and_then(|s| s.parse::<uuid::Uuid>().ok())
+                .filter(|id| !id.is_nil())
+                .and_then(cached_attachment_url);
             // Auto-fetch and decrypt on first render. Caches the object URL.
-            if let (Some(aid), Some(key_b64)) = (attachment_id, decryption_key) {
+            if let Some(url) = cached {
+                blob_url.set(Some(url));
+            } else if let (Some(aid), Some(key_b64)) = (attachment_id, decryption_key) {
                 leptos::task::spawn_local(async move {
                     use base64::Engine as _;
                     let api = match crate::state::session::build_api_client() {
@@ -495,6 +523,7 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                     bag.type_(&mime);
                     if let Ok(blob) = web_sys::Blob::new_with_u8_array_sequence_and_options(&arr, &bag) {
                         if let Ok(url) = web_sys::Url::create_object_url_with_blob(&blob) {
+                            cache_attachment_url(attachment_id, &url);
                             blob_url.set(Some(url));
                         }
                     }
