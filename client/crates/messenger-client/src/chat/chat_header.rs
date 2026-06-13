@@ -11,6 +11,10 @@ use crate::components::avatar::Avatar;
 pub fn ChatHeader(
     #[prop(optional, into)] lang: Signal<Language>,
     #[prop(optional)] chat: Option<Chat>,
+    /// Reactive peer avatar (direct chats). Resolved independently of the chat
+    /// snapshot so it always reflects the latest `avatar_by_id`, and survives
+    /// re-renders of the surrounding chat panel.
+    #[prop(optional, into)] avatar: Signal<Option<String>>,
     #[prop(optional)] on_back: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     #[prop(optional)] on_pin_toggle: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     #[prop(optional)] on_mute_toggle: Option<Box<dyn Fn() + Send + Sync + 'static>>,
@@ -76,15 +80,28 @@ pub fn ChatHeader(
 
             // Profile info
             <div class="flex items-center gap-3 min-w-0 flex-1">
-                <Avatar
-                    src=chat_avatar.clone()
-                    alt=chat_name.clone()
-                    class="h-12 w-12 shrink-0".to_string()
-                >
-                    <span class="text-sm font-semibold text-foreground">
-                        {crate::components::avatar::get_initials(&chat_name2)}
-                    </span>
-                </Avatar>
+                {
+                    // Reactive: prefer the live avatar signal, fall back to the
+                    // chat snapshot. Re-renders when the avatar lands or changes,
+                    // independent of the parent panel's reactivity.
+                    let alt = chat_name.clone();
+                    let initials = crate::components::avatar::get_initials(&chat_name2);
+                    move || {
+                        let src = avatar.get().or_else(|| chat_avatar.clone());
+                        let initials = initials.clone();
+                        view! {
+                            <Avatar
+                                src=src
+                                alt=alt.clone()
+                                class="h-12 w-12 shrink-0".to_string()
+                            >
+                                <span class="text-sm font-semibold text-foreground">
+                                    {initials}
+                                </span>
+                            </Avatar>
+                        }
+                    }
+                }
                 <div class="min-w-0">
                     <h2 class="text-sm font-semibold text-foreground truncate">{chat_name}</h2>
                     <p class="text-xs text-muted-foreground truncate">

@@ -81,6 +81,18 @@ pub fn ChatsScreen() -> impl IntoView {
     let chats_state_clone = chats_state.clone();
     let chats_signal = chats_state.chats;
     let loading_messages = RwSignal::new(false);
+
+    // Reactive peer avatar for the open chat's header. Computed in its own
+    // top-level scope (not inside the per-chat panel closure) so it always
+    // tracks the latest avatar_by_id / peer_by_group and survives panel
+    // re-renders — the same reliable pattern the sidebar rows use.
+    let users_for_header_avatar = use_context::<crate::state::users::UsersState>();
+    let header_avatar: Signal<Option<String>> = Signal::derive(move || {
+        let gid = selected.get()?;
+        let us = users_for_header_avatar.as_ref()?;
+        let peer = us.peer_by_group.with(|m| m.get(&gid).copied())?;
+        us.avatar_by_id.with(|m| m.get(&peer).cloned())
+    });
     // Per-chat composer drafts, created once so they outlive the re-renders
     // that rebuild the chat view (incoming messages bump the chat list).
     let drafts: RwSignal<std::collections::HashMap<Uuid, String>> =
@@ -301,7 +313,6 @@ pub fn ChatsScreen() -> impl IntoView {
             {/* Main area */}
             {
                 let messages_state_for_main = messages_state.clone();
-                let users_state_for_header = use_context::<crate::state::users::UsersState>();
                 let messages_state_for_thread = messages_state.clone();
                 let msg_svc_for_thread = msg_svc.clone();
                 let sel_for_thread = sel.clone();
@@ -340,22 +351,13 @@ pub fn ChatsScreen() -> impl IntoView {
                 let on_delete_cb = Box::new(|| {}) as Box<dyn Fn() + Send + Sync + 'static>;
                 let on_back_cb = Box::new(|| crate::state::back_stack::pop())
                     as Box<dyn Fn() + Send + Sync + 'static>;
-                let mut chat_for_header = state_chat
+                let chat_for_header = state_chat
                     .as_ref()
                     .map(|c| to_mock_chat(c, &name))
                     .unwrap_or_else(|| placeholder_mock_chat(group_id, &name));
-                // Direct chats: show the peer's E2E-delivered avatar. Reads
-                // tracked signals, so the header refreshes when one lands.
-                chat_for_header.avatar_url = users_state_for_header.as_ref().and_then(|us| {
-                    let is_direct = state_chat
-                        .as_ref()
-                        .is_none_or(|c| c.chat_type == ChatType::Direct);
-                    if !is_direct {
-                        return None;
-                    }
-                    let peer = us.peer_by_group.get().get(&group_id).copied()?;
-                    us.avatar_by_id.get().get(&peer).cloned()
-                });
+                // The peer avatar is supplied reactively to ChatHeader via the
+                // top-level `header_avatar` signal — kept out of this closure so
+                // an avatar landing doesn't rebuild the whole chat panel.
 
                 view! {
                     <div class=move || {
@@ -368,6 +370,7 @@ pub fn ChatsScreen() -> impl IntoView {
                         <ChatHeader
                             lang=locale
                             chat=chat_for_header
+                            avatar=header_avatar
                             on_back=on_back_cb
                             on_pin_toggle=on_pin_toggle
                             on_mute_toggle=on_mute_toggle
