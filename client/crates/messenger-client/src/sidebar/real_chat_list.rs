@@ -21,7 +21,7 @@ pub fn RealChatList(
     #[prop(optional, into)] class: String,
     #[prop(optional)] on_chat_select: Option<std::sync::Arc<dyn Fn(String) + Send + Sync + 'static>>,
 ) -> impl IntoView {
-    let _i18n = use_context::<I18n>().expect("I18n must be provided");
+    let i18n = use_context::<I18n>().expect("I18n must be provided");
     let chats_state = use_context::<ChatsState>().expect("ChatsState must be provided");
     let msg_svc = use_context::<crate::state::message_service::MessageService>();
     let users_state = use_context::<crate::state::users::UsersState>();
@@ -68,6 +68,9 @@ pub fn RealChatList(
         error_msg.set(String::new());
         let cs = chats_state.clone();
         let svc = msg_svc.clone();
+        // Clone the i18n handle into the async block: `t!` resolves context
+        // through the leptos owner, which is gone after the first await.
+        let i18n = i18n.clone();
         spawn_local(async move {
             let api = build_api_client();
             match api {
@@ -83,7 +86,7 @@ pub fn RealChatList(
                             }
                         }
                         Err(e) => {
-                            error_msg.set(e);
+                            error_msg.set(humanize_create_chat_error(&e, &i18n));
                         }
                     }
                 }
@@ -426,6 +429,34 @@ pub fn RealChatList(
                 </div>
             }.into_any()
         }}
+    }
+}
+
+/// Map a create-chat API failure to a message a human can act on. The raw
+/// codes ("api error: 404 ERR_NOT_FOUND") must never reach the dialog.
+/// Takes the i18n handle explicitly — this runs inside spawn_local where
+/// the context-based `t!` macro would panic.
+fn humanize_create_chat_error(e: &messenger_core::api::ApiError, i18n: &I18n) -> String {
+    use messenger_core::api::ApiError;
+    match e {
+        ApiError::Api { status: 404, .. } => i18n.t("chat.create_direct.userNotFound"),
+        ApiError::Api { status: 400, body } => {
+            let reason = body
+                .details
+                .as_ref()
+                .and_then(|d| d.get("reason"))
+                .and_then(|r| r.as_str())
+                .unwrap_or_default();
+            if reason.contains("yourself") {
+                i18n.t("chat.create_direct.self")
+            } else if reason.contains("no active devices") {
+                i18n.t("chat.create_direct.noDevices")
+            } else {
+                i18n.t("chat.create_direct.failed")
+            }
+        }
+        ApiError::Transport(_) => i18n.t("error.network"),
+        _ => i18n.t("chat.create_direct.failed"),
     }
 }
 

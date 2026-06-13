@@ -150,6 +150,10 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("chat.create_direct.cancel", "Отмена");
     m.insert("chat.create_direct.empty_username", "Введите имя пользователя");
     m.insert("chat.create_direct.no_api", "API клиент недоступен");
+    m.insert("chat.create_direct.userNotFound", "Пользователь с таким именем не найден");
+    m.insert("chat.create_direct.self", "Нельзя создать чат с самим собой");
+    m.insert("chat.create_direct.noDevices", "У пользователя нет доступных устройств — попросите его зайти в мессенджер");
+    m.insert("chat.create_direct.failed", "Не удалось создать чат, попробуйте ещё раз");
 
     // Security
     m.insert("security.title", "Безопасность");

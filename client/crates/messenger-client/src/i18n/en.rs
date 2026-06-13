@@ -150,6 +150,10 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("chat.create_direct.cancel", "Cancel");
     m.insert("chat.create_direct.empty_username", "Please enter a username");
     m.insert("chat.create_direct.no_api", "API client not available");
+    m.insert("chat.create_direct.userNotFound", "No user with that username");
+    m.insert("chat.create_direct.self", "You can't start a chat with yourself");
+    m.insert("chat.create_direct.noDevices", "This user has no available devices — ask them to open the messenger first");
+    m.insert("chat.create_direct.failed", "Couldn't create the chat, please try again");
 
     // Security
     m.insert("security.title", "Security");

@@ -215,12 +215,14 @@ impl ChatsState {
     ///
     /// # Errors
     ///
-    /// Returns a string error message on failure.
-    pub async fn create_direct_chat(&self, api: &ApiClient, username: &str) -> Result<Uuid, String> {
-        let resp = api
-            .create_direct_chat(username)
-            .await
-            .map_err(|e| format!("{e}"))?;
+    /// Returns the API error so the UI can map it to a readable message
+    /// (404 — no such user, 400 — self-chat / target has no devices).
+    pub async fn create_direct_chat(
+        &self,
+        api: &ApiClient,
+        username: &str,
+    ) -> Result<Uuid, messenger_core::api::ApiError> {
+        let resp = api.create_direct_chat(username).await?;
         // Cache the target username for this group before reload
         self.display_name_cache
             .update(|cache| {
@@ -228,9 +230,7 @@ impl ChatsState {
             });
         self.persist_cache();
         // Reload chats from server to include the new group
-        self.load_from_server(api)
-            .await
-            .map_err(|e| format!("{e}"))?;
+        self.load_from_server(api).await?;
         Ok(resp.group_id)
     }
 
