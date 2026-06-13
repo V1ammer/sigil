@@ -16,7 +16,7 @@ pub enum DeliveryStatus {
 }
 
 /// High-level message kind used for UI rendering.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum MessageKind {
     Text,
     Voice,
@@ -27,7 +27,7 @@ pub enum MessageKind {
 }
 
 /// Decrypted message body.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum MessageBody {
     Text(String),
     Voice {

@@ -191,6 +191,65 @@ fn set_chat_unread(group_id: Uuid, count: u32) {
     });
 }
 
+// --- Own message bodies / deletes (localStorage) ---
+//
+// MLS can't decrypt our OWN messages, so on a refresh `convert_one` can't
+// recover the content of messages we sent (edits revert to the original text,
+// images/files lose their attachment id+key). We cache the rendered body of our
+// own messages locally and re-apply it while converting, so our own content
+// (text, edits, images, files, videos) survives reloads.
+const OWN_MSGS_KEY: &str = "messenger_own_msgs";
+const OWN_DELETES_KEY: &str = "messenger_own_deletes";
+
+fn local_storage() -> Option<web_sys::Storage> {
+    web_sys::window().and_then(|w| w.local_storage().ok().flatten())
+}
+
+type OwnBody = (crate::state::messages::MessageKind, MessageBody);
+
+fn own_msgs_load() -> std::collections::HashMap<Uuid, OwnBody> {
+    local_storage()
+        .and_then(|s| s.get_item(OWN_MSGS_KEY).ok().flatten())
+        .and_then(|j| serde_json::from_str::<Vec<(String, OwnBody)>>(&j).ok())
+        .map(|v| {
+            v.into_iter()
+                .filter_map(|(k, b)| k.parse::<Uuid>().ok().map(|id| (id, b)))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn own_msgs_record(id: Uuid, kind: crate::state::messages::MessageKind, body: MessageBody) {
+    let mut map = own_msgs_load();
+    map.insert(id, (kind, body));
+    if let Some(s) = local_storage() {
+        let v: Vec<(String, OwnBody)> = map.into_iter().map(|(k, b)| (k.to_string(), b)).collect();
+        if let Ok(j) = serde_json::to_string(&v) {
+            let _ = s.set_item(OWN_MSGS_KEY, &j);
+        }
+    }
+}
+
+fn own_deletes_load() -> std::collections::HashSet<Uuid> {
+    local_storage()
+        .and_then(|s| s.get_item(OWN_DELETES_KEY).ok().flatten())
+        .and_then(|j| serde_json::from_str::<Vec<String>>(&j).ok())
+        .map(|v| v.into_iter().filter_map(|k| k.parse::<Uuid>().ok()).collect())
+        .unwrap_or_default()
+}
+
+fn own_deletes_record(id: Uuid) {
+    let mut set = own_deletes_load();
+    if set.insert(id) {
+        if let Some(s) = local_storage() {
+            let v: Vec<String> = set.iter().map(ToString::to_string).collect();
+            if let Ok(j) = serde_json::to_string(&v) {
+                let _ = s.set_item(OWN_DELETES_KEY, &j);
+            }
+        }
+    }
+}
+
 /// Whether the user shares read receipts (privacy setting, default on).
 fn read_receipts_enabled() -> bool {
     web_sys::window()
@@ -637,6 +696,11 @@ impl MessageService {
                     Some(preview_from_body(&MessageBody::Text(text.to_string()))),
                     Some(MessageKind::Text),
                 );
+                own_msgs_record(
+                    resp.message_id,
+                    MessageKind::Text,
+                    MessageBody::Text(text.to_string()),
+                );
                 Some(resp.message_id)
             }
             Err(e) => {
@@ -740,6 +804,15 @@ impl MessageService {
         finalize_attachment_retrying(&api, upload.attachment_id, resp.message_id).await;
 
         // 5. Optimistic local insert.
+        let voice_body = MessageBody::Voice {
+            attachment_id: upload.attachment_id,
+            decryption_key: key.to_vec(),
+            duration_ms: payload.duration_ms,
+            waveform: payload.waveform,
+            transcription: None,
+        };
+        // Cache our own voice body so it survives refreshes (no MLS self-decrypt).
+        own_msgs_record(resp.message_id, MessageKind::Voice, voice_body.clone());
         self.messages.by_group.update(|map| {
             map.entry(group_id).or_default().push(DisplayMessage {
                 id: resp.message_id,
@@ -749,13 +822,7 @@ impl MessageService {
                 sender_device_id: Uuid::nil(),
                 sender_display_name: me.clone(),
                 kind: MessageKind::Voice,
-                body: MessageBody::Voice {
-                    attachment_id: upload.attachment_id,
-                    decryption_key: key.to_vec(),
-                    duration_ms: payload.duration_ms,
-                    waveform: payload.waveform,
-                    transcription: None,
-                },
+                body: voice_body,
                 reply_to_message_id: None,
                 thread_root_id: None,
                 created_at: now,
@@ -944,6 +1011,9 @@ impl MessageService {
         // Reconcile the optimistic bubble in place: real id, real body (with the
         // attachment id), and a delivered/sent status replacing the spinner.
         let preview = Some(preview_from_body(&local_body));
+        // Cache our own attachment body so it survives refreshes — MLS can't
+        // decrypt our own message to recover the attachment id+key.
+        own_msgs_record(resp.message_id, kind_for_display, local_body.clone());
         self.messages.by_group.update(|map| {
             if let Some(list) = map.get_mut(&group_id) {
                 if let Some(m) = list.iter_mut().find(|m| m.client_message_id == client_message_id) {
@@ -1213,10 +1283,16 @@ impl MessageService {
             tracing::warn!(%original_id, error = %e, "failed to mark message as edited");
         }
 
-        // Optimistic: reflect the edit on the original bubble right away (the
-        // EditNotice is never inserted locally, so nothing appears as a new
-        // message). A later refresh reconciles via the server state.
+        // Remember our own edit so it survives refreshes — we can't decrypt our
+        // own EditNotice to re-derive it from the server.
         let new_text = new_text.to_string();
+        own_msgs_record(
+            original_id,
+            crate::state::messages::MessageKind::Text,
+            MessageBody::Text(new_text.clone()),
+        );
+
+        // Optimistic: reflect the edit on the original bubble right away.
         self.messages.by_group.update(|map| {
             if let Some(list) = map.get_mut(&group_id) {
                 if let Some(m) = list.iter_mut().find(|m| m.id == original_id) {
@@ -1288,6 +1364,9 @@ impl MessageService {
 
         match api.update_message_state(message_id, &state_req).await {
             Ok(_) => {
+                // Remember our own delete so it survives refreshes (we can't
+                // decrypt our own DeleteNotice).
+                own_deletes_record(message_id);
                 // Update local state
                 self.messages.by_group.update(|map| {
                     if let Some(msgs) = map.get_mut(&group_id) {
@@ -1517,19 +1596,27 @@ impl MessageService {
                 Converted::Drop => {}
             }
         }
-        // Apply edits/deletes in place so the edit shows on the original message
-        // instead of appearing as a separate new message.
-        if !edits.is_empty() || !deletes.is_empty() {
-            for m in &mut result {
-                if let Some((text, at)) = edits.get(&m.id) {
-                    m.body = MessageBody::Text(text.clone());
-                    if m.edited_at.is_none() {
-                        m.edited_at = Some(*at);
-                    }
+        // Our own messages can't be recovered from MLS on refresh (no
+        // self-decrypt), so re-apply their cached body, our edits, and deletes.
+        let own_msgs = own_msgs_load();
+        let own_deletes = own_deletes_load();
+
+        for m in &mut result {
+            // Own message body cache wins (image/file/video attachment data,
+            // own text) — but an edit on top of it still applies below.
+            if let Some((kind, body)) = own_msgs.get(&m.id) {
+                m.kind = *kind;
+                m.body = body.clone();
+            }
+            // Edit: from our local record (own edit) or a peer's EditNotice.
+            if let Some((text, at)) = edits.get(&m.id) {
+                m.body = MessageBody::Text(text.clone());
+                if m.edited_at.is_none() {
+                    m.edited_at = Some(*at);
                 }
-                if deletes.contains(&m.id) && m.deleted_at.is_none() {
-                    m.deleted_at = Some(m.created_at);
-                }
+            }
+            if (deletes.contains(&m.id) || own_deletes.contains(&m.id)) && m.deleted_at.is_none() {
+                m.deleted_at = Some(m.created_at);
             }
         }
         result
