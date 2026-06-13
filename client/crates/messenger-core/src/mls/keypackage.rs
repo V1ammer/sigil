@@ -141,8 +141,10 @@ fn now_secs() -> i64 {
     }
     #[cfg(target_arch = "wasm32")]
     {
-        // On wasm we don't generate key packages directly; this is a placeholder.
-        0
+        // Device provisioning generates key packages on wasm too — a 0 here
+        // would stamp not_before at the epoch and make the package look
+        // long-expired. Use the real wall clock.
+        (js_sys::Date::now() / 1000.0) as i64
     }
 }
 

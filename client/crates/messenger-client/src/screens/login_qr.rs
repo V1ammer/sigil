@@ -176,11 +176,8 @@ pub fn LoginQrScreen() -> impl IntoView {
                 }
             }
 
-            // Set countdown
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs() as i64;
+            // Set countdown (now_secs is WASM-safe; SystemTime panics on wasm32).
+            let now = messenger_core::api::signing::now_secs();
             let remaining = (prov_resp.expires_at - now).max(0).min(300) as i32;
             tl.set(remaining);
 

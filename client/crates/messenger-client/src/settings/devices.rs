@@ -74,7 +74,7 @@ struct DeviceRowData {
 #[must_use]
 #[component]
 pub fn DevicesSettings() -> impl IntoView {
-    let _i18n = use_context::<I18n>().expect("I18n must be provided");
+    let i18n = use_context::<I18n>().expect("I18n must be provided");
     let session = use_session();
     let notifications = use_context::<NotificationsState>()
         .expect("NotificationsState must be provided");
@@ -138,11 +138,14 @@ pub fn DevicesSettings() -> impl IntoView {
         let st = step;
         let sess = session.clone();
         let nf = notifications.clone();
+        // t!() panics inside the spawn_local below (no leptos owner).
+        let i18n = i18n.clone();
         move |_| {
             if let Some(qr_text) = qr_decode_trigger.get() {
                 let st = st;
                 let sess = sess.clone();
                 let nf = nf.clone();
+                let i18n = i18n.clone();
                 spawn_local(async move {
                     // Parse QR payload
                     let qr = match decode_qr(&qr_text) {
@@ -164,8 +167,8 @@ pub fn DevicesSettings() -> impl IntoView {
                         }));
                     if let Some(url) = current_url {
                         if qr.server_url != url && !qr.server_url.is_empty() {
-                            st.set(ProvisioningStep::Error(t!("scan.error.wrongServer").to_string()));
-                            nf.push(ToastKind::Error, t!("scan.error.wrongServer"));
+                            st.set(ProvisioningStep::Error(i18n.t("scan.error.wrongServer")));
+                            nf.push(ToastKind::Error, i18n.t("scan.error.wrongServer"));
                             return;
                         }
                     }
@@ -174,8 +177,8 @@ pub fn DevicesSettings() -> impl IntoView {
                     let current_uid = sess.current_user_id();
                     if let Some(uid) = current_uid {
                         if qr.user_id != uid {
-                            st.set(ProvisioningStep::Error(t!("scan.error.wrongUser").to_string()));
-                            nf.push(ToastKind::Error, t!("scan.error.wrongUser"));
+                            st.set(ProvisioningStep::Error(i18n.t("scan.error.wrongUser")));
+                            nf.push(ToastKind::Error, i18n.t("scan.error.wrongUser"));
                             return;
                         }
                     }
@@ -207,19 +210,22 @@ pub fn DevicesSettings() -> impl IntoView {
         let nf = notifications.clone();
         let devs = devices;
         let st = step;
+        // Captured handle: t!() panics inside spawn_local (no leptos owner).
+        let i18n = i18n.clone();
         move |_| {
             if st.get() == ProvisioningStep::Approving {
                 let sess = sess.clone();
                 let nf = nf.clone();
                 let devs = devs;
                 let st = st;
+                let i18n = i18n.clone();
 
                 #[cfg(any(feature = "native", feature = "wasm-mls"))]
                 spawn_local(async move {
                     // AGE bootstrap encryption runs in the native Tauri backend
                     // (via tauri_bridge); a plain browser has no such backend.
                     if !crate::tauri_bridge::is_tauri_context() {
-                        let msg = t!("scan.error.browserOnly").to_string();
+                        let msg = i18n.t("scan.error.browserOnly");
                         nf.push(ToastKind::Error, msg.clone());
                         st.set(ProvisioningStep::Error(msg));
                         return;
@@ -256,15 +262,15 @@ pub fn DevicesSettings() -> impl IntoView {
                         Ok(req) => {
                             if req.status != "pending" {
                                 st.set(ProvisioningStep::Error(
-                                    t!("scan.error.expired").to_string()
+                                    i18n.t("scan.error.expired")
                                 ));
-                                nf.push(ToastKind::Warning, t!("scan.error.expired"));
+                                nf.push(ToastKind::Warning, i18n.t("scan.error.expired"));
                                 return;
                             }
                         }
                         Err(e) => {
                             st.set(ProvisioningStep::Error(format!("{e}")));
-                            nf.push(ToastKind::Error, format!("{}: {e}", t!("error.network")));
+                            nf.push(ToastKind::Error, format!("{}: {e}", i18n.t("error.network")));
                             return;
                         }
                     }
@@ -332,10 +338,9 @@ pub fn DevicesSettings() -> impl IntoView {
 
                     // ── Step C: Create device_authorization_signature ──
                     // msg = new_device_signing_pk || new_device_hpke_pk || ts_le
-                    let ts = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs() as i64;
+                    // now_secs() is WASM-safe; std::time::SystemTime panics on
+                    // wasm32 ("time not implemented on this platform").
+                    let ts = messenger_core::api::signing::now_secs();
                     let ts_bytes = ts.to_le_bytes();
                     let mut auth_msg = Vec::new();
                     auth_msg.extend_from_slice(&new_device_signing_pk);
@@ -399,7 +404,7 @@ pub fn DevicesSettings() -> impl IntoView {
                         }
                     }
 
-                    nf.push(ToastKind::Success, t!("scan.success"));
+                    nf.push(ToastKind::Success, i18n.t("scan.success"));
 
                     // Refresh device list
                     if let Some(client) = build_api_client() {
@@ -470,10 +475,7 @@ pub fn DevicesSettings() -> impl IntoView {
                 rev.set(true);
 
                 // Build revocation signature: sign "revoke:<device_id>:<ts>"
-                let ts = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs() as i64;
+                let ts = messenger_core::api::signing::now_secs();
                 let mut msg = b"revoke:".to_vec();
                 msg.extend_from_slice(device_id.to_string().as_bytes());
                 msg.push(b':');
