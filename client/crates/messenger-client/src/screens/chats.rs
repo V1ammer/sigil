@@ -355,6 +355,18 @@ pub fn ChatsScreen() -> impl IntoView {
                         Box::new(move || {
                             cs.delete_chat(group_id);
                             svc.clear_conversation(group_id);
+                            // Server-side delete: drop the group, its messages
+                            // and attachments so nothing can be restored and a
+                            // re-created chat with the same person starts empty.
+                            spawn_local(async move {
+                                if let Some(api) = build_api_client() {
+                                    if let Err(e) = api.delete_group(group_id).await {
+                                        web_sys::console::warn_1(
+                                            &format!("[delete_group] {e}").into(),
+                                        );
+                                    }
+                                }
+                            });
                             selected.set(None);
                             crate::state::back_stack::pop();
                         }) as Box<dyn Fn() + Send + Sync + 'static>

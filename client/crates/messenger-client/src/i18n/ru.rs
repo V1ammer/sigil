@@ -470,7 +470,7 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.account.safetyHint", "Сверьте safety number при личной встрече");
     m.insert("settings.account.safetyNumber", "Safety Number");
     m.insert("settings.account.title", "Аккаунт");
-    m.insert("settings.account.usernameHint", "Username нельзя изменить");
+    m.insert("settings.account.usernameHint", "По этому имени вас находят другие пользователи");
 
 
     // Sidebar

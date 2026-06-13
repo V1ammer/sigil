@@ -24,6 +24,17 @@ impl ApiClient {
         self.send("POST", "/v1/groups/create-direct", Some(&req)).await
     }
 
+    /// Delete a group (chat) and all its messages and attachments server-side.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ApiError` on network failure, if the group is missing (404), or
+    /// if the caller isn't a member (403).
+    pub async fn delete_group(&self, group_id: Uuid) -> Result<(), ApiError> {
+        let path = format!("/v1/groups/{group_id}");
+        self.send::<(), ()>("DELETE", &path, None).await
+    }
+
     /// List groups the authenticated user belongs to.
     ///
     /// # Errors

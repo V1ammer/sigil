@@ -281,7 +281,7 @@ pub fn AccountSettings() -> impl IntoView {
                 <AvatarPicker value=avatar_sig size_class="h-16 w-16"/>
                 <div class="space-y-1">
                     <p class="text-sm font-medium text-foreground">{move || display_name.get()}</p>
-                    <p class="text-xs text-muted-foreground">@{username.get()}</p>
+                    <p class="text-xs text-muted-foreground">{move || format!("@{}", username.get())}</p>
                     {move || avatar_sig.get().map(|_| view! {
                         <Button
                             variant=Signal::derive(move || ButtonVariant::Outline)
@@ -306,34 +306,33 @@ pub fn AccountSettings() -> impl IntoView {
                 <p class="text-xs text-muted-foreground">{t!("settings.account.displayNameHint")}</p>
             </div>
 
-            // Username (readonly)
+            // Username — shown reactively (updates the moment it's changed) with
+            // a Change button. It's editable via the dialog, so no "can't be
+            // changed" copy here.
             <div class="space-y-2">
                 <Label class="text-foreground">{t!("settings.account.username")}</Label>
-                <Input
-                    value=username.get()
-                    disabled=Signal::derive(move || true)
-                />
-                <p class="text-xs text-muted-foreground">{t!("settings.account.usernameHint")}</p>
-            </div>
-
-            // Change username button
-            <div>
-                <Button
-                    variant=Signal::derive(move || ButtonVariant::Outline)
-                    on_click=Box::new({
-                        let notifications = notifications.clone();
-                        move |_| {
-                            if identity.is_none() {
-                                notifications.push(ToastKind::Error, t!("settings.account.notAuthenticated"));
-                                return;
+                <div class="flex items-center gap-2">
+                    <div class="flex h-10 flex-1 items-center rounded-md border border-input bg-muted px-3 text-sm text-foreground">
+                        {move || format!("@{}", username.get())}
+                    </div>
+                    <Button
+                        variant=Signal::derive(move || ButtonVariant::Outline)
+                        on_click=Box::new({
+                            let notifications = notifications.clone();
+                            move |_| {
+                                if identity.is_none() {
+                                    notifications.push(ToastKind::Error, t!("settings.account.notAuthenticated"));
+                                    return;
+                                }
+                                show_change_username.set(true);
+                                new_username.set(String::new());
                             }
-                            show_change_username.set(true);
-                            new_username.set(String::new());
-                        }
-                    })
-                >
-                    {t!("settings.account.changeUsername")}
-                </Button>
+                        })
+                    >
+                        {t!("settings.account.changeUsername")}
+                    </Button>
+                </div>
+                <p class="text-xs text-muted-foreground">{t!("settings.account.usernameHint")}</p>
             </div>
 
             // Bio (locally editable)

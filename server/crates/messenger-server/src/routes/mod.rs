@@ -117,6 +117,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/v1/groups", post(mls::create_group))
         .route("/v1/groups/create-direct", post(mls::create_direct_chat))
         .route("/v1/groups/me", get(mls::list_my_groups))
+        .route("/v1/groups/:id", delete(mls::delete_group))
         .route("/v1/groups/:id/members", get(mls::get_group_members))
         .route("/v1/groups/:id/commit", post(mls::post_commit))
         .route("/v1/groups/:id/messages", get(mls::pull_messages))

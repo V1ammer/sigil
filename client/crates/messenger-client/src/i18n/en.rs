@@ -470,7 +470,7 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.account.safetyHint", "Compare safety number in person");
     m.insert("settings.account.safetyNumber", "Safety Number");
     m.insert("settings.account.title", "Account");
-    m.insert("settings.account.usernameHint", "Username cannot be changed");
+    m.insert("settings.account.usernameHint", "Other people find you by this name");
 
 
     // Sidebar

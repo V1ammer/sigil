@@ -832,3 +832,78 @@ async fn test_download_unfinalized_by_uploader() {
     let body = resp.bytes().await.unwrap().to_vec();
     assert_eq!(body, data);
 }
+
+// ─── Group deletion ───
+
+async fn authed_delete(ctx: &TestContext, path: &str) -> reqwest::Response {
+    let client = reqwest::Client::builder().no_proxy().build().unwrap();
+    let body = vec![];
+    let auth_header = make_auth_header(ctx, "DELETE", path, &body);
+    client
+        .delete(format!("http://{}{}", ctx.addr, path))
+        .header("x-auth-signature", &auth_header)
+        .send()
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn test_delete_group_removes_messages_and_attachments() {
+    let db = fresh_db().await;
+    let (ctx_a, _ctx_b, group_id) = setup_two_users_context(db).await;
+
+    // Upload + message + finalize → a finalized attachment bound to the group.
+    let data = vec![0xCDu8; 1000];
+    let resp = authed_upload(&ctx_a, data.clone(), "1000", "0").await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = resp.bytes().await.unwrap();
+    let upload_resp: UploadAttachmentResponse = rmp_serde::from_slice(&body).unwrap();
+
+    let msg_id = Uuid::now_v7();
+    create_message(&ctx_a, group_id, msg_id).await;
+    let req = FinalizeAttachmentRequest { message_id: msg_id };
+    let req_body = rmp_serde::to_vec_named(&req).unwrap();
+    let resp = authed_post_msgpack(
+        &ctx_a,
+        "POST",
+        &format!("/v1/attachments/{}/finalize", upload_resp.attachment_id),
+        req_body,
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    // Delete the group as a member.
+    let resp = authed_delete(&ctx_a, &format!("/v1/groups/{group_id}")).await;
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    // Group, messages, attachment row and memberships are all gone.
+    let g = messenger_entity::mls_groups::Entity::find_by_id(group_id)
+        .one(&ctx_a.state.db)
+        .await
+        .unwrap();
+    assert!(g.is_none(), "group row should be deleted");
+    let m = messenger_entity::mls_messages::Entity::find_by_id(msg_id)
+        .one(&ctx_a.state.db)
+        .await
+        .unwrap();
+    assert!(m.is_none(), "message should be cascade-deleted");
+    let a = messenger_entity::attachments::Entity::find_by_id(upload_resp.attachment_id)
+        .one(&ctx_a.state.db)
+        .await
+        .unwrap();
+    assert!(a.is_none(), "attachment row should be explicitly deleted");
+    let members = messenger_entity::mls_group_members::Entity::find()
+        .filter(messenger_entity::mls_group_members::Column::GroupId.eq(group_id))
+        .all(&ctx_a.state.db)
+        .await
+        .unwrap();
+    assert!(members.is_empty(), "memberships should be cascade-deleted");
+}
+
+#[tokio::test]
+async fn test_delete_group_not_found() {
+    let db = fresh_db().await;
+    let (ctx_a, _ctx_b, _group_id) = setup_two_users_context(db).await;
+    let resp = authed_delete(&ctx_a, &format!("/v1/groups/{}", Uuid::now_v7())).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}

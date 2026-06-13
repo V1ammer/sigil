@@ -42,6 +42,7 @@ use uuid::Uuid;
 
 use axum::response::IntoResponse;
 
+use crate::attachments::StoredRef;
 use crate::auth::middleware::CurrentAuth;
 use crate::error::{decode_body, typed_response, AppError};
 use crate::routes::ws::{notify_message_to_group, notify_welcome};
@@ -495,6 +496,83 @@ pub struct CreateDirectChatRequest {
 /// - `404` — target пользователь не найден или не active.
 /// - `500` — ошибка БД.
 #[allow(clippy::cast_possible_wrap)]
+/// Удаление группы (чата) вместе со всеми сообщениями и вложениями.
+///
+/// Authorization: запрашивающий должен быть участником группы.
+///
+/// Удаление строки `mls_groups` каскадит (ON DELETE CASCADE) на mls_messages,
+/// members, devices, welcomes и — через messages — на reactions, receipts,
+/// message_states. Вложения висят на message_id с ON DELETE SET NULL, поэтому
+/// их файлы и строки удаляются явно (иначе блобы осиротеют на диске).
+///
+/// После удаления `create_direct_chat` с тем же собеседником больше не найдёт
+/// общую активную группу и создаст новую пустую.
+///
+/// # Errors
+///
+/// - `404` — группа не найдена.
+/// - `403` — запрашивающий не участник группы.
+/// - `500` — ошибка БД или ввода-вывода.
+pub async fn delete_group(
+    State(state): State<AppState>,
+    CurrentAuth(ctx): CurrentAuth,
+    Path(id): Path<Uuid>,
+) -> Result<Response, AppError> {
+    // 1. Группа существует.
+    mls_groups::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    // 2. Запрашивающий — участник (активный или вышедший).
+    let membership = mls_group_members::Entity::find()
+        .filter(mls_group_members::Column::GroupId.eq(id))
+        .filter(mls_group_members::Column::UserId.eq(ctx.user.id))
+        .one(&state.db)
+        .await?;
+    if membership.is_none() {
+        return Err(AppError::GroupMembershipRequired);
+    }
+
+    // 3. Явно удалить вложения группы (файлы + строки): attachments → messages
+    //    идёт через SET NULL, каскад их не заберёт.
+    let messages = mls_messages::Entity::find()
+        .filter(mls_messages::Column::GroupId.eq(id))
+        .all(&state.db)
+        .await?;
+    let message_ids: Vec<Uuid> = messages.iter().map(|m| m.id).collect();
+    if !message_ids.is_empty() {
+        let atts = messenger_entity::attachments::Entity::find()
+            .filter(messenger_entity::attachments::Column::MessageId.is_in(message_ids))
+            .all(&state.db)
+            .await?;
+        for a in &atts {
+            if let Some(ref sref_str) = a.storage_ref {
+                #[allow(clippy::cast_sign_loss)]
+                let sref = StoredRef::OnDisk {
+                    relative_path: std::path::PathBuf::from(sref_str),
+                    size: a.padded_size as u64,
+                };
+                if let Err(e) = state.storage.delete(&sref).await {
+                    tracing::warn!(
+                        attachment_id = %a.id,
+                        error = ?e,
+                        "delete_group: failed to delete attachment file"
+                    );
+                }
+            }
+            messenger_entity::attachments::Entity::delete_by_id(a.id)
+                .exec(&state.db)
+                .await?;
+        }
+    }
+
+    // 4. Удалить группу — каскад заберёт всё остальное.
+    mls_groups::Entity::delete_by_id(id).exec(&state.db).await?;
+
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
 pub async fn create_direct_chat(
     State(state): State<AppState>,
     headers: HeaderMap,
