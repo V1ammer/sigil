@@ -484,16 +484,19 @@ pub fn DevicesSettings() -> impl IntoView {
 
                 rev.set(true);
 
-                // Build revocation signature: sign "revoke:<device_id>:<ts>"
+                // Build revocation signature over the SAME bytes the server
+                // verifies: "revoke:" || device_id raw bytes || ":" || ts string.
+                // (Previously signed the UUID *string*, which never matched.)
                 let ts = messenger_core::api::signing::now_secs();
                 let mut msg = b"revoke:".to_vec();
-                msg.extend_from_slice(device_id.to_string().as_bytes());
+                msg.extend_from_slice(device_id.as_bytes());
                 msg.push(b':');
                 msg.extend_from_slice(ts.to_string().as_bytes());
                 let revocation_signature = identity.identity_signing_key.sign(&msg);
 
                 let req = messenger_proto::users::RevokeDeviceRequest {
                     revocation_signature: revocation_signature.to_vec(),
+                    revocation_timestamp: ts,
                 };
 
                 match api.revoke_device(device_id, &req).await {

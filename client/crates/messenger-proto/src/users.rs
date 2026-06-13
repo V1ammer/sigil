@@ -35,8 +35,13 @@ pub struct ListDevicesResponse {
 }
 
 /// Request to revoke a device.
+///
+/// `revocation_signature = Ed25519(identity_sk, "revoke:" || device_id_bytes
+/// || ":" || ts_string)` — `device_id_bytes` is the raw 16-byte UUID, and the
+/// server requires `revocation_timestamp` (±300s window).
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RevokeDeviceRequest {
     #[serde(with = "serde_bytes")]
     pub revocation_signature: Vec<u8>,
+    pub revocation_timestamp: i64,
 }
