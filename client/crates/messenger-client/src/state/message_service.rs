@@ -181,6 +181,13 @@ const READ_ACKED_PREFIX: &str = "messenger_read_acked_";
 /// Highest foreign message id the user has actually seen (chat opened). Drives
 /// the sidebar unread badge independently of read-receipt settings.
 const SEEN_PREFIX: &str = "messenger_seen_";
+/// Highest message id cleared by a chat deletion. The server has no delete
+/// endpoint and dedups direct chats to the same group, so without this a
+/// "deleted" chat restores its whole history the moment it's re-created. We
+/// record `now_v7()` at delete time (greater than every existing UUIDv7 id) and
+/// drop anything at or below it when materializing messages — the re-created
+/// chat opens empty and only messages sent afterward appear.
+const CLEARED_PREFIX: &str = "messenger_cleared_";
 
 /// Update a chat's unread badge through the thread-local `ChatsState`.
 fn set_chat_unread(group_id: Uuid, count: u32) {
@@ -219,15 +226,20 @@ fn own_msgs_load() -> std::collections::HashMap<Uuid, OwnBody> {
         .unwrap_or_default()
 }
 
-fn own_msgs_record(id: Uuid, kind: crate::state::messages::MessageKind, body: MessageBody) {
-    let mut map = own_msgs_load();
-    map.insert(id, (kind, body));
+fn own_msgs_store(map: &std::collections::HashMap<Uuid, OwnBody>) {
     if let Some(s) = local_storage() {
-        let v: Vec<(String, OwnBody)> = map.into_iter().map(|(k, b)| (k.to_string(), b)).collect();
+        let v: Vec<(String, OwnBody)> =
+            map.iter().map(|(k, b)| (k.to_string(), b.clone())).collect();
         if let Ok(j) = serde_json::to_string(&v) {
             let _ = s.set_item(OWN_MSGS_KEY, &j);
         }
     }
+}
+
+fn own_msgs_record(id: Uuid, kind: crate::state::messages::MessageKind, body: MessageBody) {
+    let mut map = own_msgs_load();
+    map.insert(id, (kind, body));
+    own_msgs_store(&map);
 }
 
 fn own_deletes_load() -> std::collections::HashSet<Uuid> {
@@ -238,15 +250,19 @@ fn own_deletes_load() -> std::collections::HashSet<Uuid> {
         .unwrap_or_default()
 }
 
+fn own_deletes_store(set: &std::collections::HashSet<Uuid>) {
+    if let Some(s) = local_storage() {
+        let v: Vec<String> = set.iter().map(ToString::to_string).collect();
+        if let Ok(j) = serde_json::to_string(&v) {
+            let _ = s.set_item(OWN_DELETES_KEY, &j);
+        }
+    }
+}
+
 fn own_deletes_record(id: Uuid) {
     let mut set = own_deletes_load();
     if set.insert(id) {
-        if let Some(s) = local_storage() {
-            let v: Vec<String> = set.iter().map(ToString::to_string).collect();
-            if let Ok(j) = serde_json::to_string(&v) {
-                let _ = s.set_item(OWN_DELETES_KEY, &j);
-            }
-        }
+        own_deletes_store(&set);
     }
 }
 
@@ -368,6 +384,43 @@ impl MessageService {
                 web_sys::console::error_1(&format!("[init_mls] storage init failed: {e}").into());
             }
         }
+    }
+
+    /// Permanently clear a chat's conversation locally.
+    ///
+    /// Records a "cleared" watermark (`now_v7()`, above every existing message
+    /// id) so the server-deduped group re-opens empty when the chat is created
+    /// again, drops the in-memory messages, and forgets cached own-message
+    /// bodies so nothing of the old conversation can be re-applied. The server
+    /// keeps the encrypted blobs (no delete endpoint), but they're filtered out
+    /// on every future materialization.
+    pub fn clear_conversation(&self, group_id: Uuid) {
+        let cleared_after = Uuid::now_v7();
+        marker_max(CLEARED_PREFIX, group_id, cleared_after);
+        // Forget own-message bodies for this group's messages (those whose id is
+        // at/below the watermark) so the cache can't resurrect cleared content.
+        let stale: Vec<Uuid> = self
+            .messages
+            .by_group
+            .with_untracked(|m| {
+                m.get(&group_id)
+                    .map(|list| list.iter().map(|d| d.id).collect())
+                    .unwrap_or_default()
+            });
+        if !stale.is_empty() {
+            let mut own = own_msgs_load();
+            let mut deletes = own_deletes_load();
+            let before = (own.len(), deletes.len());
+            own.retain(|id, _| !stale.contains(id));
+            deletes.retain(|id| !stale.contains(id));
+            if (own.len(), deletes.len()) != before {
+                own_msgs_store(&own);
+                own_deletes_store(&deletes);
+            }
+        }
+        self.messages.by_group.update(|m| {
+            m.remove(&group_id);
+        });
     }
 
     /// Fetch messages for a group from the server and update the reactive store.
@@ -1618,6 +1671,11 @@ impl MessageService {
             if (deletes.contains(&m.id) || own_deletes.contains(&m.id)) && m.deleted_at.is_none() {
                 m.deleted_at = Some(m.created_at);
             }
+        }
+        // Drop everything cleared by a prior chat deletion so a re-created
+        // (server-deduped) chat starts empty instead of restoring its history.
+        if let Some(cleared) = marker_get(CLEARED_PREFIX, group_id) {
+            result.retain(|m| m.id > cleared);
         }
         result
     }

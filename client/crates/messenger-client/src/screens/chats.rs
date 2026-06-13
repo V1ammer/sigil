@@ -340,21 +340,21 @@ pub fn ChatsScreen() -> impl IntoView {
                 let cs2 = chats_state.clone();
                 let on_mute_toggle = Box::new(move || cs2.toggle_mute(group_id)) as Box<dyn Fn() + Send + Sync + 'static>;
                 let on_mark_read_cb = Box::new(|| {}) as Box<dyn Fn() + Send + Sync + 'static>;
-                // Delete a chat: drop it from the local list and clear its
-                // messages, then leave the chat view. The server keeps the
-                // (deduped) group, so starting a chat with the same person
-                // again reopens it — create_direct_chat un-hides it.
+                // Delete a chat: drop it from the local list and permanently
+                // clear its conversation, then leave the chat view. The server
+                // keeps the (deduped) group and has no delete endpoint, so
+                // clear_conversation records a watermark — starting a chat with
+                // the same person again reopens it EMPTY instead of restoring
+                // the old history.
                 let make_delete = {
                     let cs = chats_state.clone();
-                    let ms = messages_state_for_inner.clone();
+                    let svc = message_service.clone();
                     move || {
                         let cs = cs.clone();
-                        let ms = ms.clone();
+                        let svc = svc.clone();
                         Box::new(move || {
                             cs.delete_chat(group_id);
-                            ms.by_group.update(|m| {
-                                m.remove(&group_id);
-                            });
+                            svc.clear_conversation(group_id);
                             selected.set(None);
                             crate::state::back_stack::pop();
                         }) as Box<dyn Fn() + Send + Sync + 'static>
