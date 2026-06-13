@@ -432,24 +432,29 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                     };
                     let ct = match api.download_attachment(attachment_id, None).await {
                         Ok(b) => b,
-                        Err(e) => { err.set(Some(format!("dl: {e}"))); return; }
+                        // Картинка удалена/недоступна (404/403) или сеть упала —
+                        // показываем понятную плашку, а не сырой текст ошибки.
+                        Err(e) => {
+                            tracing::warn!("image download failed (att {}): {e}", &attachment_id.to_string()[..8]);
+                            err.set(Some(t(l, "message.imageUnavailable").to_string()));
+                            return;
+                        }
                     };
                     let key_bytes = match base64::engine::general_purpose::STANDARD.decode(&key_b64) {
                         Ok(b) if b.len() == 32 => b,
-                        _ => { err.set(Some("bad key".into())); return; }
+                        _ => { err.set(Some(t(l, "message.imageUnavailable").to_string())); return; }
                     };
                     let mut key = [0u8; 32];
                     key.copy_from_slice(&key_bytes);
                     let plain = match messenger_core::attachment_crypto::decrypt_attachment(&key, &ct) {
                         Ok(p) => p,
                         Err(e) => {
-                            // Включаем контекст: по id и длине шифртекста можно
-                            // сопоставить с серверной стороной при разборе.
-                            err.set(Some(format!(
-                                "decrypt: {e:?} (att {}, ct {} B)",
+                            tracing::warn!(
+                                "image decrypt failed (att {}, ct {} B): {e:?}",
                                 &attachment_id.to_string()[..8],
                                 ct.len()
-                            )));
+                            );
+                            err.set(Some(t(l, "message.imageUnavailable").to_string()));
                             return;
                         }
                     };

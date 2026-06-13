@@ -108,6 +108,7 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("message.recording", "Recording...");
     m.insert("message.emoji", "Emoji");
     m.insert("message.image", "Image");
+    m.insert("message.imageUnavailable", "Image unavailable");
     m.insert("message.video", "Video");
     m.insert("message.download", "Download");
     m.insert("message.react", "React");

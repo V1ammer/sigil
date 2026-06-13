@@ -55,6 +55,22 @@ impl ApiClient {
             ));
         }
         let resp = self.send_raw("GET", &path, extra, Vec::new()).await?;
+        // Без этой проверки тело ошибки (msgpack `{code: ...}`, ~20 байт)
+        // возвращалось бы как «шифртекст» и падало в decrypt с aead::Error.
+        // Проверяем статус и отдаём осмысленную ApiError::Api.
+        if resp.status >= 400 {
+            let err: messenger_proto::error::ApiErrorBody =
+                rmp_serde::from_slice(&resp.body).unwrap_or_else(|_| {
+                    messenger_proto::error::ApiErrorBody {
+                        code: format!("HTTP_{}", resp.status),
+                        details: None,
+                    }
+                });
+            return Err(ApiError::Api {
+                status: resp.status,
+                body: err,
+            });
+        }
         Ok(resp.body)
     }
 }
