@@ -33,6 +33,94 @@ fn cache_attachment_url(id: uuid::Uuid, url: &str) {
     });
 }
 
+/// Download + decrypt a media attachment (image/video) and expose it as a Blob
+/// object URL via `blob_url`. Reuses a cached URL across list rebuilds and
+/// retries the download to ride out the sender's upload→finalize race.
+fn load_media_blob(
+    attachment_id: Option<String>,
+    decryption_key: Option<String>,
+    mime: String,
+    blob_url: RwSignal<Option<String>>,
+    err: RwSignal<Option<String>>,
+    l: Language,
+) {
+    let cached = attachment_id
+        .as_ref()
+        .and_then(|s| s.parse::<uuid::Uuid>().ok())
+        .filter(|id| !id.is_nil())
+        .and_then(cached_attachment_url);
+    if let Some(url) = cached {
+        blob_url.set(Some(url));
+        return;
+    }
+    let (Some(aid), Some(key_b64)) = (attachment_id, decryption_key) else {
+        return;
+    };
+    leptos::task::spawn_local(async move {
+        use base64::Engine as _;
+        let Some(api) = crate::state::session::build_api_client() else {
+            err.set(Some("no api".into()));
+            return;
+        };
+        let Ok(attachment_id) = aid.parse::<uuid::Uuid>() else {
+            err.set(Some("bad id".into()));
+            return;
+        };
+        // Optimistic bubble while our own upload is in flight — no id yet.
+        if attachment_id.is_nil() {
+            return;
+        }
+        // Retry: recipient sees the message before the sender finalizes the
+        // attachment, so the server briefly 403s.
+        let backoffs_ms = [250u32, 500, 1000, 2000, 3000];
+        let mut ct: Option<Vec<u8>> = None;
+        for (attempt, delay) in std::iter::once(0u32).chain(backoffs_ms).enumerate() {
+            if delay > 0 {
+                gloo_timers::future::TimeoutFuture::new(delay).await;
+            }
+            match api.download_attachment(attachment_id, None).await {
+                Ok(b) => {
+                    ct = Some(b);
+                    break;
+                }
+                Err(e) => tracing::warn!(
+                    "media download attempt {} failed (att {}): {e}",
+                    attempt + 1,
+                    &attachment_id.to_string()[..8]
+                ),
+            }
+        }
+        let Some(ct) = ct else {
+            err.set(Some(t(l, "message.imageUnavailable").to_string()));
+            return;
+        };
+        let key_bytes = match base64::engine::general_purpose::STANDARD.decode(&key_b64) {
+            Ok(b) if b.len() == 32 => b,
+            _ => {
+                err.set(Some(t(l, "message.imageUnavailable").to_string()));
+                return;
+            }
+        };
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&key_bytes);
+        let Ok(plain) = messenger_core::attachment_crypto::decrypt_attachment(&key, &ct) else {
+            err.set(Some(t(l, "message.imageUnavailable").to_string()));
+            return;
+        };
+        let u8a = js_sys::Uint8Array::from(plain.as_slice());
+        let arr = js_sys::Array::new();
+        arr.push(&u8a.into());
+        let mut bag = web_sys::BlobPropertyBag::new();
+        bag.type_(&mime);
+        if let Ok(blob) = web_sys::Blob::new_with_u8_array_sequence_and_options(&arr, &bag) {
+            if let Ok(url) = web_sys::Url::create_object_url_with_blob(&blob) {
+                cache_attachment_url(attachment_id, &url);
+                blob_url.set(Some(url));
+            }
+        }
+    });
+}
+
 #[must_use]
 #[component]
 pub fn MessageItem(
@@ -438,97 +526,7 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
             let err: RwSignal<Option<String>> = RwSignal::new(None);
             let lightbox_open: RwSignal<bool> = RwSignal::new(false);
 
-            // Reuse a previously-decoded image instead of re-downloading on
-            // every list rebuild (which happens on each sent/received message).
-            let cached = attachment_id
-                .as_ref()
-                .and_then(|s| s.parse::<uuid::Uuid>().ok())
-                .filter(|id| !id.is_nil())
-                .and_then(cached_attachment_url);
-            // Auto-fetch and decrypt on first render. Caches the object URL.
-            if let Some(url) = cached {
-                blob_url.set(Some(url));
-            } else if let (Some(aid), Some(key_b64)) = (attachment_id, decryption_key) {
-                leptos::task::spawn_local(async move {
-                    use base64::Engine as _;
-                    let api = match crate::state::session::build_api_client() {
-                        Some(a) => a,
-                        None => { err.set(Some("no api".into())); return; }
-                    };
-                    let attachment_id = match aid.parse::<uuid::Uuid>() {
-                        Ok(u) => u,
-                        Err(_) => { err.set(Some("bad id".into())); return; }
-                    };
-                    // Optimistic bubble while our own image is still uploading:
-                    // no attachment id yet — stay in the spinner state instead of
-                    // trying to download a nil id. The real id arrives on reconcile.
-                    if attachment_id.is_nil() { return; }
-                    // Гонка отправителя: получатель видит сообщение сразу после
-                    // post_message, но attachment ещё не finalize'нут (message_id
-                    // = NULL) → сервер отдаёт 403, пока отправитель не довяжет.
-                    // Ретраим с возрастающей задержкой; finalize обычно успевает
-                    // за доли секунды. Если так и не стало доступно — плашка.
-                    let backoffs_ms = [250u32, 500, 1000, 2000, 3000];
-                    let mut ct: Option<Vec<u8>> = None;
-                    let mut last_err = String::new();
-                    for (attempt, delay) in std::iter::once(0u32).chain(backoffs_ms).enumerate() {
-                        if delay > 0 {
-                            gloo_timers::future::TimeoutFuture::new(delay).await;
-                        }
-                        match api.download_attachment(attachment_id, None).await {
-                            Ok(b) => { ct = Some(b); break; }
-                            Err(e) => {
-                                last_err = e.to_string();
-                                tracing::warn!(
-                                    "image download attempt {} failed (att {}): {e}",
-                                    attempt + 1,
-                                    &attachment_id.to_string()[..8]
-                                );
-                            }
-                        }
-                    }
-                    let ct = match ct {
-                        Some(b) => b,
-                        None => {
-                            tracing::warn!(
-                                "image download gave up (att {}): {last_err}",
-                                &attachment_id.to_string()[..8]
-                            );
-                            err.set(Some(t(l, "message.imageUnavailable").to_string()));
-                            return;
-                        }
-                    };
-                    let key_bytes = match base64::engine::general_purpose::STANDARD.decode(&key_b64) {
-                        Ok(b) if b.len() == 32 => b,
-                        _ => { err.set(Some(t(l, "message.imageUnavailable").to_string())); return; }
-                    };
-                    let mut key = [0u8; 32];
-                    key.copy_from_slice(&key_bytes);
-                    let plain = match messenger_core::attachment_crypto::decrypt_attachment(&key, &ct) {
-                        Ok(p) => p,
-                        Err(e) => {
-                            tracing::warn!(
-                                "image decrypt failed (att {}, ct {} B): {e:?}",
-                                &attachment_id.to_string()[..8],
-                                ct.len()
-                            );
-                            err.set(Some(t(l, "message.imageUnavailable").to_string()));
-                            return;
-                        }
-                    };
-                    let u8a = js_sys::Uint8Array::from(plain.as_slice());
-                    let arr = js_sys::Array::new();
-                    arr.push(&u8a.into());
-                    let mut bag = web_sys::BlobPropertyBag::new();
-                    bag.type_(&mime);
-                    if let Ok(blob) = web_sys::Blob::new_with_u8_array_sequence_and_options(&arr, &bag) {
-                        if let Ok(url) = web_sys::Url::create_object_url_with_blob(&blob) {
-                            cache_attachment_url(attachment_id, &url);
-                            blob_url.set(Some(url));
-                        }
-                    }
-                });
-            }
+            load_media_blob(attachment_id, decryption_key, mime, blob_url, err, l);
 
             let on_close_lightbox = Box::new(move || lightbox_open.set(false))
                 as Box<dyn Fn() + Send + Sync + 'static>;
@@ -572,34 +570,71 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
             }.into_any()
         }
         "video" => {
-            let mc = on_media_click.clone();
+            let _ = on_media_click.clone();
+            let attachment_id = msg.attachment_id.clone();
+            let decryption_key = msg.decryption_key.clone();
+            let mime = msg.mime_type.clone().unwrap_or_else(|| "video/mp4".into());
+            let blob_url: RwSignal<Option<String>> = RwSignal::new(None);
+            let err: RwSignal<Option<String>> = RwSignal::new(None);
+            // Click-to-load: don't download every video on render — only when the
+            // user taps play. Plays inline after download+decrypt.
+            let started: RwSignal<bool> = RwSignal::new(false);
+
             view! {
-                <button
-                    class="block overflow-hidden rounded-lg -mx-1 -mt-1 mb-1 relative"
-                    on:click=move |_| {
-                        if let Some(f) = mc.as_ref() { f(); }
-                    }
-                >
-                    <div class="aspect-video max-h-64 w-full bg-muted flex items-center justify-center">
-                        {if let Some(ref thumb) = msg.thumbnail_url {
-                            view! {
-                                <img src=thumb alt="Video" class="h-full w-full object-cover"/>
-                            }.into_any()
-                        } else {
-                            view! {
-                                <div class="flex flex-col items-center gap-2 text-muted-foreground">
-                                    <Icon name="film" class_name="h-8 w-8"/>
-                                    <span class="text-xs">{t(l, "message.video")}</span>
-                                </div>
-                            }.into_any()
+                <div class="block overflow-hidden rounded-lg -mx-1 -mt-1 mb-1">
+                    <div class="aspect-video max-h-64 w-full bg-black flex items-center justify-center">
+                        {move || {
+                            if !started.get() {
+                                let aid = attachment_id.clone();
+                                let key = decryption_key.clone();
+                                let m = mime.clone();
+                                view! {
+                                    <button
+                                        class="relative h-full w-full flex items-center justify-center"
+                                        on:click=move |_| {
+                                            started.set(true);
+                                            load_media_blob(aid.clone(), key.clone(), m.clone(), blob_url, err, l);
+                                        }
+                                    >
+                                        <div class="flex flex-col items-center gap-2 text-muted-foreground">
+                                            <Icon name="film" class_name="h-8 w-8"/>
+                                            <span class="text-xs">{t(l, "message.video")}</span>
+                                        </div>
+                                        <div class="absolute inset-0 flex items-center justify-center">
+                                            <div class="flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white">
+                                                <Icon name="play" class_name="h-6 w-6"/>
+                                            </div>
+                                        </div>
+                                    </button>
+                                }.into_any()
+                            } else if let Some(url) = blob_url.get() {
+                                view! {
+                                    <video
+                                        src=url
+                                        controls=true
+                                        autoplay=true
+                                        playsinline=true
+                                        class="h-full w-full object-contain bg-black"
+                                    />
+                                }.into_any()
+                            } else if let Some(e) = err.get() {
+                                view! {
+                                    <div class="flex flex-col items-center gap-1 text-destructive">
+                                        <Icon name="film" class_name="h-8 w-8"/>
+                                        <span class="text-[10px]">{e}</span>
+                                    </div>
+                                }.into_any()
+                            } else {
+                                view! {
+                                    <div class="flex flex-col items-center gap-2 text-muted-foreground">
+                                        <span class="h-8 w-8 inline-block rounded-full border-2 border-current border-t-transparent animate-spin"/>
+                                        <span class="text-xs">{t(l, "message.video")}</span>
+                                    </div>
+                                }.into_any()
+                            }
                         }}
-                        <div class="absolute inset-0 flex items-center justify-center">
-                            <div class="flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white">
-                                <Icon name="play" class_name="h-6 w-6"/>
-                            </div>
-                        </div>
                     </div>
-                </button>
+                </div>
             }.into_any()
         }
         "file" => {
