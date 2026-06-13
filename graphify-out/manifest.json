@@ -1,0 +1,1767 @@
+{
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/app.rs": {
+    "mtime": 1781050658.0396323,
+    "ast_hash": "632deaf1321ff8db72ec7bf87e1b5120",
+    "semantic_hash": "632deaf1321ff8db72ec7bf87e1b5120"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/chat/chat_header.rs": {
+    "mtime": 1779925198.4815161,
+    "ast_hash": "71e8c8030f370a9ad6dca6c1b301d815",
+    "semantic_hash": "71e8c8030f370a9ad6dca6c1b301d815"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/chat/image_lightbox.rs": {
+    "mtime": 1781063574.3901439,
+    "ast_hash": "1cfc7b2d8190f0990b3c96796436af51",
+    "semantic_hash": "1cfc7b2d8190f0990b3c96796436af51"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/chat/input_bar.rs": {
+    "mtime": 1781048901.4429038,
+    "ast_hash": "3bae7a52e77ccf9d516701cce4660198",
+    "semantic_hash": "3bae7a52e77ccf9d516701cce4660198"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/chat/media_viewer.rs": {
+    "mtime": 1779925188.4395678,
+    "ast_hash": "037e9613f46048dad51904c97519a76c",
+    "semantic_hash": "037e9613f46048dad51904c97519a76c"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/chat/message_bridge.rs": {
+    "mtime": 1781045942.1764603,
+    "ast_hash": "0caf240748fb667f1353d0ae50eee367",
+    "semantic_hash": "0caf240748fb667f1353d0ae50eee367"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/chat/message_item.rs": {
+    "mtime": 1781066087.7709744,
+    "ast_hash": "07be5d69c6a1e49ac50e9410dfe79e94",
+    "semantic_hash": "07be5d69c6a1e49ac50e9410dfe79e94"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/chat/message_list.rs": {
+    "mtime": 1781052298.4995193,
+    "ast_hash": "69c9d47ab69218a869fcde89a20a86b8",
+    "semantic_hash": "69c9d47ab69218a869fcde89a20a86b8"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/chat/mod.rs": {
+    "mtime": 1781062384.1646016,
+    "ast_hash": "67079b085b3ed31df098ed9dec7d7a6f",
+    "semantic_hash": "67079b085b3ed31df098ed9dec7d7a6f"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/chat/new_chat_dialog.rs": {
+    "mtime": 1779449470.8843524,
+    "ast_hash": "c30d30803e26f7d9f8f94fede5542cc8",
+    "semantic_hash": "c30d30803e26f7d9f8f94fede5542cc8"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/chat/profile_sheet.rs": {
+    "mtime": 1779925198.5670297,
+    "ast_hash": "cea77afb456638b408d81578d6be8910",
+    "semantic_hash": "cea77afb456638b408d81578d6be8910"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/chat/thread_panel.rs": {
+    "mtime": 1780859368.127645,
+    "ast_hash": "211a7af1c6015b368946ee830a8dc50c",
+    "semantic_hash": "211a7af1c6015b368946ee830a8dc50c"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/chat/voice_message.rs": {
+    "mtime": 1781073283.5612092,
+    "ast_hash": "a60cb933938608f004a9a532b7817ecc",
+    "semantic_hash": "a60cb933938608f004a9a532b7817ecc"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/alert.rs": {
+    "mtime": 1779376223.2004647,
+    "ast_hash": "312c8e88d875d0e3cebcd4463d8b8f50",
+    "semantic_hash": "312c8e88d875d0e3cebcd4463d8b8f50"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/alert_dialog.rs": {
+    "mtime": 1779376223.2007108,
+    "ast_hash": "a5111fdb19f80ce2d4196a4d50fc98ea",
+    "semantic_hash": "a5111fdb19f80ce2d4196a4d50fc98ea"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/avatar.rs": {
+    "mtime": 1779377123.510368,
+    "ast_hash": "a3e081ab4391fbd07d92f77f5cb7c00d",
+    "semantic_hash": "a3e081ab4391fbd07d92f77f5cb7c00d"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/avatar_picker.rs": {
+    "mtime": 1781299304.250566,
+    "ast_hash": "20b711824ced44916f0181fc224644d7",
+    "semantic_hash": "20b711824ced44916f0181fc224644d7"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/badge.rs": {
+    "mtime": 1779376223.2008016,
+    "ast_hash": "fc042899d570c81a59e26b9aca9ece67",
+    "semantic_hash": "fc042899d570c81a59e26b9aca9ece67"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/button.rs": {
+    "mtime": 1779376223.201386,
+    "ast_hash": "dcc46f4a3b61c7b6e3397d4a9a30cbe8",
+    "semantic_hash": "dcc46f4a3b61c7b6e3397d4a9a30cbe8"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/card.rs": {
+    "mtime": 1779376223.1999502,
+    "ast_hash": "28a51e23ebd79b9b46c24ae742f78402",
+    "semantic_hash": "28a51e23ebd79b9b46c24ae742f78402"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/checkbox.rs": {
+    "mtime": 1779376223.2007577,
+    "ast_hash": "746b8677366058e0d63ead9190fd670a",
+    "semantic_hash": "746b8677366058e0d63ead9190fd670a"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/context_menu.rs": {
+    "mtime": 1779392414.859247,
+    "ast_hash": "60ff222d35ea4eb2cc10d2187fb9b586",
+    "semantic_hash": "60ff222d35ea4eb2cc10d2187fb9b586"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/dialog.rs": {
+    "mtime": 1779376223.2005684,
+    "ast_hash": "3bf9b9f6ec64e20f19d2a36760f98c2b",
+    "semantic_hash": "3bf9b9f6ec64e20f19d2a36760f98c2b"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/dropdown_menu.rs": {
+    "mtime": 1781061333.9109914,
+    "ast_hash": "525cc8157ca6846b1e2206b5008b17bc",
+    "semantic_hash": "525cc8157ca6846b1e2206b5008b17bc"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/input.rs": {
+    "mtime": 1779376223.2000566,
+    "ast_hash": "37101d8b90be585c5c5d83aa835bb037",
+    "semantic_hash": "37101d8b90be585c5c5d83aa835bb037"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/label.rs": {
+    "mtime": 1779376223.201041,
+    "ast_hash": "1e172e9e13aa23256ab8307d7c6aeb6a",
+    "semantic_hash": "1e172e9e13aa23256ab8307d7c6aeb6a"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/mod.rs": {
+    "mtime": 1781299317.516567,
+    "ast_hash": "1a286daac328e01c7f5f0da80ea09bc3",
+    "semantic_hash": "1a286daac328e01c7f5f0da80ea09bc3"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/popover.rs": {
+    "mtime": 1779376223.2006588,
+    "ast_hash": "ea7be3f5c12ee3840153b21f580bc339",
+    "semantic_hash": "ea7be3f5c12ee3840153b21f580bc339"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/progress.rs": {
+    "mtime": 1779376223.2000036,
+    "ast_hash": "bfa9f138e059b27bcc686974710023ee",
+    "semantic_hash": "bfa9f138e059b27bcc686974710023ee"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/qr_scanner.rs": {
+    "mtime": 1781035496.8877718,
+    "ast_hash": "1262e8dc77ab27e67e9573ce8fdbffb6",
+    "semantic_hash": "1262e8dc77ab27e67e9573ce8fdbffb6"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/radio.rs": {
+    "mtime": 1779392414.860247,
+    "ast_hash": "ce7a2c4d0172c895461f0e977bfb948a",
+    "semantic_hash": "ce7a2c4d0172c895461f0e977bfb948a"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/scroll_area.rs": {
+    "mtime": 1779376223.2001674,
+    "ast_hash": "5445a905192fb2732a18044af90850a9",
+    "semantic_hash": "5445a905192fb2732a18044af90850a9"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/select.rs": {
+    "mtime": 1779376223.2006135,
+    "ast_hash": "457fec6231a431387b1bd24aa4377ecd",
+    "semantic_hash": "457fec6231a431387b1bd24aa4377ecd"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/separator.rs": {
+    "mtime": 1779376223.2009947,
+    "ast_hash": "53089d0def149ed1977ec725f5d205b9",
+    "semantic_hash": "53089d0def149ed1977ec725f5d205b9"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/sheet.rs": {
+    "mtime": 1779376223.199897,
+    "ast_hash": "0d15ed31e68fec3125a1e3eb3c196585",
+    "semantic_hash": "0d15ed31e68fec3125a1e3eb3c196585"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/skeleton.rs": {
+    "mtime": 1779376223.2013268,
+    "ast_hash": "b8ce43aaa6b9dbf0870ac5a27b5c426e",
+    "semantic_hash": "b8ce43aaa6b9dbf0870ac5a27b5c426e"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/slider.rs": {
+    "mtime": 1779392414.859247,
+    "ast_hash": "dbaab7b1091f85d1b5aa1c00d5c03380",
+    "semantic_hash": "dbaab7b1091f85d1b5aa1c00d5c03380"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/switch.rs": {
+    "mtime": 1779376223.2009473,
+    "ast_hash": "64280d6e1419f035377c982c48ea2162",
+    "semantic_hash": "64280d6e1419f035377c982c48ea2162"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/tabs.rs": {
+    "mtime": 1779392414.860247,
+    "ast_hash": "5e194089c11566b8c3fe1994f9f86316",
+    "semantic_hash": "5e194089c11566b8c3fe1994f9f86316"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/textarea.rs": {
+    "mtime": 1780944096.5573196,
+    "ast_hash": "5c01d8f2299292475046b45f8ebc5673",
+    "semantic_hash": "5c01d8f2299292475046b45f8ebc5673"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/toast_container.rs": {
+    "mtime": 1779449242.2691097,
+    "ast_hash": "b04b058aab695ca1b3afad5906baa613",
+    "semantic_hash": "b04b058aab695ca1b3afad5906baa613"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/components/tooltip.rs": {
+    "mtime": 1779376223.2005103,
+    "ast_hash": "ecc571b969da305bea4be2bd7e698a94",
+    "semantic_hash": "ecc571b969da305bea4be2bd7e698a94"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/i18n/en.rs": {
+    "mtime": 1781300696.8696516,
+    "ast_hash": "b6a8f0c7066838335e88c4f0c8ba8f1e",
+    "semantic_hash": "b6a8f0c7066838335e88c4f0c8ba8f1e"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/i18n/mod.rs": {
+    "mtime": 1779449481.1215339,
+    "ast_hash": "460a1b23feccb825673ef1522eb3a8e0",
+    "semantic_hash": "460a1b23feccb825673ef1522eb3a8e0"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/i18n/ru.rs": {
+    "mtime": 1781300694.9916513,
+    "ast_hash": "d4518572c315ee262c7fbb7fc28887e8",
+    "semantic_hash": "d4518572c315ee262c7fbb7fc28887e8"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/icons.rs": {
+    "mtime": 1781067222.432976,
+    "ast_hash": "9ee273bcc1defac9790efae53fec1d2e",
+    "semantic_hash": "9ee273bcc1defac9790efae53fec1d2e"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/lib.rs": {
+    "mtime": 1779952807.4791028,
+    "ast_hash": "40ded8ece31de3f86bc8517d8b67fe77",
+    "semantic_hash": "40ded8ece31de3f86bc8517d8b67fe77"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/main.rs": {
+    "mtime": 1779376223.20182,
+    "ast_hash": "4b652872f01c8f639b470971471cf867",
+    "semantic_hash": "4b652872f01c8f639b470971471cf867"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/mock.rs": {
+    "mtime": 1781034789.141225,
+    "ast_hash": "b604f3c4f5cb609481c0d85132c53191",
+    "semantic_hash": "b604f3c4f5cb609481c0d85132c53191"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/routes.rs": {
+    "mtime": 1781072588.1680408,
+    "ast_hash": "befb59e8a613454d05e4e1d741d249a0",
+    "semantic_hash": "befb59e8a613454d05e4e1d741d249a0"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/screens/chats.rs": {
+    "mtime": 1781300300.737061,
+    "ast_hash": "f6199a53a357c2accbdf969f99fa4565",
+    "semantic_hash": "f6199a53a357c2accbdf969f99fa4565"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/screens/connect.rs": {
+    "mtime": 1780626167.147022,
+    "ast_hash": "11d2e35a7509f71f8bea396447e72078",
+    "semantic_hash": "11d2e35a7509f71f8bea396447e72078"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/screens/invite.rs": {
+    "mtime": 1781072583.8137927,
+    "ast_hash": "cc1c79da2446671a5948e2d10e6a71b2",
+    "semantic_hash": "cc1c79da2446671a5948e2d10e6a71b2"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/screens/login.rs": {
+    "mtime": 1780625404.8470538,
+    "ast_hash": "eea60cf035233b65efb6071aabc2aa03",
+    "semantic_hash": "eea60cf035233b65efb6071aabc2aa03"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/screens/login_qr.rs": {
+    "mtime": 1780611951.3311555,
+    "ast_hash": "5d6dac7baa2988451b287f35418cb0a8",
+    "semantic_hash": "5d6dac7baa2988451b287f35418cb0a8"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/screens/mod.rs": {
+    "mtime": 1781072586.7986336,
+    "ast_hash": "d196fe91649841b77d00e0fa3b687b8a",
+    "semantic_hash": "d196fe91649841b77d00e0fa3b687b8a"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/screens/register.rs": {
+    "mtime": 1781299370.0805702,
+    "ast_hash": "e6f3b26f53847f02c21b663028180e3e",
+    "semantic_hash": "e6f3b26f53847f02c21b663028180e3e"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/screens/settings.rs": {
+    "mtime": 1781069797.643976,
+    "ast_hash": "644e4d8ad54a299e1fe2e8b822243b98",
+    "semantic_hash": "644e4d8ad54a299e1fe2e8b822243b98"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/session/mod.rs": {
+    "mtime": 1779448860.6772847,
+    "ast_hash": "90262a0cf04a1168b00dcb117f2ecb83",
+    "semantic_hash": "90262a0cf04a1168b00dcb117f2ecb83"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/session/restore.rs": {
+    "mtime": 1779454178.7443225,
+    "ast_hash": "54173fe057b5a8ab727ecd52ada785a6",
+    "semantic_hash": "54173fe057b5a8ab727ecd52ada785a6"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/settings/about.rs": {
+    "mtime": 1779483959.566918,
+    "ast_hash": "dad2afcec49f9a71a7b58d8ae18e03df",
+    "semantic_hash": "dad2afcec49f9a71a7b58d8ae18e03df"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/settings/account.rs": {
+    "mtime": 1781301419.4196959,
+    "ast_hash": "e77432692bc16be62ae7f97a50bad3ed",
+    "semantic_hash": "e77432692bc16be62ae7f97a50bad3ed"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/settings/admin_invites.rs": {
+    "mtime": 1781073744.1165996,
+    "ast_hash": "f6da030073df6aaf234df553ac4e4041",
+    "semantic_hash": "f6da030073df6aaf234df553ac4e4041"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/settings/admin_users.rs": {
+    "mtime": 1779485831.4925883,
+    "ast_hash": "375031dce4c59ba51d6b5b7514c38c2c",
+    "semantic_hash": "375031dce4c59ba51d6b5b7514c38c2c"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/settings/appearance.rs": {
+    "mtime": 1779484097.8978088,
+    "ast_hash": "25bed516c576697e5bb63eeac7658f6a",
+    "semantic_hash": "25bed516c576697e5bb63eeac7658f6a"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/settings/devices.rs": {
+    "mtime": 1780858507.4632728,
+    "ast_hash": "95eacb2e06f9de7b67b00f8a0900be4a",
+    "semantic_hash": "95eacb2e06f9de7b67b00f8a0900be4a"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/settings/mod.rs": {
+    "mtime": 1781069793.363449,
+    "ast_hash": "0abf3da64c1f99327e177e70ca56889d",
+    "semantic_hash": "0abf3da64c1f99327e177e70ca56889d"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/settings/notifications.rs": {
+    "mtime": 1779483868.6175249,
+    "ast_hash": "3cefd077465b9e9f44031f5fc837fe70",
+    "semantic_hash": "3cefd077465b9e9f44031f5fc837fe70"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/settings/privacy.rs": {
+    "mtime": 1781065945.8674104,
+    "ast_hash": "f4fbdc823f2bca3a52d6c4b52866a479",
+    "semantic_hash": "f4fbdc823f2bca3a52d6c4b52866a479"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/settings/voice.rs": {
+    "mtime": 1781071191.371141,
+    "ast_hash": "2ec8232e8ead4955862a25585599f5ac",
+    "semantic_hash": "2ec8232e8ead4955862a25585599f5ac"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/sidebar/chat_list.rs": {
+    "mtime": 1779925198.4815161,
+    "ast_hash": "3f2d3bb3d6bda3ce1c22d611b60eab87",
+    "semantic_hash": "3f2d3bb3d6bda3ce1c22d611b60eab87"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/sidebar/mod.rs": {
+    "mtime": 1780595383.3458948,
+    "ast_hash": "d0577d5201174db9e720f93268c06c0e",
+    "semantic_hash": "d0577d5201174db9e720f93268c06c0e"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/sidebar/real_chat_list.rs": {
+    "mtime": 1781300300.7372615,
+    "ast_hash": "62c3591fc530d9b684639bf49517edfa",
+    "semantic_hash": "62c3591fc530d9b684639bf49517edfa"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/state/avatar_store.rs": {
+    "mtime": 1781305072.5736725,
+    "ast_hash": "7351fa2ad31e87599c90c8a21d10a07b",
+    "semantic_hash": "7351fa2ad31e87599c90c8a21d10a07b"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/state/back_stack.rs": {
+    "mtime": 1781063522.185848,
+    "ast_hash": "b7244da884a3ce3da99a421a42e3a01b",
+    "semantic_hash": "b7244da884a3ce3da99a421a42e3a01b"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/state/chats.rs": {
+    "mtime": 1781301741.910651,
+    "ast_hash": "2d7012e146b8a5781942ca22c39b86cf",
+    "semantic_hash": "2d7012e146b8a5781942ca22c39b86cf"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/state/connectivity.rs": {
+    "mtime": 1779448729.5821195,
+    "ast_hash": "1530bf56310f8625c112da529fde4434",
+    "semantic_hash": "1530bf56310f8625c112da529fde4434"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/state/message_service.rs": {
+    "mtime": 1781305370.7496428,
+    "ast_hash": "80ffe0ea31709e19cc3d809d45b4b844",
+    "semantic_hash": "80ffe0ea31709e19cc3d809d45b4b844"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/state/messages.rs": {
+    "mtime": 1781066809.0909712,
+    "ast_hash": "ee452be9369d782394234a7fd027ea03",
+    "semantic_hash": "ee452be9369d782394234a7fd027ea03"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/state/mod.rs": {
+    "mtime": 1781305334.9183419,
+    "ast_hash": "95127985e3802e39aa8afaf0ef25124c",
+    "semantic_hash": "95127985e3802e39aa8afaf0ef25124c"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/state/notifications.rs": {
+    "mtime": 1779448732.5467207,
+    "ast_hash": "7be95049586b5cfbe5a27db679fb86b5",
+    "semantic_hash": "7be95049586b5cfbe5a27db679fb86b5"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/state/session.rs": {
+    "mtime": 1781044081.428907,
+    "ast_hash": "d845b3c6a45e5a2f652480e5e452ef3b",
+    "semantic_hash": "d845b3c6a45e5a2f652480e5e452ef3b"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/state/settings.rs": {
+    "mtime": 1781065925.6320322,
+    "ast_hash": "f6742e9e5a7690d2b81e65482e84a51a",
+    "semantic_hash": "f6742e9e5a7690d2b81e65482e84a51a"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/state/sync_service.rs": {
+    "mtime": 1781305394.321661,
+    "ast_hash": "20b2a4f08aaf93b5b93b4ae2cc331d6c",
+    "semantic_hash": "20b2a4f08aaf93b5b93b4ae2cc331d6c"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/state/threads.rs": {
+    "mtime": 1779448722.9500802,
+    "ast_hash": "92034f5ba580e90cab0d48acd2b7008d",
+    "semantic_hash": "92034f5ba580e90cab0d48acd2b7008d"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/state/ui.rs": {
+    "mtime": 1779448725.332132,
+    "ast_hash": "290dbf4b42a8566244ba92040a950afd",
+    "semantic_hash": "290dbf4b42a8566244ba92040a950afd"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/state/users.rs": {
+    "mtime": 1781300300.737384,
+    "ast_hash": "e05adbea3b27ae5ad7c5e6aa46cc8fe5",
+    "semantic_hash": "e05adbea3b27ae5ad7c5e6aa46cc8fe5"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/state/ws_manager.rs": {
+    "mtime": 1781045050.8210015,
+    "ast_hash": "108a184df97e87ebb1ea664ec9a178d2",
+    "semantic_hash": "108a184df97e87ebb1ea664ec9a178d2"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/tauri_bridge.rs": {
+    "mtime": 1781069739.3485105,
+    "ast_hash": "b827cf00ac084073086f5032f115d4b1",
+    "semantic_hash": "b827cf00ac084073086f5032f115d4b1"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/src/theme.rs": {
+    "mtime": 1779449482.8715646,
+    "ast_hash": "57f0115cd674839ad9279ba9f68d0d7f",
+    "semantic_hash": "57f0115cd674839ad9279ba9f68d0d7f"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/tailwind.config.js": {
+    "mtime": 1779372022.7447798,
+    "ast_hash": "de842e402eefcb3ad651c18f16d63be4",
+    "semantic_hash": "de842e402eefcb3ad651c18f16d63be4"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/age_wrap.rs": {
+    "mtime": 1779480690.4598486,
+    "ast_hash": "f920653120ee67c0dfe29cdf630255cf",
+    "semantic_hash": "f920653120ee67c0dfe29cdf630255cf"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/api/client.rs": {
+    "mtime": 1780612030.0251672,
+    "ast_hash": "b012dedeb1dc71072f7f53f9a175a9ca",
+    "semantic_hash": "b012dedeb1dc71072f7f53f9a175a9ca"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/api/endpoints/admin.rs": {
+    "mtime": 1779483006.4525712,
+    "ast_hash": "179482a3f449b97479ab76e602a61119",
+    "semantic_hash": "179482a3f449b97479ab76e602a61119"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/api/endpoints/attachments.rs": {
+    "mtime": 1779425530.5252347,
+    "ast_hash": "8a1a89ebd0b10021baeaf3a237a3987f",
+    "semantic_hash": "8a1a89ebd0b10021baeaf3a237a3987f"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/api/endpoints/invites.rs": {
+    "mtime": 1779426072.6058023,
+    "ast_hash": "9887170c27859d50b3aaaabd24e6884e",
+    "semantic_hash": "9887170c27859d50b3aaaabd24e6884e"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/api/endpoints/keypackages.rs": {
+    "mtime": 1779425493.3225758,
+    "ast_hash": "93bd5191646ac9643d2bac434d957b6c",
+    "semantic_hash": "93bd5191646ac9643d2bac434d957b6c"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/api/endpoints/mls.rs": {
+    "mtime": 1780606778.2067983,
+    "ast_hash": "6acd631d9537ef4ae49db5c98cb315d9",
+    "semantic_hash": "6acd631d9537ef4ae49db5c98cb315d9"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/api/endpoints/mod.rs": {
+    "mtime": 1779483014.128814,
+    "ast_hash": "6d32d3c038d43367d0cd5ffb69c9e499",
+    "semantic_hash": "6d32d3c038d43367d0cd5ffb69c9e499"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/api/endpoints/provisioning.rs": {
+    "mtime": 1781035481.4006596,
+    "ast_hash": "974e945ba937a914de8698720c63c531",
+    "semantic_hash": "974e945ba937a914de8698720c63c531"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/api/endpoints/reactions.rs": {
+    "mtime": 1779482229.6108687,
+    "ast_hash": "bc842716f7e9e92a1196ffce7e7771fc",
+    "semantic_hash": "bc842716f7e9e92a1196ffce7e7771fc"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/api/endpoints/server.rs": {
+    "mtime": 1779425455.7992353,
+    "ast_hash": "39ead2d23aace83c1f8ea089d640a24b",
+    "semantic_hash": "39ead2d23aace83c1f8ea089d640a24b"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/api/endpoints/users.rs": {
+    "mtime": 1780585151.863884,
+    "ast_hash": "aea89290f65adc163dcb93c9b9d61722",
+    "semantic_hash": "aea89290f65adc163dcb93c9b9d61722"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/api/mod.rs": {
+    "mtime": 1779426253.9622293,
+    "ast_hash": "e754952f1b0d5dafc9362b9fea9fc555",
+    "semantic_hash": "e754952f1b0d5dafc9362b9fea9fc555"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/api/signing.rs": {
+    "mtime": 1779425397.5202358,
+    "ast_hash": "e7d00e6e119aca6c5c046c2194ee6c28",
+    "semantic_hash": "e7d00e6e119aca6c5c046c2194ee6c28"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/api/transport.rs": {
+    "mtime": 1779454235.1197774,
+    "ast_hash": "e83b5f93cc4131afba58014679c1370e",
+    "semantic_hash": "e83b5f93cc4131afba58014679c1370e"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/api/transport/native.rs": {
+    "mtime": 1779426336.8882287,
+    "ast_hash": "70ce567a68b1963a31df4ad376095479",
+    "semantic_hash": "70ce567a68b1963a31df4ad376095479"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/api/transport/web.rs": {
+    "mtime": 1780590767.0689309,
+    "ast_hash": "fc8c05ffd093d72272647668ab703a09",
+    "semantic_hash": "fc8c05ffd093d72272647668ab703a09"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/api/ws/client.rs": {
+    "mtime": 1779426041.2499669,
+    "ast_hash": "8b3eae99bb55e94a6e2b5daa484e383b",
+    "semantic_hash": "8b3eae99bb55e94a6e2b5daa484e383b"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/api/ws/mod.rs": {
+    "mtime": 1779425541.2912345,
+    "ast_hash": "68e0c49792061157f98ba7c9ceeaff34",
+    "semantic_hash": "68e0c49792061157f98ba7c9ceeaff34"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/api/ws/transport.rs": {
+    "mtime": 1779426132.8075833,
+    "ast_hash": "a55be5e7e06834588d9568ea37a18e99",
+    "semantic_hash": "a55be5e7e06834588d9568ea37a18e99"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/attachment_crypto.rs": {
+    "mtime": 1779482353.4478228,
+    "ast_hash": "c62b71eeb76b1e7298b4440ed3ba23a7",
+    "semantic_hash": "c62b71eeb76b1e7298b4440ed3ba23a7"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/blind_index.rs": {
+    "mtime": 1779919458.5145938,
+    "ast_hash": "4c760f8b6a104d2a1341d5b1ddbc81aa",
+    "semantic_hash": "4c760f8b6a104d2a1341d5b1ddbc81aa"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/bootstrap.rs": {
+    "mtime": 1779479855.6508408,
+    "ast_hash": "d8d42e1b08c4aecddb7e62c40aa2dc31",
+    "semantic_hash": "d8d42e1b08c4aecddb7e62c40aa2dc31"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/canonical.rs": {
+    "mtime": 1779420331.2722733,
+    "ast_hash": "df796551b6931c036c5ddffd1808a750",
+    "semantic_hash": "df796551b6931c036c5ddffd1808a750"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/ed25519.rs": {
+    "mtime": 1779420357.404273,
+    "ast_hash": "18a45d39d6c39c496c96427e00de909f",
+    "semantic_hash": "18a45d39d6c39c496c96427e00de909f"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/error.rs": {
+    "mtime": 1780606206.6062777,
+    "ast_hash": "4fead2e05b4409edc3076d41ee626876",
+    "semantic_hash": "4fead2e05b4409edc3076d41ee626876"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/identity.rs": {
+    "mtime": 1779479814.2414284,
+    "ast_hash": "fa3bc9249464ccab780933d9b97643fe",
+    "semantic_hash": "fa3bc9249464ccab780933d9b97643fe"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/lib.rs": {
+    "mtime": 1780606179.3879921,
+    "ast_hash": "237607123f16f61e06d65b3ee40873ee",
+    "semantic_hash": "237607123f16f61e06d65b3ee40873ee"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/mls/application.rs": {
+    "mtime": 1781300300.737384,
+    "ast_hash": "431b5964bc3d33d8b1f4d0e79c694e5f",
+    "semantic_hash": "431b5964bc3d33d8b1f4d0e79c694e5f"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/mls/ciphersuite.rs": {
+    "mtime": 1779420809.6042697,
+    "ast_hash": "9650b4bd100622ab13eb34cd2b3ec15b",
+    "semantic_hash": "9650b4bd100622ab13eb34cd2b3ec15b"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/mls/exporter.rs": {
+    "mtime": 1779420848.8932695,
+    "ast_hash": "76dc428fdca894eb5797ef72dfb7bd0e",
+    "semantic_hash": "76dc428fdca894eb5797ef72dfb7bd0e"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/mls/group.rs": {
+    "mtime": 1779480488.8936357,
+    "ast_hash": "b46748b402fa2787dee5ac0e132d35f9",
+    "semantic_hash": "b46748b402fa2787dee5ac0e132d35f9"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/mls/keypackage.rs": {
+    "mtime": 1779480286.456661,
+    "ast_hash": "fad68e68b0eb6b2e99e2b4187fd845a5",
+    "semantic_hash": "fad68e68b0eb6b2e99e2b4187fd845a5"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/mls/mod.rs": {
+    "mtime": 1779480384.9391692,
+    "ast_hash": "faf608a03dedc87907d5f91bcb4bc7e2",
+    "semantic_hash": "faf608a03dedc87907d5f91bcb4bc7e2"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/mls/provider.rs": {
+    "mtime": 1779421252.3502665,
+    "ast_hash": "6d0d19800cf305251901af7305754cac",
+    "semantic_hash": "6d0d19800cf305251901af7305754cac"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/prov.rs": {
+    "mtime": 1779421473.4642649,
+    "ast_hash": "beb600ae8fe1f282aa6b233df26fffb2",
+    "semantic_hash": "beb600ae8fe1f282aa6b233df26fffb2"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/src/voice.rs": {
+    "mtime": 1781035115.74701,
+    "ast_hash": "6edaa9df2c9a2489ded6edc0bc402bb1",
+    "semantic_hash": "6edaa9df2c9a2489ded6edc0bc402bb1"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-core/tests/server_info.rs": {
+    "mtime": 1779426267.785596,
+    "ast_hash": "39b912c9a9ca98060dae32fa5b23d0b7",
+    "semantic_hash": "39b912c9a9ca98060dae32fa5b23d0b7"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-proto/src/admin.rs": {
+    "mtime": 1779482994.4218562,
+    "ast_hash": "ac02d14f0e1f1ccef5f142e8469abc36",
+    "semantic_hash": "ac02d14f0e1f1ccef5f142e8469abc36"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-proto/src/attachments.rs": {
+    "mtime": 1779425282.3952365,
+    "ast_hash": "12ef4b6a9c777a69867b25668c46c712",
+    "semantic_hash": "12ef4b6a9c777a69867b25668c46c712"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-proto/src/auth.rs": {
+    "mtime": 1780584768.5205553,
+    "ast_hash": "bce8f72ea51ac3f349d035aa6bc3c3d1",
+    "semantic_hash": "bce8f72ea51ac3f349d035aa6bc3c3d1"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-proto/src/error.rs": {
+    "mtime": 1779425214.226237,
+    "ast_hash": "8f5b83f825a1d9667b6ab16a0fec618a",
+    "semantic_hash": "8f5b83f825a1d9667b6ab16a0fec618a"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-proto/src/invites.rs": {
+    "mtime": 1779425228.741237,
+    "ast_hash": "50528c60093d4fa23e65527bfa679122",
+    "semantic_hash": "50528c60093d4fa23e65527bfa679122"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-proto/src/keypackages.rs": {
+    "mtime": 1779480456.3979182,
+    "ast_hash": "af150561f6f59bced3dfc8e3df967836",
+    "semantic_hash": "af150561f6f59bced3dfc8e3df967836"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-proto/src/lib.rs": {
+    "mtime": 1779482999.90922,
+    "ast_hash": "302001cadc7c13e8242e3b371b4416c6",
+    "semantic_hash": "302001cadc7c13e8242e3b371b4416c6"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-proto/src/mls.rs": {
+    "mtime": 1780935155.3813145,
+    "ast_hash": "b174e99f2f22776994d1b56e815b34df",
+    "semantic_hash": "b174e99f2f22776994d1b56e815b34df"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-proto/src/provisioning.rs": {
+    "mtime": 1779480462.4868572,
+    "ast_hash": "d2a20b79335dfc3ab3afad495a844fe0",
+    "semantic_hash": "d2a20b79335dfc3ab3afad495a844fe0"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-proto/src/reactions.rs": {
+    "mtime": 1779482209.7151172,
+    "ast_hash": "11aaeb3fa5688eb7ff204ed0a9536e86",
+    "semantic_hash": "11aaeb3fa5688eb7ff204ed0a9536e86"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-proto/src/server.rs": {
+    "mtime": 1779453702.4673235,
+    "ast_hash": "794df1bf00f3ea7b04cca0cb939a440e",
+    "semantic_hash": "794df1bf00f3ea7b04cca0cb939a440e"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-proto/src/users.rs": {
+    "mtime": 1779425235.2792368,
+    "ast_hash": "a502382d1d77ba2e033c047f681d3ba3",
+    "semantic_hash": "a502382d1d77ba2e033c047f681d3ba3"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-proto/src/ws.rs": {
+    "mtime": 1779425291.5042365,
+    "ast_hash": "64d6beeaf51cc21b4904943853f88b30",
+    "semantic_hash": "64d6beeaf51cc21b4904943853f88b30"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-storage/src/android/database.rs": {
+    "mtime": 1779488779.785464,
+    "ast_hash": "bd88149aefcca96bc4861f95c63d847b",
+    "semantic_hash": "bd88149aefcca96bc4861f95c63d847b"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-storage/src/android/messenger_store.rs": {
+    "mtime": 1779488638.2485762,
+    "ast_hash": "55c2856deccb80b177570295af432c39",
+    "semantic_hash": "55c2856deccb80b177570295af432c39"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-storage/src/android/mod.rs": {
+    "mtime": 1779488860.7259836,
+    "ast_hash": "a87d237280d8c820badd3e9b76204e7f",
+    "semantic_hash": "a87d237280d8c820badd3e9b76204e7f"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-storage/src/desktop/database.rs": {
+    "mtime": 1779418006.4882905,
+    "ast_hash": "bc28616849b4b199b82b4096ba330c5f",
+    "semantic_hash": "bc28616849b4b199b82b4096ba330c5f"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-storage/src/desktop/messenger_store.rs": {
+    "mtime": 1779423021.7603302,
+    "ast_hash": "282679d21c56e81e91cfb8fb914a984b",
+    "semantic_hash": "282679d21c56e81e91cfb8fb914a984b"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-storage/src/desktop/mod.rs": {
+    "mtime": 1779417890.2742913,
+    "ast_hash": "268810043109fc6002aafd32aa71d1b8",
+    "semantic_hash": "268810043109fc6002aafd32aa71d1b8"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-storage/src/desktop/tests.rs": {
+    "mtime": 1779418134.3618135,
+    "ast_hash": "ab55f06ce53e13698391b0e4308d088f",
+    "semantic_hash": "ab55f06ce53e13698391b0e4308d088f"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-storage/src/error.rs": {
+    "mtime": 1779416976.2302983,
+    "ast_hash": "5f0ccb61524a04eb76e0239d8bc0ae13",
+    "semantic_hash": "5f0ccb61524a04eb76e0239d8bc0ae13"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-storage/src/lib.rs": {
+    "mtime": 1779424168.0587885,
+    "ast_hash": "fe408fbed9678c2b08df4c3be0bbf64d",
+    "semantic_hash": "fe408fbed9678c2b08df4c3be0bbf64d"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-storage/src/migrations.rs": {
+    "mtime": 1779423000.101397,
+    "ast_hash": "d49ebe989695b4a01e501b47a5031d22",
+    "semantic_hash": "d49ebe989695b4a01e501b47a5031d22"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-storage/src/storage_init.rs": {
+    "mtime": 1779417585.7472937,
+    "ast_hash": "24f6b1c41e2084e40b37f89eef8ddd50",
+    "semantic_hash": "24f6b1c41e2084e40b37f89eef8ddd50"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-storage/src/traits.rs": {
+    "mtime": 1779422955.7613802,
+    "ast_hash": "bb6a83c35d80893b0982c2ad8b1401c0",
+    "semantic_hash": "bb6a83c35d80893b0982c2ad8b1401c0"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-storage/src/types.rs": {
+    "mtime": 1779417048.6662977,
+    "ast_hash": "327e08cd43181c312d0fb2071dfb5474",
+    "semantic_hash": "327e08cd43181c312d0fb2071dfb5474"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-storage/src/web/messenger_store.rs": {
+    "mtime": 1779424283.069244,
+    "ast_hash": "010619ceaf872c1ebf5d5e7cb8c70ce2",
+    "semantic_hash": "010619ceaf872c1ebf5d5e7cb8c70ce2"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-storage/src/web/mod.rs": {
+    "mtime": 1779419168.508582,
+    "ast_hash": "1cc87053dfd13e0d562335c180b74477",
+    "semantic_hash": "1cc87053dfd13e0d562335c180b74477"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-transcription/src/audio.rs": {
+    "mtime": 1781069505.6573277,
+    "ast_hash": "627344655282fe869f4c7fc7ef937073",
+    "semantic_hash": "627344655282fe869f4c7fc7ef937073"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-transcription/src/downloader.rs": {
+    "mtime": 1781069388.2735517,
+    "ast_hash": "9f0d48b42b36ee3a2b943319a77136c8",
+    "semantic_hash": "9f0d48b42b36ee3a2b943319a77136c8"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-transcription/src/error.rs": {
+    "mtime": 1781069357.4651124,
+    "ast_hash": "a1db4c2cc1465d201f5dba125b34d500",
+    "semantic_hash": "a1db4c2cc1465d201f5dba125b34d500"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-transcription/src/lib.rs": {
+    "mtime": 1781069354.0160632,
+    "ast_hash": "1467605a76abc77a4d0080ae1e57db6c",
+    "semantic_hash": "1467605a76abc77a4d0080ae1e57db6c"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-transcription/src/models.rs": {
+    "mtime": 1781069372.1573222,
+    "ast_hash": "58e4900640c39bfa9eafcf7b60c24a80",
+    "semantic_hash": "58e4900640c39bfa9eafcf7b60c24a80"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-transcription/src/transcriber.rs": {
+    "mtime": 1781069424.3370647,
+    "ast_hash": "8ab4ac3493e609c5d81f76d8dc44677d",
+    "semantic_hash": "8ab4ac3493e609c5d81f76d8dc44677d"
+  },
+  "/home/killua/code/diploma/messenger/client/scripts/android-smoke.sh": {
+    "mtime": 1779489060.7570472,
+    "ast_hash": "e6eb592931507d868b63016d01552dd5",
+    "semantic_hash": "e6eb592931507d868b63016d01552dd5"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/build.rs": {
+    "mtime": 1779370607.5448906,
+    "ast_hash": "1be34a5c61c2c35365de3dab14298f0b",
+    "semantic_hash": "1be34a5c61c2c35365de3dab14298f0b"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/capabilities/default.json": {
+    "mtime": 1781067876.632009,
+    "ast_hash": "4f035877128e9fe0be585546e71d8da7",
+    "semantic_hash": "4f035877128e9fe0be585546e71d8da7"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/build.gradle.kts": {
+    "mtime": 1780601431.1248236,
+    "ast_hash": "05307c131dcade2f7f257bd16a678d5f",
+    "semantic_hash": "05307c131dcade2f7f257bd16a678d5f"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/assets/messenger-client-67ddac00ba8e9bb1.js": {
+    "mtime": 1780627182.44116,
+    "ast_hash": "8622aec6773efdf47bb2797f53fa9d91",
+    "semantic_hash": "8622aec6773efdf47bb2797f53fa9d91"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/assets/messenger-client-a6c44e2ec0235bd3.js": {
+    "mtime": 1780622372.6860614,
+    "ast_hash": "fa8a49d95f688c6d95a83dd7d002b2d7",
+    "semantic_hash": "fa8a49d95f688c6d95a83dd7d002b2d7"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/assets/tauri.conf.json": {
+    "mtime": 1781306381.7048206,
+    "ast_hash": "40a50426e8034910b14f3a0364eb05ff",
+    "semantic_hash": "40a50426e8034910b14f3a0364eb05ff"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/java/com/example/messenger/MainActivity.kt": {
+    "mtime": 1779488114.6285565,
+    "ast_hash": "6dba83e52b571110c054422bc35e1dfa",
+    "semantic_hash": "6dba83e52b571110c054422bc35e1dfa"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/java/com/example/messenger/generated/Ipc.kt": {
+    "mtime": 1779489061.3610563,
+    "ast_hash": "aba4bf0e43747b15f916eea8da158133",
+    "semantic_hash": "aba4bf0e43747b15f916eea8da158133"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/java/com/example/messenger/generated/Logger.kt": {
+    "mtime": 1779489061.3610563,
+    "ast_hash": "0a8b159dd2bdc777cab03fba8e2b2ba2",
+    "semantic_hash": "0a8b159dd2bdc777cab03fba8e2b2ba2"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/java/com/example/messenger/generated/PermissionHelper.kt": {
+    "mtime": 1779489061.3650565,
+    "ast_hash": "6e179a77c1b6ac24077468b306470c18",
+    "semantic_hash": "6e179a77c1b6ac24077468b306470c18"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/java/com/example/messenger/generated/Rust.kt": {
+    "mtime": 1779489061.4130573,
+    "ast_hash": "a7c30f6a96c447881c49a59f9f2c6199",
+    "semantic_hash": "a7c30f6a96c447881c49a59f9f2c6199"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/java/com/example/messenger/generated/RustWebChromeClient.kt": {
+    "mtime": 1779489061.396057,
+    "ast_hash": "2688bcdb5d94c9ff73b624d7ce5ba598",
+    "semantic_hash": "2688bcdb5d94c9ff73b624d7ce5ba598"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/java/com/example/messenger/generated/RustWebView.kt": {
+    "mtime": 1779489061.394057,
+    "ast_hash": "0075a6a57ad1608c1b3c6014e93f0d62",
+    "semantic_hash": "0075a6a57ad1608c1b3c6014e93f0d62"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/java/com/example/messenger/generated/RustWebViewClient.kt": {
+    "mtime": 1779489061.3770566,
+    "ast_hash": "4aec09976a9bea4da662ae9bb2d2cb5f",
+    "semantic_hash": "4aec09976a9bea4da662ae9bb2d2cb5f"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/java/com/example/messenger/generated/TauriActivity.kt": {
+    "mtime": 1779489076.6402905,
+    "ast_hash": "bbb10fa6b8b40a369738277bf519061e",
+    "semantic_hash": "bbb10fa6b8b40a369738277bf519061e"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/java/com/example/messenger/generated/WryActivity.kt": {
+    "mtime": 1779489061.4210908,
+    "ast_hash": "1b90958932afcca4ec2300842c382faf",
+    "semantic_hash": "1b90958932afcca4ec2300842c382faf"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/java/com/example/messenger/plugins/FileSaverPlugin.kt": {
+    "mtime": 1781066317.96924,
+    "ast_hash": "0d4ef7f2c569b01c6d539788d66ab1a2",
+    "semantic_hash": "0d4ef7f2c569b01c6d539788d66ab1a2"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/java/com/example/messenger/plugins/KeystorePlugin.kt": {
+    "mtime": 1779489490.5264442,
+    "ast_hash": "d0dd98709ef5b62afd055d3df73f93e6",
+    "semantic_hash": "d0dd98709ef5b62afd055d3df73f93e6"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/tauri.build.gradle.kts": {
+    "mtime": 1781068151.7166905,
+    "ast_hash": "43da06de64024506611ea945cd3afbc1",
+    "semantic_hash": "43da06de64024506611ea945cd3afbc1"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/build.gradle.kts": {
+    "mtime": 1779489196.191797,
+    "ast_hash": "11cd017e73caf46adfa20dbe9baf0e4c",
+    "semantic_hash": "11cd017e73caf46adfa20dbe9baf0e4c"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/buildSrc/build.gradle.kts": {
+    "mtime": 1779488114.6295564,
+    "ast_hash": "0814415b6e7b2c6e126521dfe9960081",
+    "semantic_hash": "0814415b6e7b2c6e126521dfe9960081"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/buildSrc/src/main/java/com/example/messenger/kotlin/BuildTask.kt": {
+    "mtime": 1779488114.6295564,
+    "ast_hash": "90772b007a3b351161cf11d5001ffcff",
+    "semantic_hash": "90772b007a3b351161cf11d5001ffcff"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/buildSrc/src/main/java/com/example/messenger/kotlin/RustPlugin.kt": {
+    "mtime": 1779488114.6295564,
+    "ast_hash": "27e9945f16c83be3c3e69f6b860bc9b5",
+    "semantic_hash": "27e9945f16c83be3c3e69f6b860bc9b5"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/gradlew": {
+    "mtime": 1781306384.5458236,
+    "ast_hash": "02c16663c6f0aa37f98d94d698c22b8c",
+    "semantic_hash": "02c16663c6f0aa37f98d94d698c22b8c"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/settings.gradle": {
+    "mtime": 1779489504.1008375,
+    "ast_hash": "59ec5171ae7b32327cb111ee6947005d",
+    "semantic_hash": "59ec5171ae7b32327cb111ee6947005d"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/tauri.settings.gradle": {
+    "mtime": 1781068151.7166905,
+    "ast_hash": "1246bd9e7f0d9aa493bbd2394ac82ae6",
+    "semantic_hash": "1246bd9e7f0d9aa493bbd2394ac82ae6"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/schemas/acl-manifests.json": {
+    "mtime": 1781067964.7491906,
+    "ast_hash": "361b996d0c995b73e33bf6c172e3c025",
+    "semantic_hash": "361b996d0c995b73e33bf6c172e3c025"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/schemas/android-schema.json": {
+    "mtime": 1781067964.7581906,
+    "ast_hash": "6ea89e50b5e5462f6ca625eb56c2cd97",
+    "semantic_hash": "6ea89e50b5e5462f6ca625eb56c2cd97"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/schemas/capabilities.json": {
+    "mtime": 1781067964.7601907,
+    "ast_hash": "f0a3c4f58a84aff6d92836276ff4a920",
+    "semantic_hash": "f0a3c4f58a84aff6d92836276ff4a920"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/schemas/desktop-schema.json": {
+    "mtime": 1781069636.2840557,
+    "ast_hash": "6ea89e50b5e5462f6ca625eb56c2cd97",
+    "semantic_hash": "6ea89e50b5e5462f6ca625eb56c2cd97"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/schemas/linux-schema.json": {
+    "mtime": 1781069636.283062,
+    "ast_hash": "6ea89e50b5e5462f6ca625eb56c2cd97",
+    "semantic_hash": "6ea89e50b5e5462f6ca625eb56c2cd97"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/schemas/mobile-schema.json": {
+    "mtime": 1781067964.7595,
+    "ast_hash": "6ea89e50b5e5462f6ca625eb56c2cd97",
+    "semantic_hash": "6ea89e50b5e5462f6ca625eb56c2cd97"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/src/commands.rs": {
+    "mtime": 1779952768.3462515,
+    "ast_hash": "9efbc0835ebb268ffe2a6014a8cdf876",
+    "semantic_hash": "9efbc0835ebb268ffe2a6014a8cdf876"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/src/lib.rs": {
+    "mtime": 1781069610.9817057,
+    "ast_hash": "359c60cff03511ab3f54bd7ea2a759d8",
+    "semantic_hash": "359c60cff03511ab3f54bd7ea2a759d8"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/src/main.rs": {
+    "mtime": 1779370608.1116645,
+    "ast_hash": "778bd7b76ac9a9d9dba63ede3a537438",
+    "semantic_hash": "778bd7b76ac9a9d9dba63ede3a537438"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/src/transcription.rs": {
+    "mtime": 1781069702.9750736,
+    "ast_hash": "e7788db9fedb3809cdc09ddbd60d06f3",
+    "semantic_hash": "e7788db9fedb3809cdc09ddbd60d06f3"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/build.gradle.kts": {
+    "mtime": 1781067964.5738015,
+    "ast_hash": "68900af07f5c317d787436216820fa47",
+    "semantic_hash": "68900af07f5c317d787436216820fa47"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/src/androidTest/java/app/tauri/ExampleInstrumentedTest.kt": {
+    "mtime": 1781067964.568818,
+    "ast_hash": "2f853621cd24b6d1f15372d91b1012ff",
+    "semantic_hash": "2f853621cd24b6d1f15372d91b1012ff"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/src/main/java/app/tauri/AppPlugin.kt": {
+    "mtime": 1781067964.573326,
+    "ast_hash": "9aa5fc61c23958ffa6d1d5eff4f3869d",
+    "semantic_hash": "9aa5fc61c23958ffa6d1d5eff4f3869d"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/src/main/java/app/tauri/FsUtils.kt": {
+    "mtime": 1781067964.5731921,
+    "ast_hash": "5ed4630add62705b18d833454e22ca8e",
+    "semantic_hash": "5ed4630add62705b18d833454e22ca8e"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/src/main/java/app/tauri/JniMethod.kt": {
+    "mtime": 1781067964.5730622,
+    "ast_hash": "27681725923c55d0e1ff640332664723",
+    "semantic_hash": "27681725923c55d0e1ff640332664723"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/src/main/java/app/tauri/Logger.kt": {
+    "mtime": 1781067964.5705817,
+    "ast_hash": "4a93f67857c6c1b174291bcc47942e1a",
+    "semantic_hash": "4a93f67857c6c1b174291bcc47942e1a"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/src/main/java/app/tauri/PathPlugin.kt": {
+    "mtime": 1781067964.572779,
+    "ast_hash": "def1c7eac1a447b581c7fc40cbf47d5f",
+    "semantic_hash": "def1c7eac1a447b581c7fc40cbf47d5f"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/src/main/java/app/tauri/PermissionHelper.kt": {
+    "mtime": 1781067964.5726628,
+    "ast_hash": "3a55f8c76fba88220bb4727261674031",
+    "semantic_hash": "3a55f8c76fba88220bb4727261674031"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/src/main/java/app/tauri/PermissionState.kt": {
+    "mtime": 1781067964.5729208,
+    "ast_hash": "c1bae658a48e0531f08dc166df8b6c72",
+    "semantic_hash": "c1bae658a48e0531f08dc166df8b6c72"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/src/main/java/app/tauri/annotation/ActivityCallback.kt": {
+    "mtime": 1781067964.5703175,
+    "ast_hash": "71dcfee2c3780c5dd3edc0cfe6772875",
+    "semantic_hash": "71dcfee2c3780c5dd3edc0cfe6772875"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/src/main/java/app/tauri/annotation/InvokeArg.kt": {
+    "mtime": 1781067964.5697515,
+    "ast_hash": "e613af328d6bb00cc2830d62418efa00",
+    "semantic_hash": "e613af328d6bb00cc2830d62418efa00"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/src/main/java/app/tauri/annotation/Permission.kt": {
+    "mtime": 1781067964.5701897,
+    "ast_hash": "90b59311f98c4619093abda32cd671ee",
+    "semantic_hash": "90b59311f98c4619093abda32cd671ee"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/src/main/java/app/tauri/annotation/PermissionCallback.kt": {
+    "mtime": 1781067964.5700333,
+    "ast_hash": "9ca0364ca399a70583be92fd45de9985",
+    "semantic_hash": "9ca0364ca399a70583be92fd45de9985"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/src/main/java/app/tauri/annotation/PluginMethod.kt": {
+    "mtime": 1781067964.5704312,
+    "ast_hash": "106ee9a3ffd0f0e2b19a7100652e17e5",
+    "semantic_hash": "106ee9a3ffd0f0e2b19a7100652e17e5"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/src/main/java/app/tauri/annotation/TauriPlugin.kt": {
+    "mtime": 1781067964.5698874,
+    "ast_hash": "9bc051596b319ae0d6ae201e59b9f788",
+    "semantic_hash": "9bc051596b319ae0d6ae201e59b9f788"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/src/main/java/app/tauri/plugin/Channel.kt": {
+    "mtime": 1781067964.570757,
+    "ast_hash": "29dbe9854e49e9ddd9be9f40bf409444",
+    "semantic_hash": "29dbe9854e49e9ddd9be9f40bf409444"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/src/main/java/app/tauri/plugin/InvalidPluginMethodException.kt": {
+    "mtime": 1781067964.570874,
+    "ast_hash": "2e7d1da4bcfdc9c287b6789b5c5daac1",
+    "semantic_hash": "2e7d1da4bcfdc9c287b6789b5c5daac1"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/src/main/java/app/tauri/plugin/Invoke.kt": {
+    "mtime": 1781067964.5712419,
+    "ast_hash": "b5faed15b22709f66bf1109a37e278cc",
+    "semantic_hash": "b5faed15b22709f66bf1109a37e278cc"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/src/main/java/app/tauri/plugin/JSArray.kt": {
+    "mtime": 1781067964.5720007,
+    "ast_hash": "3a6cfcabfa0d257681abc0a324d3de8c",
+    "semantic_hash": "3a6cfcabfa0d257681abc0a324d3de8c"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/src/main/java/app/tauri/plugin/JSObject.kt": {
+    "mtime": 1781067964.5717525,
+    "ast_hash": "0cae3aa8e75e2c76d8a4d2400a42815f",
+    "semantic_hash": "0cae3aa8e75e2c76d8a4d2400a42815f"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/src/main/java/app/tauri/plugin/Plugin.kt": {
+    "mtime": 1781067964.5723114,
+    "ast_hash": "bfd8fdfa0271d3c24ac6605f6e3422a1",
+    "semantic_hash": "bfd8fdfa0271d3c24ac6605f6e3422a1"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/src/main/java/app/tauri/plugin/PluginHandle.kt": {
+    "mtime": 1781067964.570992,
+    "ast_hash": "fa361ef6ddba4f345f7c11d405ea942d",
+    "semantic_hash": "fa361ef6ddba4f345f7c11d405ea942d"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/src/main/java/app/tauri/plugin/PluginManager.kt": {
+    "mtime": 1781067964.5725052,
+    "ast_hash": "eb9f4cf4607bd857e520c17dbbbbbafa",
+    "semantic_hash": "eb9f4cf4607bd857e520c17dbbbbbafa"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/src/main/java/app/tauri/plugin/PluginMethodData.kt": {
+    "mtime": 1781067964.5711195,
+    "ast_hash": "15d350202bd06580f260f35cd3d7d09b",
+    "semantic_hash": "15d350202bd06580f260f35cd3d7d09b"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/src/main/java/app/tauri/plugin/PluginResult.kt": {
+    "mtime": 1781067964.571876,
+    "ast_hash": "6a1e6b3f54a8ef6d2b3d47bc40c433a9",
+    "semantic_hash": "6a1e6b3f54a8ef6d2b3d47bc40c433a9"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/.tauri/tauri-api/src/test/java/app/tauri/ExampleUnitTest.kt": {
+    "mtime": 1781067964.5691564,
+    "ast_hash": "d238e28954fa65612410096e84572971",
+    "semantic_hash": "d238e28954fa65612410096e84572971"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/build.gradle.kts": {
+    "mtime": 1779489458.159691,
+    "ast_hash": "d44249307475a38315b222583bcd8f9b",
+    "semantic_hash": "d44249307475a38315b222583bcd8f9b"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/android/src/main/java/com/example/keystore/KeystorePlugin.kt": {
+    "mtime": 1779488321.0757184,
+    "ast_hash": "d0dd98709ef5b62afd055d3df73f93e6",
+    "semantic_hash": "d0dd98709ef5b62afd055d3df73f93e6"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/build.rs": {
+    "mtime": 1781068041.0984447,
+    "ast_hash": "30e72dee8b8c2bf51b775a775cebfc94",
+    "semantic_hash": "30e72dee8b8c2bf51b775a775cebfc94"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/permissions/schemas/schema.json": {
+    "mtime": 1781067964.567188,
+    "ast_hash": "89462a6f4abefe7de3b1f72ff4a0cc65",
+    "semantic_hash": "89462a6f4abefe7de3b1f72ff4a0cc65"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/src/commands.rs": {
+    "mtime": 1781068170.942192,
+    "ast_hash": "48d8c27e2389d7708ec3073ff146bcad",
+    "semantic_hash": "48d8c27e2389d7708ec3073ff146bcad"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/src/desktop.rs": {
+    "mtime": 1781069685.9871626,
+    "ast_hash": "3245659763eee190058a47401665bf52",
+    "semantic_hash": "3245659763eee190058a47401665bf52"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/src/lib.rs": {
+    "mtime": 1781068194.0595436,
+    "ast_hash": "9660f61c2bf2f0510dfd6a48ffdef537",
+    "semantic_hash": "9660f61c2bf2f0510dfd6a48ffdef537"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/src/mobile.rs": {
+    "mtime": 1781068182.1079895,
+    "ast_hash": "84296148c9983f9163da1fd0aab8ea5d",
+    "semantic_hash": "84296148c9983f9163da1fd0aab8ea5d"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-file-saver/build.rs": {
+    "mtime": 1781068038.5991788,
+    "ast_hash": "bcf566157b4aecb019c1ec0cd67cdacf",
+    "semantic_hash": "bcf566157b4aecb019c1ec0cd67cdacf"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-file-saver/permissions/schemas/schema.json": {
+    "mtime": 1781067964.560188,
+    "ast_hash": "7f8d2c8c039fa67f521a2eba160136b4",
+    "semantic_hash": "7f8d2c8c039fa67f521a2eba160136b4"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-file-saver/src/commands.rs": {
+    "mtime": 1781068121.4562864,
+    "ast_hash": "ed993269fe9eedf312ac335b96658669",
+    "semantic_hash": "ed993269fe9eedf312ac335b96658669"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-file-saver/src/desktop.rs": {
+    "mtime": 1781068130.4324064,
+    "ast_hash": "0396d023e832fa8603f0379f8414b147",
+    "semantic_hash": "0396d023e832fa8603f0379f8414b147"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-file-saver/src/lib.rs": {
+    "mtime": 1781068106.8410912,
+    "ast_hash": "5380460ffd88d041274df8e52fedb486",
+    "semantic_hash": "5380460ffd88d041274df8e52fedb486"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri.conf.json": {
+    "mtime": 1780952245.7590756,
+    "ast_hash": "983d6cb91aa576a565bb36416e039f8c",
+    "semantic_hash": "983d6cb91aa576a565bb36416e039f8c"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-crypto/src/canonical.rs": {
+    "mtime": 1779356812.6775384,
+    "ast_hash": "fcd7b67eebe1c0a53ae837d10320c052",
+    "semantic_hash": "fcd7b67eebe1c0a53ae837d10320c052"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-crypto/src/error.rs": {
+    "mtime": 1779356807.2945378,
+    "ast_hash": "cda5e15f0aed01b6d92d6d880aca3fde",
+    "semantic_hash": "cda5e15f0aed01b6d92d6d880aca3fde"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-crypto/src/lib.rs": {
+    "mtime": 1779356813.3505383,
+    "ast_hash": "a1399ae73c8c0225c4aa2cefbec2ade3",
+    "semantic_hash": "a1399ae73c8c0225c4aa2cefbec2ade3"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-crypto/src/signing.rs": {
+    "mtime": 1779356810.002538,
+    "ast_hash": "d355c8e649766038a4018a4cbb82c42f",
+    "semantic_hash": "d355c8e649766038a4018a4cbb82c42f"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-entity/src/attachments.rs": {
+    "mtime": 1779354834.1353767,
+    "ast_hash": "a264f72a3db6b3915a96014553b8f06c",
+    "semantic_hash": "a264f72a3db6b3915a96014553b8f06c"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-entity/src/device_provisioning_requests.rs": {
+    "mtime": 1779364484.2141645,
+    "ast_hash": "05b59b21333dcc395d906b04ca2e297f",
+    "semantic_hash": "05b59b21333dcc395d906b04ca2e297f"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-entity/src/devices.rs": {
+    "mtime": 1779354834.1391854,
+    "ast_hash": "02e1bc2b8ca054e49021b2ce1d4803c9",
+    "semantic_hash": "02e1bc2b8ca054e49021b2ce1d4803c9"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-entity/src/invitation_token_redemptions.rs": {
+    "mtime": 1779354649.4484494,
+    "ast_hash": "a2fb58a1c0a4b3fc66a7d5c89024fa9b",
+    "semantic_hash": "a2fb58a1c0a4b3fc66a7d5c89024fa9b"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-entity/src/key_change_events.rs": {
+    "mtime": 1779354400.7283413,
+    "ast_hash": "c7ff787c059c588ade0d14cf4afe743d",
+    "semantic_hash": "c7ff787c059c588ade0d14cf4afe743d"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-entity/src/key_packages.rs": {
+    "mtime": 1779354834.1430023,
+    "ast_hash": "4477c8385825f04983d7130bf0738774",
+    "semantic_hash": "4477c8385825f04983d7130bf0738774"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-entity/src/lib.rs": {
+    "mtime": 1779925155.9181964,
+    "ast_hash": "6a45db662434f1009a865e071cbafc25",
+    "semantic_hash": "6a45db662434f1009a865e071cbafc25"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-entity/src/message_delivery_receipts.rs": {
+    "mtime": 1779354640.904361,
+    "ast_hash": "abc0ae2bb3d337fa7bd916faab4834a9",
+    "semantic_hash": "abc0ae2bb3d337fa7bd916faab4834a9"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-entity/src/mls_group_devices.rs": {
+    "mtime": 1779354633.3082492,
+    "ast_hash": "6c064b1fd71b27aef46536c009dad5ed",
+    "semantic_hash": "6c064b1fd71b27aef46536c009dad5ed"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-entity/src/mls_group_members.rs": {
+    "mtime": 1779354630.7713602,
+    "ast_hash": "dcec083d29b9c11265dfbc5e5a8edcd8",
+    "semantic_hash": "dcec083d29b9c11265dfbc5e5a8edcd8"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-entity/src/mls_groups.rs": {
+    "mtime": 1779354406.1693418,
+    "ast_hash": "10b4e3aef465918d11ac4ed957a59dd3",
+    "semantic_hash": "10b4e3aef465918d11ac4ed957a59dd3"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-entity/src/mls_message_states.rs": {
+    "mtime": 1779354639.0443609,
+    "ast_hash": "c75913c18d8d580e79b881cd3208eb21",
+    "semantic_hash": "c75913c18d8d580e79b881cd3208eb21"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-entity/src/mls_messages.rs": {
+    "mtime": 1779354834.1463,
+    "ast_hash": "51a6bd1e792f6de22ac6b8c140ad554a",
+    "semantic_hash": "51a6bd1e792f6de22ac6b8c140ad554a"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-entity/src/mls_welcomes.rs": {
+    "mtime": 1779354416.7623427,
+    "ast_hash": "e2918d1e739489d95e65af1af3419a02",
+    "semantic_hash": "e2918d1e739489d95e65af1af3419a02"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-entity/src/prelude.rs": {
+    "mtime": 1779925155.9181964,
+    "ast_hash": "29c3b61fc1102970818b0a5b8b1f2c84",
+    "semantic_hash": "29c3b61fc1102970818b0a5b8b1f2c84"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-entity/src/reactions.rs": {
+    "mtime": 1779354645.4373615,
+    "ast_hash": "65364294ed3176e5e3b422f7cce8d84e",
+    "semantic_hash": "65364294ed3176e5e3b422f7cce8d84e"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-entity/src/server_config.rs": {
+    "mtime": 1779354388.3203404,
+    "ast_hash": "c7846e72f6ee10c5d4edbfbc568eb099",
+    "semantic_hash": "c7846e72f6ee10c5d4edbfbc568eb099"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-entity/src/users.rs": {
+    "mtime": 1779354834.149963,
+    "ast_hash": "e730a0c34c03ecbb026c7146142b0922",
+    "semantic_hash": "e730a0c34c03ecbb026c7146142b0922"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-migration/src/lib.rs": {
+    "mtime": 1779949456.831387,
+    "ast_hash": "0d426f64e63c85e49652e61550abf867",
+    "semantic_hash": "0d426f64e63c85e49652e61550abf867"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-migration/src/m20260601_000001_create_server_config.rs": {
+    "mtime": 1779354740.5706856,
+    "ast_hash": "ced4e619b94eed12ee5cc9afacd8ef55",
+    "semantic_hash": "ced4e619b94eed12ee5cc9afacd8ef55"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-migration/src/m20260601_000002_create_users.rs": {
+    "mtime": 1779354740.5862508,
+    "ast_hash": "904de5e89f537205c3e13719209ef503",
+    "semantic_hash": "904de5e89f537205c3e13719209ef503"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-migration/src/m20260601_000004_create_devices.rs": {
+    "mtime": 1779354840.7223773,
+    "ast_hash": "46c03e18c11308793b27665589cb7ef0",
+    "semantic_hash": "46c03e18c11308793b27665589cb7ef0"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-migration/src/m20260601_000005_create_key_packages.rs": {
+    "mtime": 1779354840.7253773,
+    "ast_hash": "6c2a2b66af6d546b06451e638a01a4f9",
+    "semantic_hash": "6c2a2b66af6d546b06451e638a01a4f9"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-migration/src/m20260601_000006_create_device_provisioning_requests.rs": {
+    "mtime": 1779354840.7288792,
+    "ast_hash": "12a53e542e6a72f94f69a1c5ce922a9a",
+    "semantic_hash": "12a53e542e6a72f94f69a1c5ce922a9a"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-migration/src/m20260601_000007_create_key_change_events.rs": {
+    "mtime": 1779354740.5892878,
+    "ast_hash": "af4c8c0db17d4183ac1d52b67ec9ea65",
+    "semantic_hash": "af4c8c0db17d4183ac1d52b67ec9ea65"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-migration/src/m20260601_000009_create_invitation_token_redemptions.rs": {
+    "mtime": 1779354740.5927575,
+    "ast_hash": "e41612b437f8592126f1d3197a335514",
+    "semantic_hash": "e41612b437f8592126f1d3197a335514"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-migration/src/m20260601_000010_create_mls_groups.rs": {
+    "mtime": 1779354740.580066,
+    "ast_hash": "feec6b5f5b52f51d5ee5fd90bc2ed30f",
+    "semantic_hash": "feec6b5f5b52f51d5ee5fd90bc2ed30f"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-migration/src/m20260601_000011_create_mls_group_members.rs": {
+    "mtime": 1779354840.731891,
+    "ast_hash": "bfbc402e1f1e8b2d5124a92394762e43",
+    "semantic_hash": "bfbc402e1f1e8b2d5124a92394762e43"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-migration/src/m20260601_000012_create_mls_group_devices.rs": {
+    "mtime": 1779354840.7355037,
+    "ast_hash": "61bd9b3c998705c1b9648ef739d90cba",
+    "semantic_hash": "61bd9b3c998705c1b9648ef739d90cba"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-migration/src/m20260601_000013_create_mls_messages.rs": {
+    "mtime": 1779354840.7383773,
+    "ast_hash": "67a273eab92b6b7430ce62a6dae963a6",
+    "semantic_hash": "67a273eab92b6b7430ce62a6dae963a6"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-migration/src/m20260601_000014_create_mls_message_states.rs": {
+    "mtime": 1779354740.5829725,
+    "ast_hash": "b6dbb5975a0ff6db901c33a9b8d6a0ae",
+    "semantic_hash": "b6dbb5975a0ff6db901c33a9b8d6a0ae"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-migration/src/m20260601_000015_create_mls_welcomes.rs": {
+    "mtime": 1779354840.7418664,
+    "ast_hash": "2e352ea1aae21d509bb13a5ecb89fdb6",
+    "semantic_hash": "2e352ea1aae21d509bb13a5ecb89fdb6"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-migration/src/m20260601_000016_create_attachments.rs": {
+    "mtime": 1779354740.5957787,
+    "ast_hash": "c9dc4ae07d15e8b4061427a3c098dd0a",
+    "semantic_hash": "c9dc4ae07d15e8b4061427a3c098dd0a"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-migration/src/m20260601_000017_create_reactions.rs": {
+    "mtime": 1779354740.5992832,
+    "ast_hash": "73a89b2c484e0e1894853c8c16145c05",
+    "semantic_hash": "73a89b2c484e0e1894853c8c16145c05"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-migration/src/m20260601_000018_create_message_delivery_receipts.rs": {
+    "mtime": 1779354740.6023803,
+    "ast_hash": "bd362f0c2231a5664c29ad1b8a2901db",
+    "semantic_hash": "bd362f0c2231a5664c29ad1b8a2901db"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-migration/src/m20260601_000020_add_provisioning_signing_key.rs": {
+    "mtime": 1779364476.732164,
+    "ast_hash": "afcb1f216c7d3e5098527c37ad17ad1a",
+    "semantic_hash": "afcb1f216c7d3e5098527c37ad17ad1a"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-migration/src/main.rs": {
+    "mtime": 1779354453.9303458,
+    "ast_hash": "37aac1f59a70a40d8b56441c20105fc9",
+    "semantic_hash": "37aac1f59a70a40d8b56441c20105fc9"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-migration/tests/migrations_test.rs": {
+    "mtime": 1779925156.0131035,
+    "ast_hash": "30b36e91a050d9b950118578ea10cfbb",
+    "semantic_hash": "30b36e91a050d9b950118578ea10cfbb"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-proto/src/lib.rs": {
+    "mtime": 1779350635.7066054,
+    "ast_hash": "1052d036b5399a853686ca40c91d7273",
+    "semantic_hash": "1052d036b5399a853686ca40c91d7273"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/attachments/mod.rs": {
+    "mtime": 1779367714.015428,
+    "ast_hash": "d32cc2cf03aedd898649b21e7ee036a3",
+    "semantic_hash": "d32cc2cf03aedd898649b21e7ee036a3"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/auth/header.rs": {
+    "mtime": 1779356867.1695428,
+    "ast_hash": "61058300de4e6141fe5886b5d007ac2c",
+    "semantic_hash": "61058300de4e6141fe5886b5d007ac2c"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/auth/middleware.rs": {
+    "mtime": 1779357389.5875854,
+    "ast_hash": "fccf14d08e3f32201d7095291a7595bc",
+    "semantic_hash": "fccf14d08e3f32201d7095291a7595bc"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/auth/mod.rs": {
+    "mtime": 1779356859.5195422,
+    "ast_hash": "36a4f6e6ca44fb3423560880fc3d4a08",
+    "semantic_hash": "36a4f6e6ca44fb3423560880fc3d4a08"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/bootstrap.rs": {
+    "mtime": 1779358545.6194181,
+    "ast_hash": "c576ec873e26bc7c0dd6983f85911f9f",
+    "semantic_hash": "c576ec873e26bc7c0dd6983f85911f9f"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/config.rs": {
+    "mtime": 1779367320.034396,
+    "ast_hash": "ede002b27ddca2dff71f51559f03aa6a",
+    "semantic_hash": "ede002b27ddca2dff71f51559f03aa6a"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/db.rs": {
+    "mtime": 1779356061.123477,
+    "ast_hash": "14f4473e810d2b8c40b820f2520021f9",
+    "semantic_hash": "14f4473e810d2b8c40b820f2520021f9"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/error.rs": {
+    "mtime": 1779359334.276049,
+    "ast_hash": "a134221bdb2bdec72b6e0a627c36c56e",
+    "semantic_hash": "a134221bdb2bdec72b6e0a627c36c56e"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/identity.rs": {
+    "mtime": 1779358557.7083442,
+    "ast_hash": "267b3c9490693ffd0f3b62f06604db06",
+    "semantic_hash": "267b3c9490693ffd0f3b62f06604db06"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/lib.rs": {
+    "mtime": 1779369082.5334256,
+    "ast_hash": "10658f31a893cb4e5c8c889e45f52e58",
+    "semantic_hash": "10658f31a893cb4e5c8c889e45f52e58"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/main.rs": {
+    "mtime": 1779924847.9618893,
+    "ast_hash": "4fd985ebd8d121bd540ef545b103a8da",
+    "semantic_hash": "4fd985ebd8d121bd540ef545b103a8da"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/routes/admin.rs": {
+    "mtime": 1779364725.970784,
+    "ast_hash": "99aa7b537cb924868d6045a08802a106",
+    "semantic_hash": "99aa7b537cb924868d6045a08802a106"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/routes/attachments.rs": {
+    "mtime": 1779367780.065416,
+    "ast_hash": "a02078281316d63eead3a9f634cbc7e2",
+    "semantic_hash": "a02078281316d63eead3a9f634cbc7e2"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/routes/dev.rs": {
+    "mtime": 1781035461.2235134,
+    "ast_hash": "8024185845bad5a64826429c3382cbdf",
+    "semantic_hash": "8024185845bad5a64826429c3382cbdf"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/routes/devices.rs": {
+    "mtime": 1779370015.3984914,
+    "ast_hash": "5d140172497b3529af2da79fd66e03b7",
+    "semantic_hash": "5d140172497b3529af2da79fd66e03b7"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/routes/invite.rs": {
+    "mtime": 1780589916.7006752,
+    "ast_hash": "5f22814c2fe85deb5074f831003ae62e",
+    "semantic_hash": "5f22814c2fe85deb5074f831003ae62e"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/routes/keypackages.rs": {
+    "mtime": 1779365868.3922775,
+    "ast_hash": "f69aeb0c9dac18a9bd726beb6d42b5cf",
+    "semantic_hash": "f69aeb0c9dac18a9bd726beb6d42b5cf"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/routes/mls.rs": {
+    "mtime": 1780966416.8173687,
+    "ast_hash": "d1157ed2f0832b330418ca57479a697c",
+    "semantic_hash": "d1157ed2f0832b330418ca57479a697c"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/routes/mod.rs": {
+    "mtime": 1780963920.5609107,
+    "ast_hash": "ae000f9f6f26fb29ae5676fffa5dbabe",
+    "semantic_hash": "ae000f9f6f26fb29ae5676fffa5dbabe"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/routes/provisioning.rs": {
+    "mtime": 1780963507.5230436,
+    "ast_hash": "20ea7e06ef91c43f61eeb4209369ffd2",
+    "semantic_hash": "20ea7e06ef91c43f61eeb4209369ffd2"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/routes/server_info.rs": {
+    "mtime": 1779358574.5033777,
+    "ast_hash": "695c17ac807c7cc10b82bdd0013cc933",
+    "semantic_hash": "695c17ac807c7cc10b82bdd0013cc933"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/routes/users.rs": {
+    "mtime": 1780585089.1052973,
+    "ast_hash": "756754b1244b00958dec0f232a57292c",
+    "semantic_hash": "756754b1244b00958dec0f232a57292c"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/routes/ws.rs": {
+    "mtime": 1779369999.482474,
+    "ast_hash": "5799cdcdd2cd42245fe1e88ae532497e",
+    "semantic_hash": "5799cdcdd2cd42245fe1e88ae532497e"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/services/invite.rs": {
+    "mtime": 1780632180.364782,
+    "ast_hash": "938f66b86b8f279f8556e136840fad18",
+    "semantic_hash": "938f66b86b8f279f8556e136840fad18"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/services/mod.rs": {
+    "mtime": 1779359375.9127476,
+    "ast_hash": "357dca51168ab9d922109ba9df9205a7",
+    "semantic_hash": "357dca51168ab9d922109ba9df9205a7"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/state.rs": {
+    "mtime": 1779369069.4590607,
+    "ast_hash": "455dc0559cacc2c2baebc4637ea1e977",
+    "semantic_hash": "455dc0559cacc2c2baebc4637ea1e977"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/tasks/attachment_gc.rs": {
+    "mtime": 1779367759.2061744,
+    "ast_hash": "5962499150949d61a4208246aadc6965",
+    "semantic_hash": "5962499150949d61a4208246aadc6965"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/tasks/keypackage_gc.rs": {
+    "mtime": 1779365875.1403253,
+    "ast_hash": "7d44a19ab896584cf64824b9c3c8e5a0",
+    "semantic_hash": "7d44a19ab896584cf64824b9c3c8e5a0"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/tasks/mod.rs": {
+    "mtime": 1779367504.111411,
+    "ast_hash": "b271a7e48d048aa86a1527eec6efc79a",
+    "semantic_hash": "b271a7e48d048aa86a1527eec6efc79a"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/tasks/provisioning_gc.rs": {
+    "mtime": 1779364526.836168,
+    "ast_hash": "8459c37fde6365584d4c3016d8d81cac",
+    "semantic_hash": "8459c37fde6365584d4c3016d8d81cac"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/telemetry.rs": {
+    "mtime": 1779356052.7034762,
+    "ast_hash": "8d2e401b4d99fe3cf6381fdf764e3ca5",
+    "semantic_hash": "8d2e401b4d99fe3cf6381fdf764e3ca5"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/src/ws_registry.rs": {
+    "mtime": 1779369965.9991362,
+    "ast_hash": "07a616194a0c7c7f1aef3b32ba2ec38f",
+    "semantic_hash": "07a616194a0c7c7f1aef3b32ba2ec38f"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/tests/test_attachments.rs": {
+    "mtime": 1779369522.2547092,
+    "ast_hash": "15ec5cff5db96d50f4ba4805d1468b50",
+    "semantic_hash": "15ec5cff5db96d50f4ba4805d1468b50"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/tests/test_auth.rs": {
+    "mtime": 1779369526.0224516,
+    "ast_hash": "bf030d169d6111dff847bdc01bcf3898",
+    "semantic_hash": "bf030d169d6111dff847bdc01bcf3898"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/tests/test_bootstrap.rs": {
+    "mtime": 1779369522.9616184,
+    "ast_hash": "ed4389625b416bf61cfe8d6d7260ac92",
+    "semantic_hash": "ed4389625b416bf61cfe8d6d7260ac92"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/tests/test_e2e_full_flow.rs": {
+    "mtime": 1779370398.3500998,
+    "ast_hash": "b87a343e821372fc6800c3f469c9555d",
+    "semantic_hash": "b87a343e821372fc6800c3f469c9555d"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/tests/test_invites.rs": {
+    "mtime": 1779369525.1356733,
+    "ast_hash": "9bcded6715fe7ff1f662534689ac8af2",
+    "semantic_hash": "9bcded6715fe7ff1f662534689ac8af2"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/tests/test_keypackages.rs": {
+    "mtime": 1779369460.0519426,
+    "ast_hash": "3109e0c2529bcd66cfc6f379f1d22dda",
+    "semantic_hash": "3109e0c2529bcd66cfc6f379f1d22dda"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/tests/test_mls_messaging.rs": {
+    "mtime": 1779369457.143895,
+    "ast_hash": "535fa7257a859b3226d406001f1ca433",
+    "semantic_hash": "535fa7257a859b3226d406001f1ca433"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/tests/test_provisioning.rs": {
+    "mtime": 1779917014.0216713,
+    "ast_hash": "3deb498abe3a866f24be73904deaa43d",
+    "semantic_hash": "3deb498abe3a866f24be73904deaa43d"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/tests/test_startup.rs": {
+    "mtime": 1779369456.4311817,
+    "ast_hash": "963a61e7943a6eb4356549a7806cedbb",
+    "semantic_hash": "963a61e7943a6eb4356549a7806cedbb"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/tests/test_users_devices.rs": {
+    "mtime": 1779369524.415035,
+    "ast_hash": "af869bf18befb4153321499ac258e122",
+    "semantic_hash": "af869bf18befb4153321499ac258e122"
+  },
+  "/home/killua/code/diploma/messenger/server/crates/messenger-server/tests/test_websocket.rs": {
+    "mtime": 1779370462.6636527,
+    "ast_hash": "cd1789dcbabca533c5e2a18b81b2cff1",
+    "semantic_hash": "cd1789dcbabca533c5e2a18b81b2cff1"
+  },
+  "/home/killua/code/diploma/messenger/client/README.md": {
+    "mtime": 1779489180.1646562,
+    "ast_hash": "5b6c738035391b561fe8d15fa53b3cb7",
+    "semantic_hash": "5b6c738035391b561fe8d15fa53b3cb7"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/index.html": {
+    "mtime": 1780622318.7003474,
+    "ast_hash": "d7044225d2f7f772cc97a6d7eb37965d",
+    "semantic_hash": "d7044225d2f7f772cc97a6d7eb37965d"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/assets/index.html": {
+    "mtime": 1780627182.4393787,
+    "ast_hash": "b66da879f6171b977d95db6db8dbbe8e",
+    "semantic_hash": "b66da879f6171b977d95db6db8dbbe8e"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-android-keystore/permissions/autogenerated/reference.md": {
+    "mtime": 1781067964.567188,
+    "ast_hash": "30a6998c9ceaad4fa4364a5c19f997b6",
+    "semantic_hash": "30a6998c9ceaad4fa4364a5c19f997b6"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/tauri-plugin-file-saver/permissions/autogenerated/reference.md": {
+    "mtime": 1781067964.561188,
+    "ast_hash": "7b35c40226c7dacee63bffcc5198f168",
+    "semantic_hash": "7b35c40226c7dacee63bffcc5198f168"
+  },
+  "/home/killua/code/diploma/messenger/deploy/docker-compose.yml": {
+    "mtime": 1781073124.4031334,
+    "ast_hash": "cd3c55f55500fb0af30bf260ecff06f9",
+    "semantic_hash": "cd3c55f55500fb0af30bf260ecff06f9"
+  },
+  "/home/killua/code/diploma/messenger/server/README.md": {
+    "mtime": 1779350639.3749409,
+    "ast_hash": "972556028ac8a033cf7e9a8ba3fdbac0",
+    "semantic_hash": "972556028ac8a033cf7e9a8ba3fdbac0"
+  },
+  "/home/killua/code/diploma/messenger/client/crates/messenger-client/public/favicon.svg": {
+    "mtime": 1779370591.7229772,
+    "ast_hash": "ef9735b92cab315576b4d57a18951e9e",
+    "semantic_hash": "ef9735b92cab315576b4d57a18951e9e"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/assets/favicon-598889cd7ea7e7e1.svg": {
+    "mtime": 1780627182.4393091,
+    "ast_hash": "ef9735b92cab315576b4d57a18951e9e",
+    "semantic_hash": "ef9735b92cab315576b4d57a18951e9e"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/res/mipmap-hdpi/ic_launcher.png": {
+    "mtime": 1779488114.6285565,
+    "ast_hash": "331411a21199dcbb3fd3e9dc180ff090",
+    "semantic_hash": "331411a21199dcbb3fd3e9dc180ff090"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/res/mipmap-hdpi/ic_launcher_foreground.png": {
+    "mtime": 1779488114.6285565,
+    "ast_hash": "c922c31dd0772e0569d6b9982345a3cc",
+    "semantic_hash": "c922c31dd0772e0569d6b9982345a3cc"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png": {
+    "mtime": 1779488114.6285565,
+    "ast_hash": "331411a21199dcbb3fd3e9dc180ff090",
+    "semantic_hash": "331411a21199dcbb3fd3e9dc180ff090"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/res/mipmap-mdpi/ic_launcher.png": {
+    "mtime": 1779488114.6285565,
+    "ast_hash": "c988238f35e59dcfa66d0402fcef5454",
+    "semantic_hash": "c988238f35e59dcfa66d0402fcef5454"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/res/mipmap-mdpi/ic_launcher_foreground.png": {
+    "mtime": 1779488114.6285565,
+    "ast_hash": "b08cc46c43b78ade95ffa710f2c85ee9",
+    "semantic_hash": "b08cc46c43b78ade95ffa710f2c85ee9"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png": {
+    "mtime": 1779488114.6285565,
+    "ast_hash": "c988238f35e59dcfa66d0402fcef5454",
+    "semantic_hash": "c988238f35e59dcfa66d0402fcef5454"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png": {
+    "mtime": 1779488114.6285565,
+    "ast_hash": "2bd12d99c8151b74c78129ad7ef78af8",
+    "semantic_hash": "2bd12d99c8151b74c78129ad7ef78af8"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/res/mipmap-xhdpi/ic_launcher_foreground.png": {
+    "mtime": 1779488114.6285565,
+    "ast_hash": "8c4be6f31e044cc8a1ac39e45d50d9dd",
+    "semantic_hash": "8c4be6f31e044cc8a1ac39e45d50d9dd"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png": {
+    "mtime": 1779488114.6285565,
+    "ast_hash": "2bd12d99c8151b74c78129ad7ef78af8",
+    "semantic_hash": "2bd12d99c8151b74c78129ad7ef78af8"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png": {
+    "mtime": 1779488114.6285565,
+    "ast_hash": "7b9be1ceb98e9e2c1ac1562b705c679e",
+    "semantic_hash": "7b9be1ceb98e9e2c1ac1562b705c679e"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_foreground.png": {
+    "mtime": 1779488114.6285565,
+    "ast_hash": "023cdbfd0bd363e1da6b48eb91d873f2",
+    "semantic_hash": "023cdbfd0bd363e1da6b48eb91d873f2"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png": {
+    "mtime": 1779488114.6285565,
+    "ast_hash": "7b9be1ceb98e9e2c1ac1562b705c679e",
+    "semantic_hash": "7b9be1ceb98e9e2c1ac1562b705c679e"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png": {
+    "mtime": 1779488114.6285565,
+    "ast_hash": "f83434b1cfc97752a5182da19b9869c8",
+    "semantic_hash": "f83434b1cfc97752a5182da19b9869c8"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png": {
+    "mtime": 1779488114.6285565,
+    "ast_hash": "56c4fd013ccd4ac84787fcba327abc37",
+    "semantic_hash": "56c4fd013ccd4ac84787fcba327abc37"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/gen/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png": {
+    "mtime": 1779488114.6285565,
+    "ast_hash": "f83434b1cfc97752a5182da19b9869c8",
+    "semantic_hash": "f83434b1cfc97752a5182da19b9869c8"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/icons/128x128.png": {
+    "mtime": 1779371427.823192,
+    "ast_hash": "f78693acc0f112a84953fc1abdcc4217",
+    "semantic_hash": "f78693acc0f112a84953fc1abdcc4217"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/icons/128x128@2x.png": {
+    "mtime": 1779371428.4543014,
+    "ast_hash": "241df222988047e446662d90bb39c47c",
+    "semantic_hash": "241df222988047e446662d90bb39c47c"
+  },
+  "/home/killua/code/diploma/messenger/client/src-tauri/icons/32x32.png": {
+    "mtime": 1779371427.8134131,
+    "ast_hash": "31df2d367ff3b6398d59a2a051a6e686",
+    "semantic_hash": "31df2d367ff3b6398d59a2a051a6e686"
+  }
+}

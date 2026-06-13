@@ -21,6 +21,13 @@ thread_local! {
     /// Object URLs live for the document's lifetime, so reusing them is free.
     static ATTACHMENT_URL_CACHE: std::cell::RefCell<std::collections::HashMap<uuid::Uuid, String>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
+
+    /// Attachments the server has confirmed gone (HTTP 404). The blob was GC'd
+    /// (its finalize never bound it to a message, back when finalize 500'd), so
+    /// it will never return — caching the verdict stops every chat re-render /
+    /// sync tick from firing another 6-attempt download storm at a dead id.
+    static ATTACHMENT_MISSING: std::cell::RefCell<std::collections::HashSet<uuid::Uuid>> =
+        std::cell::RefCell::new(std::collections::HashSet::new());
 }
 
 fn cached_attachment_url(id: uuid::Uuid) -> Option<String> {
@@ -30,6 +37,16 @@ fn cached_attachment_url(id: uuid::Uuid) -> Option<String> {
 fn cache_attachment_url(id: uuid::Uuid, url: &str) {
     ATTACHMENT_URL_CACHE.with(|c| {
         c.borrow_mut().insert(id, url.to_string());
+    });
+}
+
+fn attachment_known_missing(id: uuid::Uuid) -> bool {
+    ATTACHMENT_MISSING.with(|c| c.borrow().contains(&id))
+}
+
+fn mark_attachment_missing(id: uuid::Uuid) {
+    ATTACHMENT_MISSING.with(|c| {
+        c.borrow_mut().insert(id);
     });
 }
 
@@ -44,14 +61,20 @@ fn load_media_blob(
     err: RwSignal<Option<String>>,
     l: Language,
 ) {
-    let cached = attachment_id
+    let parsed_id = attachment_id
         .as_ref()
         .and_then(|s| s.parse::<uuid::Uuid>().ok())
-        .filter(|id| !id.is_nil())
-        .and_then(cached_attachment_url);
-    if let Some(url) = cached {
+        .filter(|id| !id.is_nil());
+    if let Some(url) = parsed_id.and_then(cached_attachment_url) {
         blob_url.set(Some(url));
         return;
+    }
+    // Already known gone — show the placeholder without re-hammering the server.
+    if let Some(id) = parsed_id {
+        if attachment_known_missing(id) {
+            err.set(Some(t(l, "message.imageUnavailable").to_string()));
+            return;
+        }
     }
     let (Some(aid), Some(key_b64)) = (attachment_id, decryption_key) else {
         return;
@@ -81,6 +104,12 @@ fn load_media_blob(
             match api.download_attachment(attachment_id, None).await {
                 Ok(b) => {
                     ct = Some(b);
+                    break;
+                }
+                // 404 = the blob is gone for good (GC'd). Retrying and re-trying
+                // on every future render is pointless — remember it and stop.
+                Err(messenger_core::api::ApiError::Api { status: 404, .. }) => {
+                    mark_attachment_missing(attachment_id);
                     break;
                 }
                 Err(e) => tracing::warn!(
