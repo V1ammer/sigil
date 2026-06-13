@@ -45,6 +45,7 @@ pub mod settings;
 pub mod screens;
 pub mod state;
 pub mod session;
+pub mod sound;
 pub mod tauri_bridge;
 
 pub use app::App;

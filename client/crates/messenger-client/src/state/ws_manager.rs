@@ -152,6 +152,18 @@ impl WsManager {
                             } else {
                                 svc.refresh_incoming(group_id).await;
                             }
+                            // Notification sound — only for a genuine incoming
+                            // content message. Control/side-channel messages
+                            // (read receipts, avatar updates, edits) are consumed
+                            // during the pull and never land in the buffer, so a
+                            // message id that's present now is a real message.
+                            let is_content = svc.messages.by_group.with_untracked(|map| {
+                                map.get(&group_id)
+                                    .is_some_and(|list| list.iter().any(|m| m.id == message_id))
+                            });
+                            if is_content {
+                                crate::sound::play_message_sound();
+                            }
                         });
                     }
                 }

@@ -93,6 +93,10 @@ pub fn App() -> impl IntoView {
         persist_locale(&loc);
     });
 
+    // Arm the notification-sound unlock so the first incoming-message beep
+    // isn't blocked by the browser autoplay policy.
+    crate::sound::arm_audio_unlock();
+
     // 5. Provide WebSocket manager (starts disconnected).
     let ws = WsManager::new();
     provide_context(ws.clone());
