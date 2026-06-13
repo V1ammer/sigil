@@ -10,6 +10,8 @@ pub enum DeliveryStatus {
     Sending,
     SentToServer,
     DeliveredToAll,
+    /// Peer confirmed reading (via an MLS ReadReceipt envelope).
+    Read,
     Failed,
 }
 

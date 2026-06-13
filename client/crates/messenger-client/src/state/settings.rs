@@ -91,7 +91,9 @@ impl SettingsState {
             notification_vibration: RwSignal::new(load_bool(&format!("{PREFIX}notification_vibration"), false)),
             notification_filter: RwSignal::new(load_setting(&format!("{PREFIX}notification_filter"), "all")),
             message_preview: RwSignal::new(load_bool(&format!("{PREFIX}message_preview"), true)),
-            read_receipts: RwSignal::new(load_bool(&format!("{PREFIX}read_receipts"), false)),
+            // Default ON, like mainstream messengers — receipts only flow
+            // between users who both keep this enabled.
+            read_receipts: RwSignal::new(load_bool(&format!("{PREFIX}read_receipts"), true)),
             typing_indicators: RwSignal::new(load_bool(&format!("{PREFIX}typing_indicators"), true)),
             history_retention: RwSignal::new(load_setting(&format!("{PREFIX}history_retention"), "forever")),
             auto_delete: RwSignal::new(load_setting(&format!("{PREFIX}auto_delete"), "off")),

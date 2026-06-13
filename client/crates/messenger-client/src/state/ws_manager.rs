@@ -112,14 +112,38 @@ impl WsManager {
                 connectivity.api_reachable.set(true);
             }
             ServerFrame::Pong => {}
-            ServerFrame::NewMessage { group_id, .. } => {
+            ServerFrame::NewMessage { group_id, message_id, .. } => {
                 tracing::debug!(%group_id, "ws new message");
-                if let Some(chats) = use_context::<ChatsState>() {
+                // Thread-local handles: this runs in the WS event loop where
+                // the leptos owner (and use_context) is unavailable.
+                let chats = crate::state::message_service::chats_handle();
+                if let Some(ref chats) = chats {
                     chats.chats.update(|list| {
                         if let Some(chat) = list.iter_mut().find(|c| c.group_id == group_id) {
                             chat.last_message_at = Some(js_sys::Date::now() as i64);
                         }
                     });
+                }
+                // If this chat is open and the message isn't ours (our own
+                // sends are already echoed locally with the server id), pull
+                // the new content right away — that is what makes incoming
+                // messages (and read receipts turning our checkmarks blue)
+                // appear without reopening the chat.
+                let is_open = chats
+                    .map(|c| c.selected.get_untracked() == Some(group_id))
+                    .unwrap_or(false);
+                if is_open {
+                    if let Some(svc) = crate::state::message_service::service_handle() {
+                        let already_known = svc.messages.by_group.with_untracked(|map| {
+                            map.get(&group_id)
+                                .is_some_and(|list| list.iter().any(|m| m.id == message_id))
+                        });
+                        if !already_known {
+                            spawn_local(async move {
+                                svc.load_messages(group_id).await;
+                            });
+                        }
+                    }
                 }
             }
             ServerFrame::NewWelcome { welcome_id, group_id } => {

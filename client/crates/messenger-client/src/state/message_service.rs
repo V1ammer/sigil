@@ -101,6 +101,48 @@ fn set_chat_last_message(
     });
 }
 
+// --- Delivery / read markers (localStorage, per group) ---
+//
+// Receipts are tiny monotone watermarks: for OUR messages we track the last
+// id the peer has read (from their MLS ReadReceipt) and the last id the
+// server confirmed delivered; for THEIR messages — the last id we already
+// acknowledged with our own ReadReceipt. UUIDv7 ordering matches time, so a
+// plain `Uuid` comparison gives "everything up to X".
+
+fn marker_get(prefix: &str, group_id: Uuid) -> Option<Uuid> {
+    web_sys::window()
+        .and_then(|w| w.local_storage().ok())
+        .flatten()?
+        .get_item(&format!("{prefix}{group_id}"))
+        .ok()
+        .flatten()?
+        .parse()
+        .ok()
+}
+
+fn marker_max(prefix: &str, group_id: Uuid, id: Uuid) {
+    let current = marker_get(prefix, group_id);
+    if current.is_some_and(|c| c >= id) {
+        return;
+    }
+    if let Some(s) = web_sys::window().and_then(|w| w.local_storage().ok()).flatten() {
+        let _ = s.set_item(&format!("{prefix}{group_id}"), &id.to_string());
+    }
+}
+
+const PEER_READ_PREFIX: &str = "messenger_peer_read_";
+const DELIVERED_PREFIX: &str = "messenger_delivered_";
+const READ_ACKED_PREFIX: &str = "messenger_read_acked_";
+
+/// Whether the user shares read receipts (privacy setting, default on).
+fn read_receipts_enabled() -> bool {
+    web_sys::window()
+        .and_then(|w| w.local_storage().ok())
+        .flatten()
+        .and_then(|s| s.get_item("ms_settings_read_receipts").ok().flatten())
+        .map_or(true, |v| v == "true")
+}
+
 /// Extract a short snippet for the chat list from a decoded message body.
 fn preview_from_body(body: &MessageBody) -> String {
     match body {
@@ -234,12 +276,128 @@ impl MessageService {
                         Some(m.kind),
                     );
                 }
+                self.apply_delivery_markers(group_id);
+                self.refresh_delivery_status(group_id);
+                self.acknowledge_read(group_id);
                 tracing::debug!(%group_id, count = resp.messages.len(), "messages loaded");
             }
             Err(e) => {
                 tracing::warn!(%group_id, error = %e, "failed to load messages");
             }
         }
+    }
+
+    /// Re-stamp own messages with Read / DeliveredToAll based on the stored
+    /// watermarks (peer's ReadReceipt and server delivery confirmations).
+    fn apply_delivery_markers(&self, group_id: Uuid) {
+        let Some(me) = current_user_id() else { return };
+        let peer_read = marker_get(PEER_READ_PREFIX, group_id);
+        let delivered = marker_get(DELIVERED_PREFIX, group_id);
+        if peer_read.is_none() && delivered.is_none() {
+            return;
+        }
+        self.messages.by_group.update(|map| {
+            if let Some(list) = map.get_mut(&group_id) {
+                for m in list.iter_mut() {
+                    // Locally echoed own messages carry a nil sender id.
+                    if !(m.sender_user_id == me || m.sender_user_id.is_nil()) {
+                        continue;
+                    }
+                    if peer_read.is_some_and(|r| m.id <= r) {
+                        m.delivery_status = DeliveryStatus::Read;
+                    } else if delivered.is_some_and(|d| m.id <= d)
+                        && m.delivery_status == DeliveryStatus::SentToServer
+                    {
+                        m.delivery_status = DeliveryStatus::DeliveredToAll;
+                    }
+                }
+            }
+        });
+    }
+
+    /// Ask the server whether our newest message reached the peer's devices
+    /// and advance the delivered watermark. One request per chat open.
+    fn refresh_delivery_status(&self, group_id: Uuid) {
+        let Some(me) = current_user_id() else { return };
+        let last_own = self.messages.by_group.with_untracked(|map| {
+            map.get(&group_id).and_then(|list| {
+                list.iter()
+                    .filter(|m| m.sender_user_id == me && !m.id.is_nil())
+                    .map(|m| m.id)
+                    .max()
+            })
+        });
+        let Some(last_own) = last_own else { return };
+        if marker_get(DELIVERED_PREFIX, group_id).is_some_and(|d| d >= last_own) {
+            return;
+        }
+        let svc = self.clone();
+        spawn_local(async move {
+            let Some(api) = build_api_client() else { return };
+            if let Ok(status) = api.message_delivery(last_own).await {
+                if status.delivered_count > 0 {
+                    marker_max(DELIVERED_PREFIX, group_id, last_own);
+                    svc.apply_delivery_markers(group_id);
+                }
+            }
+        });
+    }
+
+    /// Tell the peer we've seen their messages (MLS ReadReceipt envelope) —
+    /// only when the privacy setting allows it and only for ids we haven't
+    /// acknowledged yet. Side-channel: never rendered, never in previews.
+    fn acknowledge_read(&self, group_id: Uuid) {
+        if !read_receipts_enabled() {
+            return;
+        }
+        let Some(me) = current_user_id() else { return };
+        let last_foreign = self.messages.by_group.with_untracked(|map| {
+            map.get(&group_id).and_then(|list| {
+                list.iter()
+                    .filter(|m| m.sender_user_id != me && !m.sender_user_id.is_nil())
+                    .map(|m| m.id)
+                    .max()
+            })
+        });
+        let Some(up_to) = last_foreign else { return };
+        if marker_get(READ_ACKED_PREFIX, group_id).is_some_and(|a| a >= up_to) {
+            return;
+        }
+        let svc = self.clone();
+        spawn_local(async move {
+            let Some(api) = build_api_client() else { return };
+            let client_message_id = Uuid::now_v7();
+            let envelope = ApplicationEnvelope {
+                client_message_id,
+                kind: AppMessageKind::ReadReceipt,
+                body: AppMessageBody::ReadReceipt {
+                    up_to_message_id: up_to,
+                    at: js_sys::Date::now() as i64 / 1000,
+                },
+                reply_to_message_id: None,
+                thread_root_id: None,
+                created_at: js_sys::Date::now() as i64 / 1000,
+                sender_display_name_override: current_display_name(),
+            };
+            let envelope_ct = match svc.encrypt_envelope(group_id, &envelope).await {
+                Some(ct) => ct,
+                None => match rmp_serde::to_vec_named(&envelope) {
+                    Ok(plain) => plain,
+                    Err(_) => return,
+                },
+            };
+            let req = PostMessageRequest {
+                expected_epoch: 0,
+                mls_ciphertext: envelope_ct,
+                parent_message_id: None,
+                reply_to_message_id: None,
+                thread_root_id: None,
+                client_message_id,
+            };
+            if api.post_message(group_id, &req).await.is_ok() {
+                marker_max(READ_ACKED_PREFIX, group_id, up_to);
+            }
+        });
     }
 
     /// Send a text message to a group.
@@ -1188,6 +1346,14 @@ impl MessageService {
                             decryption_key.clone(),
                             mime.clone(),
                         );
+                        return None;
+                    }
+                    // Read-receipt side-channel: remember how far the peer
+                    // has read so our own bubbles turn blue; never shown.
+                    if let AppMessageBody::ReadReceipt { up_to_message_id, .. } = envelope.body {
+                        if Some(msg.sender_user_id) != current_user_id() {
+                            marker_max(PEER_READ_PREFIX, group_id, up_to_message_id);
+                        }
                         return None;
                     }
                     let (k, b) = Self::envelope_to_display(&envelope);
