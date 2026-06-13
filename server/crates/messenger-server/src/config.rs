@@ -84,7 +84,11 @@ fn default_data_dir() -> PathBuf {
 }
 
 fn default_max_request_body_bytes() -> usize {
-    16 * 1024 * 1024 // 16 MB
+    // Must be >= max_attachment_bytes: the auth middleware buffers the whole
+    // body to verify the signature, so a smaller cap here would reject large
+    // attachment uploads (the signature covers the encrypted blob) before the
+    // attachment handler runs.
+    101 * 1024 * 1024 // 101 MB (100 MB attachment cap + slack)
 }
 
 fn default_websocket_idle_timeout_secs() -> u64 {
