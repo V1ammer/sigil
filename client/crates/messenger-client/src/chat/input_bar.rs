@@ -100,6 +100,8 @@ pub fn InputBar(
     let file_input_ref: NodeRef<leptos::html::Input> = NodeRef::new();
 
     let on_send_attachment_arc = on_send_attachment.map(Arc::new);
+    // Kept aside for the paste handler — `make_on_change` moves the original.
+    let on_paste_attachment = on_send_attachment_arc.clone();
 
     // Trigger native file picker by clicking the hidden input.
     let click_hidden = |node: NodeRef<leptos::html::Input>| {
@@ -165,6 +167,62 @@ pub fn InputBar(
 
     let on_photo_change = make_on_change(true);
     let on_file_change = make_on_change(false);
+
+    // Paste-to-attach: Ctrl+V an image straight into the composer. Handled
+    // through the `Textarea`'s own `on:paste` so Leptos owns the listener
+    // (no leaked native handler that would fire once per re-render).
+    let on_paste_cb = {
+        let on_send_attachment = on_paste_attachment.clone();
+        Box::new(move |ev: web_sys::ClipboardEvent| {
+            let Some(dt) = ev.clipboard_data() else { return };
+            let items = dt.items();
+            for i in 0..items.length() {
+                let Some(item) = items.get(i) else { continue };
+                if !item.type_().starts_with("image/") {
+                    continue;
+                }
+                // Pasting an image shouldn't also drop its path/text into the box.
+                ev.prevent_default();
+                let Ok(Some(file)) = item.get_as_file() else { continue };
+                let mime = file.type_();
+                let size = file.size() as u64;
+                // Clipboard images usually have no name — synthesize one.
+                let name = {
+                    let n = file.name();
+                    if n.is_empty() {
+                        let ext = mime.rsplit('/').next().unwrap_or("png");
+                        format!("pasted-{}.{ext}", js_sys::Date::now() as u64)
+                    } else {
+                        n
+                    }
+                };
+                let on_send_attachment = on_send_attachment.clone();
+                spawn_local(async move {
+                    let buf_js = match wasm_bindgen_futures::JsFuture::from(file.array_buffer())
+                        .await
+                    {
+                        Ok(v) => v,
+                        Err(e) => {
+                            web_sys::console::error_1(&format!("paste image read: {e:?}").into());
+                            return;
+                        }
+                    };
+                    let arr_buf: js_sys::ArrayBuffer = buf_js.unchecked_into();
+                    let bytes = js_sys::Uint8Array::new(&arr_buf).to_vec();
+                    if let Some(f) = on_send_attachment.as_ref() {
+                        f(AttachmentPayload {
+                            bytes,
+                            mime: if mime.is_empty() { "image/png".into() } else { mime },
+                            name,
+                            size,
+                            is_image: true,
+                        });
+                    }
+                });
+                break;
+            }
+        }) as Box<dyn Fn(web_sys::ClipboardEvent) + Send + Sync + 'static>
+    };
 
     let has_text = move || !text.get().trim().is_empty();
 
@@ -552,6 +610,7 @@ pub fn InputBar(
                         rows=1u32
                         on_change=on_change_cb
                         on_key_down=on_key_down_cb
+                        on_paste=on_paste_cb
                         node_ref=textarea_ref
                     />
                 </div>

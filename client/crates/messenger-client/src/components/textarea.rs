@@ -10,6 +10,7 @@ pub fn Textarea(
     #[prop(optional, into)] rows: u32,
     #[prop(optional)] on_change: Option<Box<dyn Fn(String) + Send + Sync + 'static>>,
     #[prop(optional)] on_key_down: Option<Box<dyn Fn(leptos::ev::KeyboardEvent) + Send + Sync + 'static>>,
+    #[prop(optional)] on_paste: Option<Box<dyn Fn(web_sys::ClipboardEvent) + Send + Sync + 'static>>,
     #[prop(optional)] node_ref: NodeRef<leptos::html::Textarea>,
 ) -> impl IntoView {
     view! {
@@ -26,6 +27,11 @@ pub fn Textarea(
             }
             on:keydown=move |ev| {
                 if let Some(f) = on_key_down.as_ref() {
+                    f(ev);
+                }
+            }
+            on:paste=move |ev| {
+                if let Some(f) = on_paste.as_ref() {
                     f(ev);
                 }
             }
