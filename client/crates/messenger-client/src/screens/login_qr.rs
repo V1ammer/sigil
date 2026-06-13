@@ -241,11 +241,21 @@ pub fn LoginQrScreen() -> impl IntoView {
                                             payload.device_hpke_seed,
                                         );
 
-                                        // Save to storage
+                                        // Save to storage. Fall back to the
+                                        // server URL already in localStorage (set
+                                        // when the server was configured and used
+                                        // for all the provisioning API calls) — the
+                                        // session may no longer be in the
+                                        // ServerConfigured state here, and an empty
+                                        // URL would clobber it so the new device's
+                                        // API client has no base URL and sees no chats.
                                         let url = sess_clone.state.with(|s| match s {
                                             SessionState::ServerConfigured { url } => Some(url.clone()),
                                             _ => None,
-                                        }).unwrap_or_default();
+                                        })
+                                        .filter(|u| !u.is_empty())
+                                        .or_else(|| crate::state::session::load_server_url().filter(|u| !u.is_empty()))
+                                        .unwrap_or_default();
 
                                         if let Ok(local) = messenger_storage::init_storage("default").await {
                                             let encrypted = messenger_storage::EncryptedIdentity {
