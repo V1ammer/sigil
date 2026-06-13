@@ -87,6 +87,7 @@ pub fn ChatsScreen() -> impl IntoView {
     // tracks the latest avatar_by_id / peer_by_group and survives panel
     // re-renders — the same reliable pattern the sidebar rows use.
     let users_for_header_avatar = use_context::<crate::state::users::UsersState>();
+    let typing_state = use_context::<crate::state::typing::TypingState>();
     let header_avatar: Signal<Option<String>> = Signal::derive(move || {
         let gid = selected.get()?;
         let us = users_for_header_avatar.as_ref()?;
@@ -460,6 +461,17 @@ pub fn ChatsScreen() -> impl IntoView {
                                     }.into_any()
                                 }
                             }
+                        }}
+
+                        {/* Peer typing indicator — reactive to TypingState */}
+                        {move || {
+                            typing_state
+                                .filter(|ts| ts.is_typing(group_id))
+                                .map(|_| view! {
+                                    <div class="shrink-0 px-4 pb-1 text-xs italic text-muted-foreground">
+                                        {t!("chat.typing")}
+                                    </div>
+                                })
                         }}
 
                         {/* Input bar — always visible when a chat is selected */}

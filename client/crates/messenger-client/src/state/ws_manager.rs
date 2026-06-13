@@ -17,6 +17,16 @@ use uuid::Uuid;
 use super::connectivity::{ConnectivityState, WsConnectivity};
 use super::chats::ChatsState;
 
+/// Whether typing indicators are enabled (privacy setting, default on). Gates
+/// both sending our own typing and surfacing peers' — reciprocal, like read
+/// receipts.
+fn typing_indicators_enabled() -> bool {
+    web_sys::window()
+        .and_then(|w| w.local_storage().ok().flatten())
+        .and_then(|s| s.get_item("ms_settings_typing_indicators").ok().flatten())
+        .map_or(true, |v| v != "false")
+}
+
 /// Reactive WebSocket handle — Send + Sync for Leptos context.
 #[derive(Clone)]
 pub struct WsManager {
@@ -114,6 +124,10 @@ impl WsManager {
             ServerFrame::Pong => {}
             ServerFrame::NewMessage { group_id, message_id, .. } => {
                 tracing::debug!(%group_id, "ws new message");
+                // A delivered message means the peer is no longer typing.
+                if let Some(typing) = crate::state::message_service::typing_handle() {
+                    typing.clear(group_id);
+                }
                 // Thread-local handles: this runs in the WS event loop where
                 // the leptos owner (and use_context) is unavailable.
                 // NB: don't bump last_message_at here. It fired unconditionally
@@ -172,7 +186,15 @@ impl WsManager {
                 tracing::debug!(%welcome_id, %group_id, "ws new welcome");
             }
             ServerFrame::KeyChange { .. } => {}
-            ServerFrame::Typing { .. } => {}
+            ServerFrame::Typing { group_id, user_id, started } => {
+                // Reciprocal privacy: only surface peers' typing if the user
+                // has the indicator enabled (same toggle that gates sending).
+                if typing_indicators_enabled() {
+                    if let Some(typing) = crate::state::message_service::typing_handle() {
+                        typing.set(group_id, user_id, started);
+                    }
+                }
+            }
             ServerFrame::Error { code, message } => {
                 tracing::warn!(%code, message = %message.as_deref().unwrap_or(""), "ws server error");
             }

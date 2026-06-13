@@ -105,6 +105,7 @@ thread_local! {
     static USERS_STATE: RefCell<Option<UsersState>> = const { RefCell::new(None) };
     static CHATS_STATE: RefCell<Option<crate::state::chats::ChatsState>> = const { RefCell::new(None) };
     static MSG_SERVICE: RefCell<Option<MessageService>> = const { RefCell::new(None) };
+    static TYPING_STATE: RefCell<Option<crate::state::typing::TypingState>> = const { RefCell::new(None) };
 }
 
 /// The globally registered `MessageService`, for code paths that run outside
@@ -118,6 +119,11 @@ pub fn service_handle() -> Option<MessageService> {
 #[must_use]
 pub fn chats_handle() -> Option<crate::state::chats::ChatsState> {
     CHATS_STATE.with(|c| c.borrow().clone())
+}
+
+/// Typing-indicator state, for code paths outside the leptos owner (the WS loop).
+pub fn typing_handle() -> Option<crate::state::typing::TypingState> {
+    TYPING_STATE.with(|c| *c.borrow())
 }
 
 /// Bump a chat's `last_message_at` if `ts_ms` is newer than what's stored.
@@ -332,11 +338,13 @@ pub fn init_message_service_context(
     users: UsersState,
     chats: crate::state::chats::ChatsState,
     svc: MessageService,
+    typing: crate::state::typing::TypingState,
 ) {
     SESSION_STATE.with(|c| *c.borrow_mut() = Some(session.state));
     USERS_STATE.with(|c| *c.borrow_mut() = Some(users));
     CHATS_STATE.with(|c| *c.borrow_mut() = Some(chats));
     MSG_SERVICE.with(|c| *c.borrow_mut() = Some(svc));
+    TYPING_STATE.with(|c| *c.borrow_mut() = Some(typing));
 }
 
 // MLS runtime is cached in a thread-local because `MessengerLocalStore` is ?Send

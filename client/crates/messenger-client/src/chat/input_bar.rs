@@ -79,6 +79,15 @@ pub enum InputPreview {
     },
 }
 
+/// Typing indicators on? (privacy setting, default on.) Gates whether we
+/// announce our own typing over the WebSocket.
+fn typing_setting_on() -> bool {
+    web_sys::window()
+        .and_then(|w| w.local_storage().ok().flatten())
+        .and_then(|s| s.get_item("ms_settings_typing_indicators").ok().flatten())
+        .map_or(true, |v| v != "false")
+}
+
 #[must_use]
 #[component]
 pub fn InputBar(
@@ -263,12 +272,60 @@ pub fn InputBar(
     let on_send_arc = on_send.map(Arc::new);
     let on_send_for_keydown = on_send_arc.clone();
 
+    // ── Typing indicator emission ──────────────────────────────────────
+    // Announce typing while the user edits, throttled, with a debounced
+    // "stopped" that also fires immediately on send. Gated by the privacy
+    // setting; no-op until we know which chat we're in.
+    let typing_group = group_id;
+    let typing_last_at = StoredValue::new(0.0_f64);
+    let typing_stop_token = StoredValue::new(0u64);
+    let emit_typing_start: Arc<dyn Fn() + Send + Sync> = {
+        let ws = use_context::<crate::state::ws_manager::WsManager>();
+        Arc::new(move || {
+            let (Some(ws), Some(gid)) = (ws.clone(), typing_group) else { return };
+            if !typing_setting_on() {
+                return;
+            }
+            let now = js_sys::Date::now();
+            if now - typing_last_at.get_value() > 2500.0 {
+                ws.send_typing(gid, true);
+                typing_last_at.set_value(now);
+            }
+            // Debounced stop: only the latest keystroke's timer wins.
+            let token = typing_stop_token.get_value().wrapping_add(1);
+            typing_stop_token.set_value(token);
+            let ws_stop = ws.clone();
+            spawn_local(async move {
+                gloo_timers::future::TimeoutFuture::new(3000).await;
+                if typing_stop_token.get_value() == token {
+                    ws_stop.send_typing(gid, false);
+                    typing_last_at.set_value(0.0);
+                }
+            });
+        })
+    };
+    let emit_typing_stop: Arc<dyn Fn() + Send + Sync> = {
+        let ws = use_context::<crate::state::ws_manager::WsManager>();
+        Arc::new(move || {
+            let (Some(ws), Some(gid)) = (ws.clone(), typing_group) else { return };
+            // Invalidate any pending debounced stop, then stop now.
+            typing_stop_token.set_value(typing_stop_token.get_value().wrapping_add(1));
+            if typing_last_at.get_value() != 0.0 {
+                ws.send_typing(gid, false);
+                typing_last_at.set_value(0.0);
+            }
+        })
+    };
+    let emit_stop_for_send = emit_typing_stop.clone();
+    let emit_stop_for_keydown = emit_typing_stop.clone();
+
     let handle_send = move |()| {
         let msg = text.get().trim().to_string();
         if !msg.is_empty() {
             if let Some(ref f) = on_send_arc {
                 f(msg);
             }
+            emit_stop_for_send();
             text.set(String::new());
             clear_draft();
             // Clear textarea value via node_ref
@@ -290,6 +347,7 @@ pub fn InputBar(
                 if let Some(ref f) = on_send_for_keydown {
                     f(msg);
                 }
+                emit_stop_for_keydown();
                 text.set(String::new());
                 clear_draft();
                 if let Some(el) = textarea_ref.get() {
@@ -302,6 +360,11 @@ pub fn InputBar(
     };
 
     let handle_change = move |val: String| {
+        if val.trim().is_empty() {
+            emit_typing_stop();
+        } else {
+            emit_typing_start();
+        }
         save_draft(&val);
         text.set(val);
         // Auto-resize
