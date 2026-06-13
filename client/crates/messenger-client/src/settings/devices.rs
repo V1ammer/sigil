@@ -21,12 +21,10 @@ use std::sync::Arc;
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-#[cfg(feature = "native")]
-use messenger_core::bootstrap::BootstrapPayload;
 use messenger_core::ed25519::Ed25519Pair;
-#[cfg(feature = "native")]
+#[cfg(any(feature = "native", feature = "wasm-mls"))]
 use messenger_core::mls::group::MlsRuntime;
-#[cfg(feature = "native")]
+#[cfg(any(feature = "native", feature = "wasm-mls"))]
 use messenger_core::mls::keypackage::generate_keypackage_bundle;
 use messenger_core::prov::{decode_qr, QrPayload};
 use messenger_proto::keypackages::PublishKeyPackagesRequest;
@@ -212,8 +210,16 @@ pub fn DevicesSettings() -> impl IntoView {
                 let devs = devs;
                 let st = st;
 
-                #[cfg(feature = "native")]
+                #[cfg(any(feature = "native", feature = "wasm-mls"))]
                 spawn_local(async move {
+                    // AGE bootstrap encryption runs in the native Tauri backend
+                    // (via tauri_bridge); a plain browser has no such backend.
+                    if !crate::tauri_bridge::is_tauri_context() {
+                        let msg = t!("scan.error.browserOnly").to_string();
+                        nf.push(ToastKind::Error, msg.clone());
+                        st.set(ProvisioningStep::Error(msg));
+                        return;
+                    }
                     // Get the stored QR payload from the previous step
                     let my_step = st.get_untracked();
                     let qr = match my_step {
@@ -290,7 +296,10 @@ pub fn DevicesSettings() -> impl IntoView {
                     };
 
                     // ── Step B: Build and encrypt bootstrap payload ──
-                    let bootstrap_payload = BootstrapPayload {
+                    // Encrypt via the native Tauri AGE backend (works on desktop
+                    // and Android) — the `age` crate doesn't build into the WASM
+                    // frontend, so we never call it from here directly.
+                    let bootstrap_payload = crate::tauri_bridge::BootstrapPayload {
                         user_id: identity.user_id,
                         username: identity.username.clone(),
                         identity_signing_seed: identity.identity_signing_key.secret_bytes(),
@@ -299,13 +308,14 @@ pub fn DevicesSettings() -> impl IntoView {
                         key_package_bundle: kp_bundle_bytes,
                     };
 
-                    // Encrypt under the new device's temp X25519 pub key (from QR)
+                    // Encrypt under the new device's temp X25519 pub key (from QR).
                     let temp_x25519_bytes = qr.new_device_temp_x25519_pub;
-                    let temp_recipient = messenger_core::age_wrap::recipient_from_raw_public(&temp_x25519_bytes);
-                    let blob = match messenger_core::bootstrap::build_bootstrap(
+                    let blob = match crate::tauri_bridge::age_encrypt(
                         &bootstrap_payload,
-                        &temp_recipient,
-                    ) {
+                        &temp_x25519_bytes,
+                    )
+                    .await
+                    {
                         Ok(b) => b,
                         Err(e) => {
                             st.set(ProvisioningStep::Error(format!("Encryption failed: {e}")));
@@ -401,14 +411,9 @@ pub fn DevicesSettings() -> impl IntoView {
 
                     st.set(ProvisioningStep::Success);
                 });
-                #[cfg(not(feature = "native"))]
+                #[cfg(not(any(feature = "native", feature = "wasm-mls")))]
                 {
-                    let msg = if crate::tauri_bridge::is_tauri_context() {
-                        "Device provisioning (MLS) is not available from mobile. Use the desktop app to approve new devices.".to_string()
-                    } else {
-                        "Device provisioning is not available in the browser.".to_string()
-                    };
-                    nf.push(ToastKind::Error, msg);
+                    nf.push(ToastKind::Error, t!("scan.error.browserOnly"));
                 }
             }
         }
