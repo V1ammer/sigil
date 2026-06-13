@@ -62,6 +62,10 @@ pub fn AppearanceSettings() -> impl IntoView {
             <div class="space-y-2">
                 <Label class="text-foreground">{t!("settings.appearance.language")}</Label>
                 <Select
+                    value=Signal::derive({
+                        let i18n = i18n.clone();
+                        move || i18n.locale.get().as_str().to_string()
+                    })
                     on_change=Box::new(move |v| {
                         let loc = match v.as_str() {
                             "ru" => Locale::Ru,
@@ -69,6 +73,13 @@ pub fn AppearanceSettings() -> impl IntoView {
                             _ => Locale::System,
                         };
                         i18n.locale.set(loc);
+                        persist_locale(&loc);
+                        // Translations render eagerly (not per-string reactive),
+                        // so reload to apply the new language across the whole
+                        // app — the persisted locale is restored on load.
+                        if let Some(w) = web_sys::window() {
+                            let _ = w.location().reload();
+                        }
                     })
                     class="w-full max-w-xs"
                 >
@@ -83,6 +94,10 @@ pub fn AppearanceSettings() -> impl IntoView {
             <div class="space-y-2">
                 <Label class="text-foreground">{t!("settings.appearance.fontSize")}</Label>
                 <Select
+                    value=Signal::derive({
+                        let fs = settings.font_size;
+                        move || fs.get()
+                    })
                     on_change=Box::new({
                         let fs = settings.font_size;
                         move |v| fs.set(v.clone())
