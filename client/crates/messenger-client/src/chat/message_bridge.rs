@@ -80,7 +80,7 @@ pub fn display_to_mock(msg: &DisplayMessage) -> mock::Message {
         DeliveryStatus::SentToServer => "sent",
         DeliveryStatus::DeliveredToAll => "delivered",
         DeliveryStatus::Read => "read",
-        DeliveryStatus::Failed => "sent", // fallback
+        DeliveryStatus::Failed => "failed",
     };
 
     mock::Message {

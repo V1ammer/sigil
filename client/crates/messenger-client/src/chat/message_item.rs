@@ -266,7 +266,8 @@ pub fn MessageItem(
                                         view! {
                                             <span class="text-[10px] leading-none">
                                                 {match msg.status.as_str() {
-                                                    "sending" => view! { <Icon name="loader" class_name="h-3 w-3 opacity-60"/> }.into_any(),
+                                                    "sending" => view! { <Icon name="loader" class_name="h-3 w-3 opacity-60 animate-spin"/> }.into_any(),
+                                                    "failed" => view! { <Icon name="alert-circle" class_name="h-3 w-3 text-destructive"/> }.into_any(),
                                                     "sent" => view! { <Icon name="check" class_name="h-3 w-3 opacity-60"/> }.into_any(),
                                                     "delivered" => view! { <Icon name="check-check" class_name="h-3 w-3 opacity-60"/> }.into_any(),
                                                     "read" => view! { <Icon name="check-check" class_name="h-3 w-3 text-read"/> }.into_any(),
@@ -430,6 +431,10 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                         Ok(u) => u,
                         Err(_) => { err.set(Some("bad id".into())); return; }
                     };
+                    // Optimistic bubble while our own image is still uploading:
+                    // no attachment id yet — stay in the spinner state instead of
+                    // trying to download a nil id. The real id arrives on reconcile.
+                    if attachment_id.is_nil() { return; }
                     // Гонка отправителя: получатель видит сообщение сразу после
                     // post_message, но attachment ещё не finalize'нут (message_id
                     // = NULL) → сервер отдаёт 403, пока отправитель не довяжет.

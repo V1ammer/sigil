@@ -765,6 +765,55 @@ impl MessageService {
 
         let api = build_api_client()?;
 
+        let client_message_id = Uuid::now_v7();
+        let now = js_sys::Date::now() as i64 / 1000;
+        let me = current_display_name();
+        let kind_for_display = if payload.is_image { MessageKind::Image } else { MessageKind::File };
+
+        // Optimistic "sending" bubble shown immediately, before the (possibly
+        // slow) upload — otherwise a large file/video would upload with zero
+        // feedback and look like it failed. Reconciled to the real message on
+        // success, or marked Failed on error. The placeholder body carries no
+        // attachment id yet; the image renderer stays in its spinner for nil.
+        let sending_body = if payload.is_image {
+            MessageBody::Image {
+                attachment_id: Uuid::nil(),
+                decryption_key: Vec::new(),
+                mime: payload.mime.clone(),
+                width: 0,
+                height: 0,
+                thumb: None,
+            }
+        } else {
+            MessageBody::File {
+                attachment_id: Uuid::nil(),
+                decryption_key: Vec::new(),
+                mime: payload.mime.clone(),
+                name: payload.name.clone(),
+                size: payload.size,
+            }
+        };
+        self.messages.by_group.update(|map| {
+            map.entry(group_id).or_default().push(DisplayMessage {
+                id: client_message_id,
+                client_message_id,
+                group_id,
+                sender_user_id: Uuid::nil(),
+                sender_device_id: Uuid::nil(),
+                sender_display_name: me.clone(),
+                kind: kind_for_display,
+                body: sending_body.clone(),
+                reply_to_message_id: None,
+                thread_root_id: None,
+                created_at: now,
+                edited_at: None,
+                deleted_at: None,
+                delivery_status: DeliveryStatus::Sending,
+                reactions: Vec::new(),
+            });
+        });
+        set_chat_last_message(group_id, now * 1000, Some(preview_from_body(&sending_body)), Some(kind_for_display));
+
         let mut key = [0u8; 32];
         rand::thread_rng().fill_bytes(&mut key);
 
@@ -772,6 +821,7 @@ impl MessageService {
             Ok(ct) => ct,
             Err(e) => {
                 tracing::warn!("attachment encrypt failed: {e:?}");
+                self.mark_attachment_failed(group_id, client_message_id);
                 return None;
             }
         };
@@ -782,13 +832,11 @@ impl MessageService {
             Ok(r) => r,
             Err(e) => {
                 tracing::warn!("attachment upload failed: {e}");
+                self.mark_attachment_failed(group_id, client_message_id);
                 return None;
             }
         };
 
-        let client_message_id = Uuid::now_v7();
-        let now = js_sys::Date::now() as i64 / 1000;
-        let me = current_display_name();
         let (kind, body, local_body) = if payload.is_image {
             (
                 AppMessageKind::Image,
@@ -852,6 +900,7 @@ impl MessageService {
                 }
                 Err(e) => {
                     web_sys::console::error_1(&format!("[send_attachment] envelope serialize: {e}").into());
+                    self.mark_attachment_failed(group_id, client_message_id);
                     return None;
                 }
             },
@@ -869,35 +918,39 @@ impl MessageService {
             Ok(r) => r,
             Err(e) => {
                 web_sys::console::error_1(&format!("[send_attachment] post_message failed: {e}").into());
+                self.mark_attachment_failed(group_id, client_message_id);
                 return None;
             }
         };
         finalize_attachment_retrying(&api, upload.attachment_id, resp.message_id).await;
 
-        let kind_for_display = if payload.is_image { MessageKind::Image } else { MessageKind::File };
+        // Reconcile the optimistic bubble in place: real id, real body (with the
+        // attachment id), and a delivered/sent status replacing the spinner.
         let preview = Some(preview_from_body(&local_body));
         self.messages.by_group.update(|map| {
-            map.entry(group_id).or_default().push(DisplayMessage {
-                id: resp.message_id,
-                client_message_id,
-                group_id,
-                sender_user_id: Uuid::nil(),
-                sender_device_id: Uuid::nil(),
-                sender_display_name: me.clone(),
-                kind: kind_for_display,
-                body: local_body,
-                reply_to_message_id: None,
-                thread_root_id: None,
-                created_at: now,
-                edited_at: None,
-                deleted_at: None,
-                delivery_status: DeliveryStatus::SentToServer,
-                reactions: Vec::new(),
-            });
+            if let Some(list) = map.get_mut(&group_id) {
+                if let Some(m) = list.iter_mut().find(|m| m.client_message_id == client_message_id) {
+                    m.id = resp.message_id;
+                    m.body = local_body;
+                    m.delivery_status = DeliveryStatus::SentToServer;
+                }
+            }
         });
         set_chat_last_message(group_id, now * 1000, preview, Some(kind_for_display));
 
         Some(resp.message_id)
+    }
+
+    /// Mark an in-flight optimistic attachment message as failed to send, so the
+    /// bubble shows an error icon instead of spinning forever.
+    fn mark_attachment_failed(&self, group_id: Uuid, client_message_id: Uuid) {
+        self.messages.by_group.update(|map| {
+            if let Some(list) = map.get_mut(&group_id) {
+                if let Some(m) = list.iter_mut().find(|m| m.client_message_id == client_message_id) {
+                    m.delivery_status = DeliveryStatus::Failed;
+                }
+            }
+        });
     }
 
     /// Broadcast the current (or removed) own avatar to one group as an MLS

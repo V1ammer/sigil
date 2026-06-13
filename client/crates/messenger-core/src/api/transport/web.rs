@@ -7,8 +7,19 @@ use std::pin::pin;
 
 use super::{ApiError, HttpResponse, HttpTransport};
 
-/// Timeout in milliseconds for all HTTP requests.
+/// Base timeout in milliseconds for HTTP requests.
 const REQUEST_TIMEOUT_MS: u32 = 30_000;
+
+/// Extra timeout budget per k**i**byte of request body, assuming a slow
+/// ~50 KB/s uplink floor (20 ms/KiB). Without this, a large attachment upload
+/// (e.g. a video) would be aborted at the 30 s base and fail silently.
+const PER_KIB_TIMEOUT_MS: u32 = 20;
+
+/// Timeout for a request whose body is `body_len` bytes.
+fn timeout_for_body(body_len: usize) -> u32 {
+    let kib = u32::try_from(body_len / 1024).unwrap_or(u32::MAX);
+    REQUEST_TIMEOUT_MS.saturating_add(kib.saturating_mul(PER_KIB_TIMEOUT_MS))
+}
 
 /// HTTP methods that must not have a body per the Fetch spec.
 fn method_forbids_body(method: &str) -> bool {
@@ -49,8 +60,9 @@ impl HttpTransport for GlooNetTransport {
             Either::Right(req_with_body.send())
         };
 
-        // Race request against timeout
-        let timeout_fut = gloo_timers::future::TimeoutFuture::new(REQUEST_TIMEOUT_MS);
+        // Race request against a body-size-aware timeout.
+        let timeout_ms = timeout_for_body(body.len());
+        let timeout_fut = gloo_timers::future::TimeoutFuture::new(timeout_ms);
         let pinned_send = pin!(send_fut);
         let pinned_timeout = pin!(timeout_fut);
 
@@ -62,7 +74,7 @@ impl HttpTransport for GlooNetTransport {
                 }
             }
             Either::Right(((), _)) => {
-                return Err(ApiError::Transport(format!("{method} {url} — request timed out after {REQUEST_TIMEOUT_MS}ms")));
+                return Err(ApiError::Transport(format!("{method} {url} — request timed out after {timeout_ms}ms")));
             }
         };
 
