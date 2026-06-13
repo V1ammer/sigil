@@ -38,12 +38,22 @@ pub fn clear_own_avatar(user_id: Uuid) {
 
 const ANNOUNCED_KEY: &str = "messenger_avatar_announced";
 
-/// Отпечаток текущего аватара пользователя ("none", если аватара нет).
+/// Отпечаток текущего профиля (аватар + display name). Имя включено
+/// намеренно: его смена тоже должна разъехаться по чатам — конверт
+/// AvatarUpdate несёт `sender_display_name_override`, так что re-announce
+/// доставляет и новое имя.
 #[must_use]
 pub fn avatar_fingerprint(user_id: Uuid) -> String {
+    let name = crate::state::profile_store::load_display_name(user_id).unwrap_or_default();
     match load_own_avatar(user_id) {
-        Some(data_url) => blake3::hash(data_url.as_bytes()).to_hex()[..16].to_string(),
-        None => "none".to_string(),
+        Some(data_url) => {
+            let mut hasher = blake3::Hasher::new();
+            hasher.update(data_url.as_bytes());
+            hasher.update(name.as_bytes());
+            hasher.finalize().to_hex()[..16].to_string()
+        }
+        None if name.is_empty() => "none".to_string(),
+        None => format!("name_{}", &blake3::hash(name.as_bytes()).to_hex()[..16]),
     }
 }
 

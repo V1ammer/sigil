@@ -37,6 +37,14 @@ fn current_username() -> Option<String> {
     }))
 }
 
+/// What peers should see as our name: the locally stored display name when
+/// set, otherwise the username. Fills `sender_display_name_override`.
+fn current_display_name() -> Option<String> {
+    current_user_id()
+        .and_then(crate::state::profile_store::load_display_name)
+        .or_else(current_username)
+}
+
 /// Current user's id — same access pattern as [`current_username`].
 fn current_user_id() -> Option<Uuid> {
     SESSION_STATE.with(|c| c.borrow().as_ref().and_then(|s| {
@@ -261,7 +269,7 @@ impl MessageService {
 
         let client_message_id = Uuid::now_v7();
         let now = js_sys::Date::now() as i64 / 1000; // seconds
-        let me = current_username();
+        let me = current_display_name();
 
         // Build the MLS application envelope
         let envelope = ApplicationEnvelope {
@@ -374,7 +382,7 @@ impl MessageService {
         // 3. Build & MLS-encrypt the envelope that references the attachment.
         let client_message_id = Uuid::now_v7();
         let now = js_sys::Date::now() as i64 / 1000;
-        let me = current_username();
+        let me = current_display_name();
         let envelope = ApplicationEnvelope {
             client_message_id,
             kind: AppMessageKind::Voice,
@@ -499,7 +507,7 @@ impl MessageService {
 
         let client_message_id = Uuid::now_v7();
         let now = js_sys::Date::now() as i64 / 1000;
-        let me = current_username();
+        let me = current_display_name();
         let (kind, body, local_body) = if payload.is_image {
             (
                 AppMessageKind::Image,
@@ -680,7 +688,7 @@ impl MessageService {
             reply_to_message_id: None,
             thread_root_id: None,
             created_at: js_sys::Date::now() as i64 / 1000,
-            sender_display_name_override: current_username(),
+            sender_display_name_override: current_display_name(),
         };
         let envelope_ct = match self.encrypt_envelope(group_id, &envelope).await {
             Some(ct) => ct,
@@ -732,13 +740,29 @@ impl MessageService {
             web_sys::console::log_1(&"[avatar] ensure: no user".into());
             return;
         };
-        let Some(api) = build_api_client() else { return };
         let fingerprint = crate::state::avatar_store::avatar_fingerprint(me_id);
         let announced = crate::state::avatar_store::announced_map();
 
-        let Ok(resp) = api.list_groups(None).await else { return };
-        for group in resp.groups {
-            let prev = announced.get(&group.id).map(String::as_str);
+        // The sync loop refreshes CHATS_STATE right before calling us, so
+        // the in-memory list is the primary source; ask the server only when
+        // it is still empty (e.g. settings opened straight after app start).
+        let mut groups: Vec<Uuid> = chats_handle()
+            .map(|cs| cs.chats.get_untracked().iter().map(|ch| ch.group_id).collect())
+            .unwrap_or_default();
+        if groups.is_empty() {
+            let Some(api) = build_api_client() else { return };
+            match api.list_groups(None).await {
+                Ok(resp) => groups = resp.groups.iter().map(|g| g.id).collect(),
+                Err(e) => {
+                    web_sys::console::log_1(
+                        &format!("[avatar] ensure: list_groups failed: {e}").into(),
+                    );
+                    return;
+                }
+            }
+        }
+        for group_id in groups {
+            let prev = announced.get(&group_id).map(String::as_str);
             if prev == Some(fingerprint.as_str()) {
                 continue;
             }
@@ -747,9 +771,9 @@ impl MessageService {
             if prev.is_none() && fingerprint == "none" {
                 continue;
             }
-            let ok = self.broadcast_avatar(group.id).await;
+            let ok = self.broadcast_avatar(group_id).await;
             web_sys::console::log_1(
-                &format!("[avatar] ensure: re-announce to {}: {ok}", group.id).into(),
+                &format!("[avatar] ensure: re-announce to {group_id}: {ok}").into(),
             );
         }
     }
@@ -806,7 +830,7 @@ impl MessageService {
             reply_to_message_id: None,
             thread_root_id: None,
             created_at: now,
-            sender_display_name_override: current_username(),
+            sender_display_name_override: current_display_name(),
         };
 
         let ciphertext = self
@@ -865,7 +889,7 @@ impl MessageService {
             reply_to_message_id: None,
             thread_root_id: None,
             created_at: now,
-            sender_display_name_override: current_username(),
+            sender_display_name_override: current_display_name(),
         };
 
         let ciphertext = self
@@ -1001,7 +1025,7 @@ impl MessageService {
             group_id,
             sender_user_id: Uuid::nil(),
             sender_device_id: Uuid::nil(),
-            sender_display_name: current_username(),
+            sender_display_name: current_display_name(),
             kind: MessageKind::Text,
             body: MessageBody::Text(text.to_string()),
             reply_to_message_id: None,
@@ -1239,19 +1263,19 @@ impl MessageService {
         });
         if is_direct {
             users.remember_peer(group_id, sender);
-            // The welcome recipient never typed the peer's username, so the
-            // chat may still be labeled with a bare UUID. Backfill it from
-            // the name cache (populated by envelope display-name overrides).
+            // Keep the chat label in sync with the peer's latest name from
+            // envelope overrides: covers both the UUID placeholder a welcome
+            // recipient starts with and later display-name changes.
             if let (Some(cs), Some(name)) = (
                 CHATS_STATE.with(|c| c.borrow().clone()),
                 users.get(sender),
             ) {
-                let needs_name = cs
+                let outdated = cs
                     .display_name_cache
                     .get_untracked()
                     .get(&group_id)
-                    .is_none_or(|n| n.parse::<Uuid>().is_ok());
-                if needs_name {
+                    .is_none_or(|n| n != &name);
+                if outdated {
                     cs.set_display_name(group_id, &name);
                 }
             }

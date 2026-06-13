@@ -17,6 +17,7 @@ pub mod message_service;
 pub mod sync_service;
 pub mod back_stack;
 pub mod avatar_store;
+pub mod profile_store;
 
 pub use session::*;
 pub use chats::*;

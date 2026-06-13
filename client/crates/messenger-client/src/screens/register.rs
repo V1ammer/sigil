@@ -302,10 +302,14 @@ pub fn RegisterScreen() -> impl IntoView {
                 js_log("[register] WASM: skipping keypackages publish (MLS too slow on WASM)");
             }
 
-            // Step 10: Persist chosen avatar locally (broadcast happens when
-            // chats are created — a fresh account has no groups yet).
+            // Step 10: Persist chosen avatar + display name locally (delivery
+            // to peers happens when chats are created — a fresh account has
+            // no groups yet).
             if let Some(data_url) = avatar.get_untracked() {
                 crate::state::avatar_store::save_own_avatar(resp.user_id, &data_url);
+            }
+            if dname.trim() != uname {
+                crate::state::profile_store::save_display_name(resp.user_id, &dname);
             }
 
             // Step 11: Update session state

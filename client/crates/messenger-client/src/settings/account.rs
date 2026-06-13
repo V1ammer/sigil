@@ -50,11 +50,17 @@ pub fn AccountSettings() -> impl IntoView {
         _ => (None, None),
     };
 
-    // Local editable fields
-    let display_name = RwSignal::new(
-        identity.as_ref().map_or_else(String::new, |id| id.username.clone()),
+    // Local editable fields — display name falls back to the username until
+    // the user sets one; both live in the local profile store.
+    let display_name = RwSignal::new(identity.as_ref().map_or_else(String::new, |id| {
+        crate::state::profile_store::load_display_name(id.user_id)
+            .unwrap_or_else(|| id.username.clone())
+    }));
+    let bio = RwSignal::new(
+        identity
+            .as_ref()
+            .map_or_else(String::new, |id| crate::state::profile_store::load_bio(id.user_id)),
     );
-    let bio = RwSignal::new(String::new());
 
     // Change username dialog state
     let show_change_username = RwSignal::new(false);
@@ -250,7 +256,7 @@ pub fn AccountSettings() -> impl IntoView {
             <div class="flex items-center gap-4">
                 <AvatarPicker value=avatar_sig size_class="h-16 w-16"/>
                 <div class="space-y-1">
-                    <p class="text-sm font-medium text-foreground">{display_name.get()}</p>
+                    <p class="text-sm font-medium text-foreground">{move || display_name.get()}</p>
                     <p class="text-xs text-muted-foreground">@{username.get()}</p>
                     {move || avatar_sig.get().map(|_| view! {
                         <Button
@@ -343,15 +349,27 @@ pub fn AccountSettings() -> impl IntoView {
                 <p class="text-xs text-muted-foreground">{t!("settings.account.privacyNote")}</p>
             </div>
 
-            // Save button (local only — display name & bio)
+            // Save: persist display name + bio locally. The name reaches
+            // peers via sender_display_name_override; the changed profile
+            // fingerprint makes ensure_avatar_broadcasts re-announce to all
+            // chats, so the new name is delivered without waiting for the
+            // next regular message.
             <div class="flex justify-end">
                 <Button
                     variant=Signal::derive(move || ButtonVariant::Default)
                     on_click=Box::new(move |_| {
+                        let Some(uid) = my_user_id else { return };
+                        crate::state::profile_store::save_display_name(uid, &display_name.get_untracked());
+                        crate::state::profile_store::save_bio(uid, &bio.get_untracked());
                         notifications.push(
                             ToastKind::Success,
                             format!("{}", t!("settings.account.saveLocalSuccess")),
                         );
+                        if let Some(svc) = crate::state::message_service::service_handle() {
+                            spawn_local(async move {
+                                svc.ensure_avatar_broadcasts().await;
+                            });
+                        }
                     })
                 >
                     {t!("settings.account.save")}
