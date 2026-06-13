@@ -124,6 +124,24 @@ pub fn display_to_mock(msg: &DisplayMessage) -> mock::Message {
     }
 }
 
+/// Short quotable snippet of a message body for reply previews.
+fn quote_snippet(body: &MessageBody) -> String {
+    match body {
+        MessageBody::Text(t) => {
+            let trimmed = t.trim();
+            if trimmed.chars().count() > 60 {
+                trimmed.chars().take(60).collect::<String>() + "…"
+            } else {
+                trimmed.to_string()
+            }
+        }
+        MessageBody::Voice { .. } => "🎤".to_string(),
+        MessageBody::Image { .. } => "📷".to_string(),
+        MessageBody::File { name, .. } => format!("📎 {name}"),
+        MessageBody::System { action } => action.clone(),
+    }
+}
+
 /// Convert a slice of `DisplayMessage`s into `mock::Message`s.
 pub fn display_vec_to_mock(msgs: &[DisplayMessage], own_user_id: &str) -> Vec<mock::Message> {
     use leptos::prelude::use_context;
@@ -131,6 +149,24 @@ pub fn display_vec_to_mock(msgs: &[DisplayMessage], own_user_id: &str) -> Vec<mo
     msgs.iter()
         .map(|m| {
             let mut mock = display_to_mock(m);
+            // Resolve the reply quote from the same batch — the bridge used
+            // to drop reply_to entirely, so replies looked like plain texts.
+            if let Some(orig_id) = m.reply_to_message_id {
+                if let Some(orig) = msgs.iter().find(|o| o.id == orig_id) {
+                    let sender_name = orig
+                        .sender_display_name
+                        .clone()
+                        .or_else(|| {
+                            users.as_ref().and_then(|u| u.get(orig.sender_user_id))
+                        })
+                        .unwrap_or_default();
+                    mock.reply_to = Some(Box::new(mock::ReplyTo {
+                        id: orig.id.to_string(),
+                        sender_name,
+                        content: quote_snippet(&orig.body),
+                    }));
+                }
+            }
             // Mark as own if the sender is the current user.
             let is_own = m.sender_user_id.to_string() == own_user_id
                 || m.sender_user_id == uuid::Uuid::nil();
