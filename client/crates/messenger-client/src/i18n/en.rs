@@ -60,6 +60,7 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("register.avatar.hint", "Drag an image or click to select");
     m.insert("register.create", "Create account");
     m.insert("register.privacy", "This data is stored encrypted. Server only sees username hash.");
+    m.insert("register.success", "Account created");
     m.insert("register.username.taken", "This username is already taken");
     m.insert("register.username.available", "Username is available");
 
@@ -183,6 +184,22 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.account.bio", "Bio");
     m.insert("settings.account.cancel", "Cancel");
     m.insert("settings.account.confirm", "Confirm");
+    m.insert("settings.account.saveLocalSuccess", "Profile saved");
+    m.insert("settings.account.notAuthenticated", "Not signed in");
+    m.insert("settings.account.changeUsernameTitle", "Change username");
+    m.insert("settings.account.changeUsernameDescription", "Enter a new username. Your contacts learn about the change from your messages.");
+    m.insert("settings.account.newUsernamePlaceholder", "new_username");
+    m.insert("settings.account.usernameEmpty", "Username cannot be empty");
+    m.insert("settings.account.usernameChangeError", "Failed to change username");
+    m.insert("settings.account.usernameReloginHint", "Changes take effect after you sign in again");
+    m.insert("settings.account.blindIndexError", "Failed to compute the username index");
+    m.insert("settings.account.missingBlindIndexKey", "Username index key missing — please sign in again");
+    m.insert("settings.account.apiClientError", "Could not reach the server");
+    m.insert("settings.account.signOutSection", "Sign out");
+    m.insert("settings.account.signOut", "Sign out");
+    m.insert("settings.account.signOutHint", "Encryption keys will be removed from this device");
+    m.insert("settings.account.signOutConfirmTitle", "Sign out?");
+    m.insert("settings.account.signOutConfirmDescription", "Local data and encryption keys will be removed from this device. To sign in again you will need an invite or another of your devices.");
     m.insert("account.displayName", "Display name");
     m.insert("account.username", "Username");
     m.insert("account.username.hint", "Username cannot be changed easily; contact admin");
@@ -492,7 +509,7 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.devices.revokeTitle", "Revoke device");
     m.insert("settings.devices.revokeDesc", "Are you sure you want to revoke this device? It will be disconnected immediately.");
     m.insert("settings.devices.revoking", "Revoking device...");
-    m.insert("settings.devices.revoked", "Device revoked");
+    m.insert("settings.devices.revokedToast", "Device revoked");
     m.insert("settings.devices.removingFromGroups", "Removing from groups...");
 
     // C11 — Notifications
@@ -504,6 +521,8 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.notifications.filterNone", "None");
     m.insert("settings.notifications.quietHours", "Quiet hours");
     m.insert("settings.notifications.quietHoursDesc", "Do not disturb during certain hours");
+    m.insert("settings.notifications.quietFrom", "From");
+    m.insert("settings.notifications.quietTo", "To");
 
     // C11 — Privacy
     m.insert("settings.privacy.readReceipts", "Read receipts");

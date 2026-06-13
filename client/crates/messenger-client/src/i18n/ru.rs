@@ -60,6 +60,7 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("register.avatar.hint", "Перетащите изображение или нажмите для выбора");
     m.insert("register.create", "Создать аккаунт");
     m.insert("register.privacy", "Эти данные хранятся зашифрованно. Сервер видит только хэш username.");
+    m.insert("register.success", "Аккаунт создан");
     m.insert("register.username.taken", "Это имя пользователя уже занято");
     m.insert("register.username.available", "Имя пользователя доступно");
 
@@ -183,6 +184,22 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.account.bio", "О себе");
     m.insert("settings.account.cancel", "Отмена");
     m.insert("settings.account.confirm", "Подтвердить");
+    m.insert("settings.account.saveLocalSuccess", "Профиль сохранён");
+    m.insert("settings.account.notAuthenticated", "Вы не авторизованы");
+    m.insert("settings.account.changeUsernameTitle", "Изменить имя пользователя");
+    m.insert("settings.account.changeUsernameDescription", "Введите новое имя пользователя. Собеседники узнают о смене из ваших сообщений.");
+    m.insert("settings.account.newUsernamePlaceholder", "новое_имя");
+    m.insert("settings.account.usernameEmpty", "Имя пользователя не может быть пустым");
+    m.insert("settings.account.usernameChangeError", "Не удалось изменить имя пользователя");
+    m.insert("settings.account.usernameReloginHint", "Изменения вступят в силу после повторного входа");
+    m.insert("settings.account.blindIndexError", "Не удалось вычислить индекс имени");
+    m.insert("settings.account.missingBlindIndexKey", "Ключ индекса имени не найден — войдите заново");
+    m.insert("settings.account.apiClientError", "Не удалось подключиться к серверу");
+    m.insert("settings.account.signOutSection", "Выход");
+    m.insert("settings.account.signOut", "Выйти");
+    m.insert("settings.account.signOutHint", "Ключи шифрования будут удалены с этого устройства");
+    m.insert("settings.account.signOutConfirmTitle", "Выйти из аккаунта?");
+    m.insert("settings.account.signOutConfirmDescription", "Локальные данные и ключи шифрования будут удалены с этого устройства. Для повторного входа понадобится приглашение или другое ваше устройство.");
     m.insert("account.displayName", "Отображаемое имя");
     m.insert("account.username", "Имя пользователя");
     m.insert("account.username.hint", "Username нельзя изменить просто так; обратитесь к админу");
@@ -492,7 +509,7 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.devices.revokeTitle", "Отозвать устройство");
     m.insert("settings.devices.revokeDesc", "Вы уверены, что хотите отозвать это устройство? Оно будет немедленно отключено.");
     m.insert("settings.devices.revoking", "Отзыв устройства...");
-    m.insert("settings.devices.revoked", "Устройство отозвано");
+    m.insert("settings.devices.revokedToast", "Устройство отозвано");
     m.insert("settings.devices.removingFromGroups", "Удаление из групп...");
 
     // C11 — Notifications
@@ -504,6 +521,8 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.notifications.filterNone", "Нет");
     m.insert("settings.notifications.quietHours", "Тихие часы");
     m.insert("settings.notifications.quietHoursDesc", "Не беспокоить в определённое время");
+    m.insert("settings.notifications.quietFrom", "С");
+    m.insert("settings.notifications.quietTo", "До");
 
     // C11 — Privacy
     m.insert("settings.privacy.readReceipts", "Отметки о прочтении");

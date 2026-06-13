@@ -475,7 +475,7 @@ pub fn DevicesSettings() -> impl IntoView {
 
                 match api.revoke_device(device_id, &req).await {
                     Ok(_) => {
-                        nf.push(ToastKind::Success, t!("settings.devices.revoked"));
+                        nf.push(ToastKind::Success, t!("settings.devices.revokedToast"));
                         // Refresh device list
                         if let Some(client) = build_api_client() {
                             if let Ok(resp) = client.list_devices().await {
