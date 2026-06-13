@@ -1,3 +1,4 @@
+use axum::extract::DefaultBodyLimit;
 use axum::middleware;
 use axum::routing::{delete, get, patch, post};
 use axum::Router;
@@ -130,7 +131,16 @@ pub fn build_router(state: AppState) -> Router {
             delete(mls::remove_reaction),
         )
         // S11 — Attachments
-        .route("/v1/attachments", post(attachments::upload_attachment))
+        // Raise the body limit for uploads above axum's 2 MiB default —
+        // otherwise large attachments (e.g. a video) are rejected with 413
+        // before the handler runs. The handler still enforces the real
+        // `max_attachment_bytes` cap and returns a proper 400 for oversize.
+        .route(
+            "/v1/attachments",
+            post(attachments::upload_attachment).layer(DefaultBodyLimit::max(
+                attachment_body_limit(&state),
+            )),
+        )
         .route("/v1/attachments/:id/finalize", post(attachments::finalize_attachment))
         .route("/v1/attachments/:id", get(attachments::download_attachment))
         .route_layer(middleware::from_fn_with_state(
@@ -143,6 +153,14 @@ pub fn build_router(state: AppState) -> Router {
         .merge(admin)
         .merge(authed)
         .with_state(state)
+}
+
+/// Body limit for attachment uploads: the configured cap plus a small slack
+/// for AES-GCM overhead, so the handler's own size check (not axum) rejects
+/// genuinely oversize uploads.
+fn attachment_body_limit(state: &AppState) -> usize {
+    let cap = state.config.max_attachment_bytes.saturating_add(1024 * 1024);
+    usize::try_from(cap).unwrap_or(usize::MAX)
 }
 
 async fn health() -> &'static str {
