@@ -157,11 +157,16 @@ impl SyncService {
         ) else {
             return;
         };
+        // Never refresh the open chat here: it's kept live by the WS, and
+        // re-inserting its messages would rebuild the whole list and yank the
+        // scroll position. The safety net is only for background chats.
+        let open = chats.selected.get_untracked();
         let group_ids: Vec<_> = chats
             .chats
             .get_untracked()
             .into_iter()
             .map(|c| c.group_id)
+            .filter(|gid| Some(*gid) != open)
             .collect();
         for group_id in group_ids {
             svc.refresh_incoming(group_id).await;

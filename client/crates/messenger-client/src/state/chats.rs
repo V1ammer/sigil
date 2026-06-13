@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::state::messages::MessageKind;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum AvatarSource {
     Initials(String),
     Image(Vec<u8>),
@@ -21,7 +21,7 @@ pub enum ChatType {
     Group,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Chat {
     pub group_id: Uuid,
     pub chat_type: ChatType,
@@ -215,12 +215,26 @@ impl ChatsState {
                 }
             })
             .collect();
-        self.chats.set(chats);
+        // Only notify subscribers when the list actually changed. Otherwise a
+        // no-op refresh every sync interval would re-run the chat panel (which
+        // reads this signal) and rebuild the open chat's message list, yanking
+        // the scroll position roughly every 30s.
+        if self.chats.with_untracked(|cur| *cur != chats) {
+            self.chats.set(chats);
+        }
         Ok(())
     }
 
     /// Set the unread badge count for a chat (0 clears it).
     pub fn set_unread(&self, group_id: Uuid, count: u32) {
+        let needs = self.chats.with_untracked(|list| {
+            list.iter()
+                .find(|c| c.group_id == group_id)
+                .is_some_and(|c| c.unread_count != count)
+        });
+        if !needs {
+            return;
+        }
         self.chats.update(|list| {
             if let Some(chat) = list.iter_mut().find(|c| c.group_id == group_id) {
                 chat.unread_count = count;
@@ -345,6 +359,16 @@ impl ChatsState {
     /// Called from every code path that inserts a message into `MessagesState`
     /// so the sidebar order tracks freshness without coupling to messages state.
     pub fn touch_last_message(&self, group_id: Uuid, ts_ms: i64) {
+        // Guard the update: `update()` notifies subscribers unconditionally, so
+        // a no-op bump would needlessly re-render the open chat panel.
+        let needs = self.chats.with_untracked(|list| {
+            list.iter()
+                .find(|c| c.group_id == group_id)
+                .is_some_and(|c| c.last_message_at.map_or(true, |cur| ts_ms > cur))
+        });
+        if !needs {
+            return;
+        }
         self.chats.update(|list| {
             if let Some(chat) = list.iter_mut().find(|c| c.group_id == group_id) {
                 if chat.last_message_at.map_or(true, |cur| ts_ms > cur) {
@@ -364,6 +388,20 @@ impl ChatsState {
         preview: Option<String>,
         kind: Option<MessageKind>,
     ) {
+        // Skip when nothing would change — otherwise the periodic preview
+        // refresh would re-render the open chat panel every sync interval.
+        let needs = self.chats.with_untracked(|list| {
+            list.iter().find(|c| c.group_id == group_id).is_some_and(|c| {
+                let newer = c.last_message_at.map_or(true, |cur| ts_ms >= cur);
+                newer
+                    && (c.last_message_at != Some(ts_ms)
+                        || c.last_message_preview != preview
+                        || c.last_message_kind != kind)
+            })
+        });
+        if !needs {
+            return;
+        }
         self.chats.update(|list| {
             if let Some(chat) = list.iter_mut().find(|c| c.group_id == group_id) {
                 if chat.last_message_at.map_or(true, |cur| ts_ms >= cur) {

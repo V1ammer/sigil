@@ -27,7 +27,7 @@ pub enum MessageKind {
 }
 
 /// Decrypted message body.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum MessageBody {
     Text(String),
     Voice {
@@ -58,7 +58,7 @@ pub enum MessageBody {
 }
 
 /// A single reaction on a message.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DisplayReaction {
     pub emoji: String,
     pub count: u32,
@@ -66,7 +66,7 @@ pub struct DisplayReaction {
 }
 
 /// A message ready for the UI layer — fully decrypted and hydrated.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DisplayMessage {
     pub id: Uuid,
     pub client_message_id: Uuid,

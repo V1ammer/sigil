@@ -1,6 +1,7 @@
 //! Scrollable message list with date separators and grouped messages.
 use leptos::prelude::*;
 use std::sync::Arc;
+use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use crate::i18n::{Language, t, format_date};
 use crate::mock::Message;
@@ -63,6 +64,17 @@ pub fn MessageList(
         }
         if first_time || near_bottom {
             div.set_scroll_top(div.scroll_height());
+            // Defer one more jump to after layout settles. On first open the
+            // effect can fire before children have their final height, which
+            // would otherwise leave us short of the bottom (near the top).
+            let div2 = div.clone();
+            let cb = Closure::<dyn FnMut()>::new(move || {
+                div2.set_scroll_top(div2.scroll_height());
+            });
+            if let Some(w) = web_sys::window() {
+                let _ = w.request_animation_frame(cb.as_ref().unchecked_ref());
+            }
+            cb.forget();
         }
     });
 

@@ -347,9 +347,18 @@ impl MessageService {
         };
         let display_messages = self.convert_messages(&resp.messages, group_id).await;
         let latest = display_messages.iter().max_by_key(|m| m.created_at).cloned();
-        self.messages.by_group.update(|map| {
-            map.insert(group_id, display_messages);
-        });
+        // `by_group` is one shared signal read by every open chat via `.get()`,
+        // so even a no-op insert for a background chat would notify (and rebuild)
+        // the currently open chat's list. Only write when something changed.
+        let changed = self
+            .messages
+            .by_group
+            .with_untracked(|map| map.get(&group_id) != Some(&display_messages));
+        if changed {
+            self.messages.by_group.update(|map| {
+                map.insert(group_id, display_messages);
+            });
+        }
         if let Some(m) = latest {
             set_chat_last_message(
                 group_id,
@@ -358,8 +367,9 @@ impl MessageService {
                 Some(m.kind),
             );
         }
-        self.apply_delivery_markers(group_id);
-        self.refresh_delivery_status(group_id);
+        // Delivery checkmarks only matter for the open chat (refreshed by
+        // load_messages on open). Skipping them here keeps this background
+        // refresh from churning by_group — and the open chat — every cycle.
         self.recompute_unread(group_id);
     }
 
