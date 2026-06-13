@@ -524,6 +524,43 @@ pub async fn create_direct_chat(
         return Err(AppError::BadRequest("cannot create direct chat with yourself".into()));
     }
 
+    // Дедупликация: direct-чат между парой пользователей может быть только
+    // один. Если он уже существует — возвращаем его вместо создания дубля.
+    {
+        let my_groups: Vec<Uuid> = mls_group_members::Entity::find()
+            .filter(mls_group_members::Column::UserId.eq(ctx.user.id))
+            .filter(mls_group_members::Column::LeftAtEpoch.is_null())
+            .all(&state.db)
+            .await?
+            .into_iter()
+            .map(|m| m.group_id)
+            .collect();
+        if !my_groups.is_empty() {
+            let shared = mls_group_members::Entity::find()
+                .filter(mls_group_members::Column::UserId.eq(target_user.id))
+                .filter(mls_group_members::Column::LeftAtEpoch.is_null())
+                .filter(mls_group_members::Column::GroupId.is_in(my_groups))
+                .all(&state.db)
+                .await?;
+            for membership in shared {
+                let group = mls_groups::Entity::find_by_id(membership.group_id)
+                    .one(&state.db)
+                    .await?;
+                if let Some(group) = group.filter(|g| g.group_type == "direct") {
+                    return Ok(typed_response(
+                        &headers,
+                        StatusCode::OK,
+                        &CreateGroupResponse {
+                            group_id: group.id,
+                            epoch: group.current_epoch,
+                            created_at: group.created_at,
+                        },
+                    ));
+                }
+            }
+        }
+    }
+
     // Найти все активные устройства creator'а и target'а
     let creator_devices = messenger_entity::devices::Entity::find()
         .filter(messenger_entity::devices::Column::UserId.eq(ctx.user.id))
