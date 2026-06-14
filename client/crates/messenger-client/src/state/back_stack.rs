@@ -75,12 +75,23 @@ pub fn has_overlay() -> bool {
 ///   - returns `false` (at the chat list / root) so the native side can do its
 ///     own "press again to exit" handling.
 fn handle_android_back() -> bool {
+    // 1. An open overlay (chat, thread, dialog) closes first.
     if has_overlay() {
         pop();
-        true
-    } else {
-        false
+        return true;
     }
+    // 2. Not on the chat list (e.g. Settings is a route) → go back one entry,
+    //    which returns to the chat list. `history.back()` fires popstate so the
+    //    router navigates AND any overlay handler runs.
+    let path = web_sys::window()
+        .and_then(|w| w.location().pathname().ok())
+        .unwrap_or_default();
+    if path != "/chats" && path != "/chats/" && !path.is_empty() {
+        pop();
+        return true;
+    }
+    // 3. At the chat list with nothing to close → native "press again to exit".
+    false
 }
 
 /// Expose `window.__androidBack()` for the native back-button handler. Call once

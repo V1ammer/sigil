@@ -40,10 +40,13 @@ pub fn SettingsScreen() -> impl IntoView {
         s
     };
 
-    let go_chats = {
-        let n = navigate.clone();
-        move |_| n("/chats", Default::default())
-    };
+    // Close Settings with history.back() rather than a fresh push to "/chats":
+    // the push left a duplicate history entry AND didn't reset the (global)
+    // selected chat, so closing Settings showed the still-open chat instead of
+    // the list. back() pops the /settings entry — its popstate closes any open
+    // chat overlay (selected -> None) and lands on the chat list, matching the
+    // hardware back button.
+    let go_chats = move |_| crate::state::back_stack::pop();
 
     let has_sec = Signal::derive(move || params.get().get("section").is_some());
 
@@ -139,10 +142,7 @@ pub fn SettingsScreen() -> impl IntoView {
                                 <div class="md:hidden mb-4">
                                     <button
                                         class="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                                        on:click={
-                                            let n = navigate.clone();
-                                            move |_| n("/settings", Default::default())
-                                        }
+                                        on:click=move |_| crate::state::back_stack::pop()
                                     >
                                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
                                         {t!("settings.back")}
