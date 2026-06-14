@@ -274,10 +274,19 @@ pub fn LoginQrScreen() -> impl IntoView {
                                             let _ = local.set_setting("current_user_id", &payload.user_id.to_string()).await;
                                         }
 
+                                        // Inherit the account's role from the bootstrap
+                                        // blob (the approving device put it there), so an
+                                        // admin's new device gets admin instead of user.
+                                        let role = if payload.role == "admin" {
+                                            UserRole::Admin
+                                        } else {
+                                            UserRole::User
+                                        };
+
                                         // Persist session
                                         // Encode full identity for blob storage
                                         let identity_blob = encode_identity_for_qr_blob(&identity);
-                                        persist_session(&url, payload.user_id, resp.new_device_id, &identity_blob, UserRole::User);
+                                        persist_session(&url, payload.user_id, resp.new_device_id, &identity_blob, role);
 
                                         // Persist the device signing secret — without it
                                         // build_api_client has no auth and every API call
@@ -291,7 +300,7 @@ pub fn LoginQrScreen() -> impl IntoView {
                                         let identity_arc = Arc::new(identity);
                                         sess_clone.state.set(SessionState::Authenticated {
                                             identity: identity_arc.clone(),
-                                            role: UserRole::User,
+                                            role,
                                         });
 
                                         // ── Store KeyPackageBundle in provider + join groups via

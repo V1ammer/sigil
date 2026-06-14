@@ -22,6 +22,11 @@ pub struct BootstrapPayload {
     pub device_hpke_seed: [u8; 32],
     #[serde(with = "serde_bytes")]
     pub key_package_bundle: Vec<u8>,
+    /// Account role ("admin" | "user"), so a provisioned device inherits the
+    /// account's role instead of always landing as a plain user. Defaulted for
+    /// backward compatibility with blobs from older approving devices.
+    #[serde(default)]
+    pub role: String,
 }
 
 /// Check if the frontend is running inside a Tauri WebView.

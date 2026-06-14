@@ -44,7 +44,7 @@ use crate::components::qr_scanner::QrScanner;
 use crate::components::separator::Separator;
 use crate::i18n::I18n;
 use crate::state::notifications::{NotificationsState, ToastKind};
-use crate::state::session::{build_api_client, load_server_url, use_session, SessionState};
+use crate::state::session::{build_api_client, load_server_url, use_session, SessionState, UserRole};
 use crate::t;
 
 /// Current step in the provisioning approve flow.
@@ -248,9 +248,16 @@ pub fn DevicesSettings() -> impl IntoView {
                         }
                     };
 
-                    // Get current identity
-                    let identity = match sess.state.get_untracked() {
-                        SessionState::Authenticated { ref identity, .. } => identity.clone(),
+                    // Get current identity + account role (so the new device
+                    // inherits admin/user instead of always landing as a user).
+                    let (identity, account_role) = match sess.state.get_untracked() {
+                        SessionState::Authenticated { ref identity, ref role } => {
+                            let r = match role {
+                                UserRole::Admin => "admin",
+                                UserRole::User => "user",
+                            };
+                            (identity.clone(), r.to_string())
+                        }
                         _ => {
                             st.set(ProvisioningStep::Error("Not authenticated".to_string()));
                             return;
@@ -318,6 +325,7 @@ pub fn DevicesSettings() -> impl IntoView {
                         device_signing_seed: new_device_signing_sk,
                         device_hpke_seed: new_device_hpke_seed,
                         key_package_bundle: kp_bundle_bytes,
+                        role: account_role.clone(),
                     };
 
                     // Encrypt under the new device's temp X25519 pub key (from QR).
