@@ -487,12 +487,15 @@ pub fn AdminUsersSettings() -> impl IntoView {
                             <table class="w-full text-sm">
                                 <thead>
                                     <tr class="border-b text-left text-muted-foreground">
-                                        <th class="pb-2 font-medium">{t!("settings.adminUsers.user")}</th>
-                                        <th class="pb-2 font-medium">{t!("settings.adminUsers.role")}</th>
-                                        <th class="pb-2 font-medium">{t!("settings.adminUsers.status")}</th>
-                                        <th class="pb-2 font-medium">{t!("settings.adminUsers.created")}</th>
-                                        <th class="pb-2 font-medium">{t!("settings.adminUsers.devicesCount")}</th>
-                                        <th class="pb-2 font-medium">{t!("settings.adminUsers.actions")}</th>
+                                        // Headers mirror the body cells' `pr-4` so the
+                                        // titles align with their columns and sit evenly
+                                        // apart instead of one crowding the next.
+                                        <th class="pb-2 pr-4 font-medium whitespace-nowrap">{t!("settings.adminUsers.user")}</th>
+                                        <th class="pb-2 pr-4 font-medium whitespace-nowrap">{t!("settings.adminUsers.role")}</th>
+                                        <th class="pb-2 pr-4 font-medium whitespace-nowrap">{t!("settings.adminUsers.status")}</th>
+                                        <th class="pb-2 pr-4 font-medium whitespace-nowrap">{t!("settings.adminUsers.created")}</th>
+                                        <th class="pb-2 pr-4 font-medium whitespace-nowrap">{t!("settings.adminUsers.devicesCount")}</th>
+                                        <th class="pb-2 font-medium whitespace-nowrap">{t!("settings.adminUsers.actions")}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
