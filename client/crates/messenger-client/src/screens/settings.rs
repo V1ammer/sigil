@@ -1,9 +1,17 @@
 use leptos::prelude::*;
 use leptos_router::hooks::{use_params_map, use_navigate};
+use leptos_router::NavigateOptions;
 use crate::i18n::I18n;
+use crate::state::chats::ChatsState;
 use crate::state::session::use_session;
 use crate::settings::*;
 use crate::t;
+
+/// Navigate without growing the history stack — used for switching Settings
+/// tabs/sections so closing Settings is a single step, not one-per-tab-visited.
+fn replace_opts() -> NavigateOptions {
+    NavigateOptions { replace: true, ..Default::default() }
+}
 
 #[must_use]
 #[component]
@@ -40,13 +48,20 @@ pub fn SettingsScreen() -> impl IntoView {
         s
     };
 
-    // Close Settings with history.back() rather than a fresh push to "/chats":
-    // the push left a duplicate history entry AND didn't reset the (global)
-    // selected chat, so closing Settings showed the still-open chat instead of
-    // the list. back() pops the /settings entry — its popstate closes any open
-    // chat overlay (selected -> None) and lands on the chat list, matching the
-    // hardware back button.
-    let go_chats = move |_| crate::state::back_stack::pop();
+    // "Close Settings" is hierarchical, not history-driven: it always lands on
+    // the chat list in one step, no matter how many tabs were visited. We reset
+    // the (global) selected chat so the list shows — not the chat that was open
+    // before Settings — and replace the current entry so we don't pile up.
+    let selected_chat = use_context::<ChatsState>().map(|cs| cs.selected);
+    let go_chats = {
+        let navigate = navigate.clone();
+        move |_| {
+            if let Some(sel) = selected_chat {
+                sel.set(None);
+            }
+            navigate("/chats", replace_opts());
+        }
+    };
 
     let has_sec = Signal::derive(move || params.get().get("section").is_some());
 
@@ -84,7 +99,7 @@ pub fn SettingsScreen() -> impl IntoView {
                     format!("{} hover:bg-muted text-foreground", base)
                 }
             };
-            let onclick = move |_| n(&format!("/settings/{}", sid), Default::default());
+            let onclick = move |_| n(&format!("/settings/{}", sid), replace_opts());
             view! {
                 <button class=class on:click=onclick>
                     {label.clone()}
@@ -142,7 +157,10 @@ pub fn SettingsScreen() -> impl IntoView {
                                 <div class="md:hidden mb-4">
                                     <button
                                         class="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                                        on:click=move |_| crate::state::back_stack::pop()
+                                        on:click={
+                                            let n = navigate.clone();
+                                            move |_| n("/settings", replace_opts())
+                                        }
                                     >
                                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
                                         {t!("settings.back")}
