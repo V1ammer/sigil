@@ -539,7 +539,7 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.notifications.filterAll", "All");
     m.insert("settings.notifications.filterMentions", "Mentions only");
     m.insert("settings.notifications.filterNone", "None");
-    m.insert("settings.notifications.quietHours", "Quiet hours");
+    m.insert("settings.notifications.quietHours", "Do Not Disturb");
     m.insert("settings.notifications.quietHoursDesc", "Do not disturb during certain hours");
     m.insert("settings.notifications.quietFrom", "From");
     m.insert("settings.notifications.quietTo", "To");

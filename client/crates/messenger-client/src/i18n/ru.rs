@@ -539,7 +539,7 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.notifications.filterAll", "Всех");
     m.insert("settings.notifications.filterMentions", "Только упоминания");
     m.insert("settings.notifications.filterNone", "Нет");
-    m.insert("settings.notifications.quietHours", "Тихие часы");
+    m.insert("settings.notifications.quietHours", "Не беспокоить");
     m.insert("settings.notifications.quietHoursDesc", "Не беспокоить в определённое время");
     m.insert("settings.notifications.quietFrom", "С");
     m.insert("settings.notifications.quietTo", "До");

@@ -13,6 +13,44 @@ fn setting_on(key: &str) -> bool {
         .map_or(true, |v| v != "false")
 }
 
+/// Raw settings string from localStorage.
+fn setting_str(key: &str) -> Option<String> {
+    web_sys::window()
+        .and_then(|w| w.local_storage().ok().flatten())
+        .and_then(|s| s.get_item(key).ok().flatten())
+}
+
+/// Parse `"HH:MM"` into minutes since midnight.
+fn parse_hhmm(s: &str) -> Option<u32> {
+    let (h, m) = s.split_once(':')?;
+    let h: u32 = h.trim().parse().ok()?;
+    let m: u32 = m.trim().parse().ok()?;
+    (h < 24 && m < 60).then_some(h * 60 + m)
+}
+
+/// Whether the current local time is inside the user's "Do Not Disturb" window.
+/// Handles overnight ranges (e.g. 22:00–08:00).
+fn in_do_not_disturb() -> bool {
+    if setting_str("ms_settings_quiet_hours_enabled").as_deref() != Some("true") {
+        return false;
+    }
+    let from = setting_str("ms_settings_quiet_hours_from").unwrap_or_else(|| "22:00".into());
+    let to = setting_str("ms_settings_quiet_hours_to").unwrap_or_else(|| "08:00".into());
+    let (Some(f), Some(t)) = (parse_hhmm(&from), parse_hhmm(&to)) else {
+        return false;
+    };
+    if f == t {
+        return false;
+    }
+    let date = js_sys::Date::new_0();
+    let now = date.get_hours() * 60 + date.get_minutes();
+    if f < t {
+        now >= f && now < t // same-day window
+    } else {
+        now >= f || now < t // overnight window
+    }
+}
+
 thread_local! {
     static AUDIO: RefCell<Option<web_sys::HtmlAudioElement>> = const { RefCell::new(None) };
     static UNLOCKED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
@@ -25,6 +63,7 @@ thread_local! {
 pub fn play_message_sound() {
     if !setting_on("ms_settings_notifications_enabled")
         || !setting_on("ms_settings_notification_sound")
+        || in_do_not_disturb()
     {
         return;
     }
