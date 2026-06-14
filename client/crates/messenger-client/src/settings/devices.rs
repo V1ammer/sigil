@@ -578,14 +578,15 @@ pub fn DevicesSettings() -> impl IntoView {
 
     view! {
         <div class="space-y-6">
-            <div class="flex items-center justify-between">
-                <div>
+            <div class="flex items-center justify-between gap-3">
+                <div class="min-w-0">
                     <h3 class="text-lg font-medium text-foreground">{t!("settings.devices.title")}</h3>
                     <p class="text-sm text-muted-foreground">{t!("settings.devices.description")}</p>
                 </div>
                 <Button
                     variant=Signal::derive(move || ButtonVariant::Outline)
                     size=Signal::derive(move || ButtonSize::Sm)
+                    class="shrink-0".to_string()
                     on_click=Box::new({
                         let st = step;
                         let show = show_add_dialog;
@@ -885,14 +886,14 @@ fn DeviceRow(
                         <line x1="12" y1="18" x2="12.01" y2="18" />
                     </svg>
                 </div>
-                <div class="space-y-0.5">
+                <div class="space-y-0.5 min-w-0">
                     <div class="flex items-center gap-2">
-                        <span class="text-sm font-medium text-foreground">
+                        <span class="text-sm font-medium text-foreground truncate">
                             {move || format!("{} {}", t!("settings.devices.label"), &device.id.to_string()[..8])}
                         </span>
                         {move || if is_current {
                             view! {
-                                <Badge variant=String::from("secondary")>
+                                <Badge variant=String::from("secondary") class="shrink-0".to_string()>
                                     {t!("settings.devices.currentDevice")}
                                 </Badge>
                             }.into_any()
@@ -901,7 +902,7 @@ fn DeviceRow(
                         }}
                         {move || if is_revoked {
                             view! {
-                                <Badge variant=String::from("destructive")>
+                                <Badge variant=String::from("destructive") class="shrink-0".to_string()>
                                     {t!("settings.devices.revoked")}
                                 </Badge>
                             }.into_any()

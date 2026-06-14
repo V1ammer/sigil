@@ -7,7 +7,7 @@ pub fn Badge(
     #[prop(optional, into)] class: String,
     children: Children,
 ) -> impl IntoView {
-    let base = "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2";
+    let base = "inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2";
     let variant_class = match variant.as_str() {
         "secondary" => "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
         "outline" => "text-foreground",
