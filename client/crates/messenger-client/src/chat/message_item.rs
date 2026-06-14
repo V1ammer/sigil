@@ -351,8 +351,18 @@ pub fn MessageItem(
                         on:pointercancel=on_pointercancel
                         on:contextmenu=on_contextmenu
                     >
-                        // Avatar column for other users
+                        // Avatar column for other users — show the sender's avatar
+                        // image (from UsersState, reactive so it pops in once
+                        // downloaded) and fall back to initials only when there's
+                        // no avatar.
                         {if show_avatar {
+                            let sender_name = msg.sender_name.clone();
+                            let users_state = use_context::<crate::state::users::UsersState>();
+                            let sender_uid = uuid::Uuid::parse_str(&msg.sender_id).ok();
+                            let avatar_url = Signal::derive(move || {
+                                let uid = sender_uid?;
+                                users_state.as_ref()?.avatar_by_id.with(|m| m.get(&uid).cloned())
+                            });
                             view! {
                                 <button
                                     class="mb-1 shrink-0"
@@ -360,8 +370,13 @@ pub fn MessageItem(
                                         if let Some(f) = on_avatar_click.as_ref() { f(); }
                                     }
                                 >
-                                    <div class="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground">
-                                        {crate::components::avatar::get_initials(&msg.sender_name)}
+                                    <div class="h-8 w-8 overflow-hidden rounded-full bg-muted flex items-center justify-center text-xs font-medium text-muted-foreground">
+                                        {move || match avatar_url.get() {
+                                            Some(url) => view! {
+                                                <img src=url alt="" class="h-full w-full object-cover"/>
+                                            }.into_any(),
+                                            None => crate::components::avatar::get_initials(&sender_name).into_any(),
+                                        }}
                                     </div>
                                 </button>
                             }.into_any()
