@@ -117,6 +117,15 @@ pub fn ChatsScreen() -> impl IntoView {
             _ => false,
         }
     });
+    // The open chat's row, isolated as a Memo so the chat panel re-renders only
+    // when THIS chat's data actually changes — not every time any other chat
+    // updates or the periodic (30s) sync rewrites the list. Without this, those
+    // whole-list writes tore down the message list every 30s, resetting inline
+    // video/audio playback and closing the image lightbox.
+    let open_chat: Memo<Option<StateChat>> = Memo::new(move |_| {
+        let gid = selected.get()?;
+        chats_signal.with(|cs| cs.iter().find(|c| c.group_id == gid).cloned())
+    });
     // Per-chat composer drafts, created once so they outlive the re-renders
     // that rebuild the chat view (incoming messages bump the chat list).
     let drafts: RwSignal<std::collections::HashMap<Uuid, String>> =
@@ -400,9 +409,13 @@ pub fn ChatsScreen() -> impl IntoView {
                 let on_thread_open_list = on_thread_open_list.clone();
                 let messages_state_for_inner = messages_state_for_main.clone();
                 selected.get().map(|group_id| {
-                let chats_now = chats_signal.get();
-                let name = display_name_for(&chats_now, group_id);
-                let state_chat = chats_now.iter().find(|c| c.group_id == group_id).cloned();
+                // Only the OPEN chat's data (via the memo) drives this panel — so
+                // a 30s sync or another chat changing won't rebuild it.
+                let state_chat = open_chat.get();
+                let name = state_chat
+                    .as_ref()
+                    .map(|c| c.display_name.clone())
+                    .unwrap_or_else(|| group_id.to_string());
                 let msgs = messages_state_for_inner.for_group(group_id);
                 let is_loading = loading_messages.get();
                 let on_send = on_send_handler.clone();
