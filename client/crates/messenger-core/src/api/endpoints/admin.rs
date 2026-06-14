@@ -53,4 +53,14 @@ impl ApiClient {
         let path = format!("/v1/admin/users/{}/role", user_id);
         self.send("POST", &path, Some(req)).await
     }
+
+    /// Permanently delete a user (admin only).
+    ///
+    /// # Errors
+    ///
+    /// Returns `ApiError` on network, permission, or validation failure.
+    pub async fn delete_user(&self, user_id: Uuid) -> Result<(), ApiError> {
+        let path = format!("/v1/admin/users/{}", user_id);
+        self.send::<(), ()>("DELETE", &path, None).await
+    }
 }

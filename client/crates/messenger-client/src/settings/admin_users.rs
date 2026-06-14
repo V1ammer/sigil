@@ -148,6 +148,55 @@ fn SuspendDialogBody(
     }
 }
 
+// ── Helper component for the delete confirmation dialog body ─────────────
+
+#[must_use]
+#[component]
+fn DeleteDialogBody(
+    deleting: RwSignal<bool>,
+    on_confirm: Arc<dyn Fn() + Send + Sync + 'static>,
+    on_cancel: Arc<dyn Fn() + Send + Sync + 'static>,
+) -> impl IntoView {
+    let is_deleting = move || deleting.get();
+
+    view! {
+        <AlertDialogHeader>
+            <AlertDialogTitle>{t!("settings.adminUsers.deleteConfirm")}</AlertDialogTitle>
+            <AlertDialogDescription>
+                {t!("settings.adminUsers.deleteDesc")}
+            </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+            <AlertDialogCancel
+                on_click=Box::new({
+                    let on_cancel = on_cancel.clone();
+                    move || on_cancel()
+                })
+            >
+                {t!("common.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+                class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                on_click=Box::new({
+                    let on_confirm = on_confirm.clone();
+                    move || on_confirm()
+                })
+            >
+                {move || if is_deleting() {
+                    view! {
+                        <span class="flex items-center gap-2">
+                            <span class="h-4 w-4 block rounded-full border-2 border-current border-t-transparent animate-spin"/>
+                            "..."
+                        </span>
+                    }.into_any()
+                } else {
+                    view! { {t!("settings.adminUsers.delete")} }.into_any()
+                }}
+            </AlertDialogAction>
+        </AlertDialogFooter>
+    }
+}
+
 // ── Helper component for the unsuspend confirmation dialog body ──────────
 
 #[must_use]
@@ -246,6 +295,11 @@ pub fn AdminUsersSettings() -> impl IntoView {
     let show_unsuspend_dialog = RwSignal::new(false);
     let unsuspend_target = RwSignal::new(Option::<Uuid>::None);
     let unsuspending = RwSignal::new(false);
+
+    // Delete dialog state
+    let show_delete_dialog = RwSignal::new(false);
+    let delete_target = RwSignal::new(Option::<Uuid>::None);
+    let deleting = RwSignal::new(false);
 
     // ── Load users on mount ────────────────────────────────────────────
     let notif_load = notifications.clone();
@@ -397,6 +451,51 @@ pub fn AdminUsersSettings() -> impl IntoView {
         }
     });
 
+    // ── Delete handler ─────────────────────────────────────────────────
+    let do_delete = Arc::new({
+        let nf = notifications.clone();
+        let refresh = refresh.clone();
+        let target = delete_target;
+        let show = show_delete_dialog;
+        let dl = deleting;
+        move || {
+            let nf = nf.clone();
+            let refresh = refresh.clone();
+            let target = target;
+            let show = show;
+            let dl = dl;
+            spawn_local(async move {
+                let user_id = match target.get_untracked() {
+                    Some(id) => id,
+                    None => return,
+                };
+                let api = match build_api_client() {
+                    Some(a) => a,
+                    None => {
+                        nf.push(ToastKind::Error, "Not authenticated".to_string());
+                        show.set(false);
+                        dl.set(false);
+                        target.set(None);
+                        return;
+                    }
+                };
+                dl.set(true);
+                match api.delete_user(user_id).await {
+                    Ok(_) => {
+                        nf.push(ToastKind::Success, "User deleted");
+                        refresh();
+                    }
+                    Err(e) => {
+                        nf.push(ToastKind::Error, format!("Delete failed: {e}"));
+                    }
+                }
+                show.set(false);
+                dl.set(false);
+                target.set(None);
+            });
+        }
+    });
+
     // ── Dialog open helpers ────────────────────────────────────────────
     let open_suspend = Arc::new({
         let target = suspend_target;
@@ -428,6 +527,24 @@ pub fn AdminUsersSettings() -> impl IntoView {
     let close_unsuspend = {
         let show = show_unsuspend_dialog;
         let target = unsuspend_target;
+        move || {
+            show.set(false);
+            target.set(None);
+        }
+    };
+
+    let open_delete = Arc::new({
+        let target = delete_target;
+        let show = show_delete_dialog;
+        move |id: Uuid| {
+            target.set(Some(id));
+            show.set(true);
+        }
+    });
+
+    let close_delete = {
+        let show = show_delete_dialog;
+        let target = delete_target;
         move || {
             show.set(false);
             target.set(None);
@@ -470,6 +587,10 @@ pub fn AdminUsersSettings() -> impl IntoView {
         RwSignal::new(Some(Arc::new(close_suspend)));
     let close_unsuspend_signal: RwSignal<Option<Arc<dyn Fn() + Send + Sync + 'static>>> =
         RwSignal::new(Some(Arc::new(close_unsuspend)));
+    let open_delete_signal: RwSignal<Option<Arc<dyn Fn(Uuid) + Send + Sync + 'static>>> =
+        RwSignal::new(Some(open_delete.clone()));
+    let close_delete_signal: RwSignal<Option<Arc<dyn Fn() + Send + Sync + 'static>>> =
+        RwSignal::new(Some(Arc::new(close_delete)));
 
     // Clones for dialog (avoid FnOnce)
     let do_suspend_for_action = do_suspend.clone();
@@ -479,6 +600,10 @@ pub fn AdminUsersSettings() -> impl IntoView {
     let do_unsuspend_for_action = do_unsuspend.clone();
     let close_unsuspend_for_cancel = close_unsuspend_signal;
     let unsuspending_for_body = unsuspending;
+
+    let do_delete_for_action = do_delete.clone();
+    let close_delete_for_cancel = close_delete_signal;
+    let deleting_for_body = deleting;
 
     // ── View ───────────────────────────────────────────────────────────
     view! {
@@ -509,6 +634,7 @@ pub fn AdminUsersSettings() -> impl IntoView {
                     // Users table
                     let on_suspend = open_suspend_signal;
                     let on_unsuspend = open_unsuspend_signal;
+                    let on_delete = open_delete_signal;
                     let on_set_role = set_role_signal;
                     view! {
                         <div class="overflow-x-auto">
@@ -543,6 +669,7 @@ pub fn AdminUsersSettings() -> impl IntoView {
 
                                         let on_suspend = on_suspend;
                                         let on_unsuspend = on_unsuspend;
+                                        let on_delete = on_delete;
                                         let on_set_role = on_set_role;
 
                                         view! {
@@ -592,6 +719,7 @@ pub fn AdminUsersSettings() -> impl IntoView {
                                                     {devices_count}
                                                 </td>
                                                 <td class="py-3">
+                                                    <div class="flex items-center gap-2">
                                     {
                                                         if is_suspended {
                                                             let on_unsuspend = on_unsuspend;
@@ -627,6 +755,31 @@ pub fn AdminUsersSettings() -> impl IntoView {
                                                             }.into_any()
                                                         }
                                                     }
+                                                    // Permanent delete — never on the admin's own row
+                                                    // (the server rejects self-delete too).
+                                                    {
+                                                        if is_own {
+                                                            view! {}.into_any()
+                                                        } else {
+                                                            let on_delete = on_delete;
+                                                            let uid = user_id;
+                                                            view! {
+                                                                <Button
+                                                                    variant=Signal::derive(move || ButtonVariant::Outline)
+                                                                    size=Signal::derive(move || ButtonSize::Sm)
+                                                                    class="text-destructive hover:bg-destructive/10".to_string()
+                                                                    on_click=Box::new(move |_| {
+                                                                        if let Some(ref cb) = on_delete.get_untracked() {
+                                                                            cb(uid);
+                                                                        }
+                                                                    })
+                                                                >
+                                                                    {t!("settings.adminUsers.delete")}
+                                                                </Button>
+                                                            }.into_any()
+                                                        }
+                                                    }
+                                                    </div>
                                                 </td>
                                             </tr>
                                         }
@@ -682,6 +835,32 @@ pub fn AdminUsersSettings() -> impl IntoView {
                 on_confirm=do_unsuspend_for_action.clone()
                 on_cancel=Arc::new({
                     let sig = close_unsuspend_for_cancel;
+                    move || {
+                        if let Some(ref cb) = sig.get_untracked() {
+                            cb();
+                        }
+                    }
+                })
+            />
+        </AlertDialog>
+
+        // ── Delete Confirmation Dialog ─────────────────────────────────
+        <AlertDialog
+            is_open=Signal::derive(move || show_delete_dialog.get())
+            on_close=Box::new({
+                let sig = close_delete_for_cancel;
+                move || {
+                    if let Some(ref cb) = sig.get_untracked() {
+                        cb();
+                    }
+                }
+            })
+        >
+            <DeleteDialogBody
+                deleting=deleting_for_body
+                on_confirm=do_delete_for_action.clone()
+                on_cancel=Arc::new({
+                    let sig = close_delete_for_cancel;
                     move || {
                         if let Some(ref cb) = sig.get_untracked() {
                             cb();

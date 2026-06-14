@@ -331,6 +331,61 @@ pub async fn set_role(
     Ok(typed_response::<()>(&headers, StatusCode::NO_CONTENT, &()))
 }
 
+/// `DELETE /v1/admin/users/:id` — полностью удалить пользователя.
+///
+/// Удаляет саму запись пользователя (каскадно: устройства, ключи, членство в
+/// группах, реакции, credential'ы) и вручную чистит таблицы без FK-каскада на
+/// отправителя — собственные сообщения пользователя и заявки на привязку
+/// устройств. Транзакция держит всё атомарным.
+///
+/// # Errors
+///
+/// - `400 BadRequest` — попытка удалить самого себя.
+/// - `404 Not Found` — пользователь не существует.
+/// - `401 Unauthorized` — отсутствует auth context.
+/// - `403 Forbidden` — вызывающий не admin.
+/// - `500` — внутренняя ошибка.
+pub async fn delete_user(
+    CurrentAuth(ctx): CurrentAuth,
+    RequireAdmin(_): RequireAdmin,
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(user_id): Path<Uuid>,
+) -> Result<Response, AppError> {
+    use messenger_entity::users::Entity as Users;
+    use messenger_entity::{device_provisioning_requests, mls_messages};
+    use sea_orm::{ColumnTrait, QueryFilter, TransactionTrait};
+
+    // Guard against an admin deleting their own account (self-lockout).
+    if user_id == ctx.user.id {
+        return Err(AppError::BadRequest("cannot delete your own account".into()));
+    }
+
+    // Confirm the user exists before doing the work, for a clean 404.
+    Users::find_by_id(user_id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    let txn = state.db.begin().await?;
+    // No FK cascade on the message sender — drop the user's authored messages.
+    mls_messages::Entity::delete_many()
+        .filter(mls_messages::Column::SenderUserId.eq(user_id))
+        .exec(&txn)
+        .await?;
+    // device_provisioning_requests has no FK to users either.
+    device_provisioning_requests::Entity::delete_many()
+        .filter(device_provisioning_requests::Column::UserId.eq(user_id))
+        .exec(&txn)
+        .await?;
+    // The rest (devices, key packages, credentials, group membership,
+    // reactions, …) cascade off the users row.
+    Users::delete_by_id(user_id).exec(&txn).await?;
+    txn.commit().await?;
+
+    Ok(typed_response::<()>(&headers, StatusCode::NO_CONTENT, &()))
+}
+
 /// Query параметры для пагинированного списка пользователей.
 #[derive(Deserialize)]
 pub struct ListUsersQuery {

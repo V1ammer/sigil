@@ -587,6 +587,9 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.adminUsers.devicesCount", "Devices");
     m.insert("settings.adminUsers.suspendConfirm", "Suspend user?");
     m.insert("settings.adminUsers.suspendDesc", "The user will not be able to send messages until unsuspended.");
+    m.insert("settings.adminUsers.delete", "Delete");
+    m.insert("settings.adminUsers.deleteConfirm", "Delete user permanently?");
+    m.insert("settings.adminUsers.deleteDesc", "The account, its devices, keys and chat memberships will be permanently removed from the server. This cannot be undone.");
     m.insert("settings.adminUsers.unsuspendConfirm", "Unsuspend user?");
     m.insert("settings.adminUsers.unsuspendDesc", "The user will regain access to the messenger.");
     m.insert("settings.adminUsers.noUsers", "No users found");

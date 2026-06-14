@@ -587,6 +587,9 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.adminUsers.devicesCount", "Устройств");
     m.insert("settings.adminUsers.suspendConfirm", "Заблокировать пользователя?");
     m.insert("settings.adminUsers.suspendDesc", "Пользователь не сможет отправлять сообщения до разблокировки.");
+    m.insert("settings.adminUsers.delete", "Удалить");
+    m.insert("settings.adminUsers.deleteConfirm", "Удалить пользователя навсегда?");
+    m.insert("settings.adminUsers.deleteDesc", "Аккаунт, его устройства, ключи и членство в чатах будут безвозвратно удалены с сервера. Действие нельзя отменить.");
     m.insert("settings.adminUsers.unsuspendConfirm", "Разблокировать пользователя?");
     m.insert("settings.adminUsers.unsuspendDesc", "Пользователь снова сможет пользоваться мессенджером.");
     m.insert("settings.adminUsers.noUsers", "Пользователи не найдены");

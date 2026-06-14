@@ -79,6 +79,7 @@ pub fn build_router(state: AppState) -> Router {
             post(admin::unsuspend_user),
         )
         .route("/v1/admin/users/:id/role", post(admin::set_role))
+        .route("/v1/admin/users/:id", delete(admin::delete_user))
         .route("/v1/admin/users", get(admin::list_users))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
