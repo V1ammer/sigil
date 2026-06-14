@@ -20,35 +20,10 @@ fn setting_str(key: &str) -> Option<String> {
         .and_then(|s| s.get_item(key).ok().flatten())
 }
 
-/// Parse `"HH:MM"` into minutes since midnight.
-fn parse_hhmm(s: &str) -> Option<u32> {
-    let (h, m) = s.split_once(':')?;
-    let h: u32 = h.trim().parse().ok()?;
-    let m: u32 = m.trim().parse().ok()?;
-    (h < 24 && m < 60).then_some(h * 60 + m)
-}
-
-/// Whether the current local time is inside the user's "Do Not Disturb" window.
-/// Handles overnight ranges (e.g. 22:00–08:00).
+/// Whether "Do Not Disturb" is on. It's an immediate toggle: while enabled,
+/// notifications are suppressed (the `quiet_hours_enabled` key is reused).
 fn in_do_not_disturb() -> bool {
-    if setting_str("ms_settings_quiet_hours_enabled").as_deref() != Some("true") {
-        return false;
-    }
-    let from = setting_str("ms_settings_quiet_hours_from").unwrap_or_else(|| "22:00".into());
-    let to = setting_str("ms_settings_quiet_hours_to").unwrap_or_else(|| "08:00".into());
-    let (Some(f), Some(t)) = (parse_hhmm(&from), parse_hhmm(&to)) else {
-        return false;
-    };
-    if f == t {
-        return false;
-    }
-    let date = js_sys::Date::new_0();
-    let now = date.get_hours() * 60 + date.get_minutes();
-    if f < t {
-        now >= f && now < t // same-day window
-    } else {
-        now >= f || now < t // overnight window
-    }
+    setting_str("ms_settings_quiet_hours_enabled").as_deref() == Some("true")
 }
 
 thread_local! {

@@ -40,8 +40,6 @@ pub fn NotificationsSettings() -> impl IntoView {
     let preview_enabled = settings.message_preview;
     let notification_filter = settings.notification_filter;
     let quiet_hours_enabled = settings.quiet_hours_enabled;
-    let quiet_hours_from = settings.quiet_hours_from;
-    let quiet_hours_to = settings.quiet_hours_to;
 
     view! {
         <div class="space-y-6">
@@ -93,43 +91,16 @@ pub fn NotificationsSettings() -> impl IntoView {
 
             <Separator />
 
-            // Quiet hours
-            <div class="space-y-4">
-                <div class="flex items-center justify-between">
+            // Do Not Disturb — immediate toggle: while on, no notification sounds.
+            <div class="flex items-center justify-between gap-4">
+                <div class="space-y-0.5">
                     <Label class="text-foreground">{t!("settings.notifications.quietHours")}</Label>
-                    <Switch
-                        checked=Signal::derive(move || quiet_hours_enabled.get())
-                        on_change=Box::new(move |v| quiet_hours_enabled.set(v))
-                    />
+                    <p class="text-xs text-muted-foreground">{t!("settings.notifications.quietHoursDesc")}</p>
                 </div>
-
-                {move || if quiet_hours_enabled.get() {
-                    view! {
-                        <div class="flex gap-4">
-                            <div class="flex-1 space-y-1">
-                                <Label class="text-foreground">{t!("settings.notifications.quietFrom")}</Label>
-                                <input
-                                    type="time"
-                                    value=quiet_hours_from.get()
-                                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                    on:input=move |ev| quiet_hours_from.set(event_target_value(&ev))
-                                />
-                            </div>
-                            <div class="flex-1 space-y-1">
-                                <Label class="text-foreground">{t!("settings.notifications.quietTo")}</Label>
-                                <input
-                                    type="time"
-                                    value=quiet_hours_to.get()
-                                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                    on:input=move |ev| quiet_hours_to.set(event_target_value(&ev))
-                                />
-                            </div>
-                        </div>
-                    }
-                        .into_any()
-                } else {
-                    view! {}.into_any()
-                }}
+                <Switch
+                    checked=Signal::derive(move || quiet_hours_enabled.get())
+                    on_change=Box::new(move |v| quiet_hours_enabled.set(v))
+                />
             </div>
         </div>
     }

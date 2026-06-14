@@ -545,9 +545,7 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.notifications.filterMentions", "Только упоминания");
     m.insert("settings.notifications.filterNone", "Нет");
     m.insert("settings.notifications.quietHours", "Не беспокоить");
-    m.insert("settings.notifications.quietHoursDesc", "Не беспокоить в определённое время");
-    m.insert("settings.notifications.quietFrom", "С");
-    m.insert("settings.notifications.quietTo", "До");
+    m.insert("settings.notifications.quietHoursDesc", "Заглушить все уведомления, пока включено");
 
     // C11 — Privacy
     m.insert("settings.privacy.readReceipts", "Отметки о прочтении");
