@@ -2,7 +2,6 @@ use std::sync::Arc;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_router::hooks::use_navigate;
-use messenger_core::blind_index::username_blind_index;
 use messenger_core::api::ApiError;
 use messenger_core::ed25519::Ed25519Pair;
 use messenger_core::identity::ClientIdentity;
@@ -126,56 +125,46 @@ pub fn AccountSettings() -> impl IntoView {
 
     // --- Handlers ---
 
+    // Resolve i18n up front: it cannot be looked up from context inside
+    // `spawn_local` (the reactive owner is gone after the first `.await`, so
+    // `t!()` would panic and silently abort the task — which is exactly why the
+    // change appeared to do nothing).
+    let i18n = use_context::<crate::i18n::I18n>().expect("I18n must be provided");
+
     let on_change_username_confirm = {
         let notifications = notifications.clone();
+        let i18n = i18n.clone();
         move |_| {
-            let uname = new_username.get_untracked().trim().to_string();
-            if uname.is_empty() {
-                notifications.push(ToastKind::Error, t!("settings.account.usernameEmpty"));
+            // Same sanitization/length rules as registration: usernames are
+            // `[a-z0-9_]`, 3–32 chars. Keeps the new handle lookup-compatible.
+            let uname: String = new_username
+                .get_untracked()
+                .chars()
+                .filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_')
+                .collect();
+            if uname.len() < 3 || uname.len() > 32 {
+                notifications.push(ToastKind::Error, i18n.t("settings.account.usernameInvalid"));
                 return;
             }
 
             show_change_username.set(false);
             let notifications = notifications.clone();
+            let i18n = i18n.clone();
 
             spawn_local(async move {
-                // 1. Retrieve blind index key from local storage
-                let blind_index_key = get_blind_index_key().await;
-
-                // 2. Compute blind index
-                let username_bi = match blind_index_key {
-                    Some(key) => {
-                        match username_blind_index(&uname, &key) {
-                            Ok(bi) => bi,
-                            Err(e) => {
-                                notifications.push(
-                                    ToastKind::Error,
-                                    format!("{}: {e}", t!("settings.account.blindIndexError")),
-                                );
-                                return;
-                            }
-                        }
-                    }
-                    None => {
-                        notifications.push(
-                            ToastKind::Error,
-                            t!("settings.account.missingBlindIndexKey"),
-                        );
-                        return;
-                    }
-                };
-
-                // 3. Build API client and call change_username
+                // Build API client and call change_username with the plaintext
+                // username — the server holds the blind-index key and recomputes
+                // the index itself (same contract as registration).
                 let api = match build_api_client() {
                     Some(client) => client,
                     None => {
-                        notifications.push(ToastKind::Error, t!("settings.account.apiClientError"));
+                        notifications.push(ToastKind::Error, i18n.t("settings.account.apiClientError"));
                         return;
                     }
                 };
 
                 let req = ChangeUsernameRequest {
-                    new_username_blind_index: username_bi,
+                    new_username: uname.clone(),
                 };
 
                 match api.change_username(&req).await {
@@ -209,19 +198,19 @@ pub fn AccountSettings() -> impl IntoView {
                         username.set(uname.clone());
                         notifications.push(
                             ToastKind::Success,
-                            t!("settings.account.usernameChanged").to_string(),
+                            i18n.t("settings.account.usernameChanged"),
                         );
                     }
                     Err(ApiError::Api { status: 409, .. }) => {
                         notifications.push(
                             ToastKind::Error,
-                            format!("{}", t!("settings.account.usernameTaken")),
+                            i18n.t("settings.account.usernameTaken"),
                         );
                     }
                     Err(e) => {
                         notifications.push(
                             ToastKind::Error,
-                            format!("{}: {e}", t!("settings.account.usernameChangeError")),
+                            format!("{}: {e}", i18n.t("settings.account.usernameChangeError")),
                         );
                     }
                 }
@@ -482,27 +471,4 @@ pub fn AccountSettings() -> impl IntoView {
             </AlertDialogFooter>
         </AlertDialog>
     }
-}
-
-/// Retrieve the blind index key from local storage.
-async fn get_blind_index_key() -> Option<[u8; 32]> {
-    if let Ok(local) = messenger_storage::init_storage("default").await {
-        if let Ok(Some(hex_key)) = local.get_setting("server_blind_index_key").await {
-            let bytes = hex::decode(&hex_key).ok()?;
-            if bytes.len() == 32 {
-                let mut key = [0u8; 32];
-                key.copy_from_slice(&bytes);
-                return Some(key);
-            }
-        }
-        if let Ok(Some(hex_key)) = local.get_setting("username_blind_index_key").await {
-            let bytes = hex::decode(&hex_key).ok()?;
-            if bytes.len() == 32 {
-                let mut key = [0u8; 32];
-                key.copy_from_slice(&bytes);
-                return Some(key);
-            }
-        }
-    }
-    None
 }

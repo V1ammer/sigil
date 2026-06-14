@@ -10,10 +10,13 @@ pub struct LookupResponse {
 }
 
 /// Request to change own username.
+///
+/// Carries the plaintext username — the server is the only party that holds the
+/// blind-index key, so it (re)computes the `username_blind_index` itself, exactly
+/// as it does at registration. The plaintext is never persisted server-side.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ChangeUsernameRequest {
-    #[serde(with = "serde_bytes")]
-    pub new_username_blind_index: Vec<u8>,
+    pub new_username: String,
 }
 
 /// Information about a single device.

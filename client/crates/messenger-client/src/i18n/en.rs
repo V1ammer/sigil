@@ -199,11 +199,8 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.account.changeUsernameTitle", "Change username");
     m.insert("settings.account.changeUsernameDescription", "Enter a new username. Your contacts learn about the change from your messages.");
     m.insert("settings.account.newUsernamePlaceholder", "new_username");
-    m.insert("settings.account.usernameEmpty", "Username cannot be empty");
+    m.insert("settings.account.usernameInvalid", "Username: 3–32 chars, only a–z, 0–9 and _");
     m.insert("settings.account.usernameChangeError", "Failed to change username");
-    m.insert("settings.account.usernameReloginHint", "Changes take effect after you sign in again");
-    m.insert("settings.account.blindIndexError", "Failed to compute the username index");
-    m.insert("settings.account.missingBlindIndexKey", "Username index key missing — please sign in again");
     m.insert("settings.account.apiClientError", "Could not reach the server");
     m.insert("settings.account.signOutSection", "Sign out");
     m.insert("settings.account.signOut", "Sign out");

@@ -199,11 +199,8 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.account.changeUsernameTitle", "Изменить имя пользователя");
     m.insert("settings.account.changeUsernameDescription", "Введите новое имя пользователя. Собеседники узнают о смене из ваших сообщений.");
     m.insert("settings.account.newUsernamePlaceholder", "новое_имя");
-    m.insert("settings.account.usernameEmpty", "Имя пользователя не может быть пустым");
+    m.insert("settings.account.usernameInvalid", "Имя: 3–32 символа, только a–z, 0–9 и _");
     m.insert("settings.account.usernameChangeError", "Не удалось изменить имя пользователя");
-    m.insert("settings.account.usernameReloginHint", "Изменения вступят в силу после повторного входа");
-    m.insert("settings.account.blindIndexError", "Не удалось вычислить индекс имени");
-    m.insert("settings.account.missingBlindIndexKey", "Ключ индекса имени не найден — войдите заново");
     m.insert("settings.account.apiClientError", "Не удалось подключиться к серверу");
     m.insert("settings.account.signOutSection", "Выход");
     m.insert("settings.account.signOut", "Выйти");
