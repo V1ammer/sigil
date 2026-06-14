@@ -154,7 +154,7 @@ fn load_media_blob(
         };
         let mut key = [0u8; 32];
         key.copy_from_slice(&key_bytes);
-        let Ok(plain) = messenger_core::attachment_crypto::decrypt_attachment(&key, &ct) else {
+        let Ok(plain) = messenger_core::attachment_crypto::decrypt_attachment_auto(&key, &ct) else {
             err.set(Some(t(l, "message.imageUnavailable").to_string()));
             return;
         };
@@ -655,11 +655,36 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
             let attachment_id = msg.attachment_id.clone();
             let decryption_key = msg.decryption_key.clone();
             let mime = msg.mime_type.clone().unwrap_or_else(|| "video/mp4".into());
-            let blob_url: RwSignal<Option<String>> = RwSignal::new(None);
             let err: RwSignal<Option<String>> = RwSignal::new(None);
             // Click-to-load: don't download every video on render — only when the
-            // user taps play. Plays inline after download+decrypt.
+            // user taps play. Streams chunk-by-chunk (MediaSource) when possible,
+            // else falls back to a whole-blob download.
             let started: RwSignal<bool> = RwSignal::new(false);
+            let video_ref: NodeRef<leptos::html::Video> = NodeRef::new();
+            let kicked = RwSignal::new(false);
+            {
+                let aid = attachment_id.clone();
+                let key = decryption_key.clone();
+                let m = mime.clone();
+                // Kick streaming once the <video> mounts after the user taps play.
+                Effect::new(move |_| {
+                    if !started.get() || kicked.get_untracked() {
+                        return;
+                    }
+                    let Some(el) = video_ref.get() else { return };
+                    kicked.set(true);
+                    let media: web_sys::HtmlMediaElement =
+                        el.unchecked_ref::<web_sys::HtmlMediaElement>().clone();
+                    match (aid.clone(), key.clone()) {
+                        (Some(aid), Some(key)) => {
+                            // autoplay=false: the element's own `autoplay` attr
+                            // starts it as soon as the first chunk buffers.
+                            crate::chat::media_stream::play(media, aid, key, m.clone(), false, err, l);
+                        }
+                        _ => err.set(Some(t(l, "message.video").to_string())),
+                    }
+                });
+            }
 
             view! {
                 <div class="block overflow-hidden rounded-lg -mx-1 -mt-1 mb-1">
@@ -669,16 +694,10 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                     <div class="aspect-video max-h-64 w-[455px] max-w-full bg-black flex items-center justify-center">
                         {move || {
                             if !started.get() {
-                                let aid = attachment_id.clone();
-                                let key = decryption_key.clone();
-                                let m = mime.clone();
                                 view! {
                                     <button
                                         class="relative h-full w-full flex items-center justify-center"
-                                        on:click=move |_| {
-                                            started.set(true);
-                                            load_media_blob(aid.clone(), key.clone(), m.clone(), blob_url, err, l);
-                                        }
+                                        on:click=move |_| started.set(true)
                                     >
                                         <div class="flex flex-col items-center gap-2 text-muted-foreground">
                                             <Icon name="film" class_name="h-8 w-8"/>
@@ -691,16 +710,6 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                                         </div>
                                     </button>
                                 }.into_any()
-                            } else if let Some(url) = blob_url.get() {
-                                view! {
-                                    <video
-                                        src=url
-                                        controls=true
-                                        autoplay=true
-                                        playsinline=true
-                                        class="h-full w-full object-contain bg-black"
-                                    />
-                                }.into_any()
                             } else if let Some(e) = err.get() {
                                 view! {
                                     <div class="flex flex-col items-center gap-1 text-destructive">
@@ -710,10 +719,13 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                                 }.into_any()
                             } else {
                                 view! {
-                                    <div class="flex flex-col items-center gap-2 text-muted-foreground">
-                                        <span class="h-8 w-8 inline-block rounded-full border-2 border-current border-t-transparent animate-spin"/>
-                                        <span class="text-xs">{t(l, "message.video")}</span>
-                                    </div>
+                                    <video
+                                        node_ref=video_ref
+                                        controls=true
+                                        autoplay=true
+                                        playsinline=true
+                                        class="h-full w-full object-contain bg-black"
+                                    />
                                 }.into_any()
                             }
                         }}
@@ -934,7 +946,7 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                         };
                         let mut key = [0u8; 32];
                         key.copy_from_slice(&key_bytes);
-                        let plain = match messenger_core::attachment_crypto::decrypt_attachment(&key, &ct) {
+                        let plain = match messenger_core::attachment_crypto::decrypt_attachment_auto(&key, &ct) {
                             Ok(p) => p,
                             Err(_) => { downloading.set(false); return; }
                         };

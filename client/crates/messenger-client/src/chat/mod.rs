@@ -3,6 +3,7 @@
 pub mod chat_header;
 pub mod message_list;
 pub mod message_item;
+pub mod media_stream;
 pub mod voice_message;
 pub mod input_bar;
 pub mod thread_panel;

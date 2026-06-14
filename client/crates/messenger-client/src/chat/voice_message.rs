@@ -31,7 +31,6 @@ pub fn VoiceMessage(
     let is_playing = RwSignal::new(false);
     let current_position_ms = RwSignal::new(0u32);
     let show_transcription = RwSignal::new(false);
-    let blob_url: RwSignal<Option<String>> = RwSignal::new(None);
     let loading = RwSignal::new(false);
     let error: RwSignal<Option<String>> = RwSignal::new(None);
     // Plain bytes of the decrypted audio, kept around once fetched so a
@@ -61,102 +60,49 @@ pub fn VoiceMessage(
         )
     };
 
-    let attachment_id_for_load = attachment_id.clone();
-    let decryption_key_for_load = decryption_key.clone();
-    let mime_for_load = mime.clone();
+    let started = RwSignal::new(false);
+    let kicked = RwSignal::new(false);
 
-    // Lazy-load: fetch + decrypt on first play. Returns Some(url) when ready.
-    let load_audio = move || {
-        if blob_url.get_untracked().is_some() {
-            return;
-        }
-        let aid = match attachment_id_for_load.as_ref() {
-            Some(s) => s.clone(),
-            None => return,
-        };
-        let key_b64 = match decryption_key_for_load.as_ref() {
-            Some(s) => s.clone(),
-            None => return,
-        };
-        let mime = mime_for_load.clone().unwrap_or_else(|| "audio/webm".to_string());
-        loading.set(true);
-        spawn_local(async move {
-            use base64::Engine as _;
-            let api = match build_api_client() {
-                Some(a) => a,
-                None => {
-                    error.set(Some("no api client".into()));
-                    loading.set(false);
-                    return;
+    // Streaming playback: tapping play renders the <audio>, then the stream
+    // driver feeds it the chunked blob via MediaSource (fallback: whole-blob
+    // download). The element's `autoplay` starts it once the first chunk buffers.
+    {
+        let aid = attachment_id.clone();
+        let key = decryption_key.clone();
+        let m = mime.clone().unwrap_or_else(|| "audio/webm".to_string());
+        Effect::new(move |_| {
+            if !started.get() || kicked.get_untracked() {
+                return;
+            }
+            let Some(el) = audio_ref.get() else { return };
+            kicked.set(true);
+            let media: web_sys::HtmlMediaElement =
+                el.unchecked_ref::<web_sys::HtmlMediaElement>().clone();
+            match (aid.clone(), key.clone()) {
+                (Some(aid), Some(key)) => {
+                    crate::chat::media_stream::play(
+                        media,
+                        aid,
+                        key,
+                        m.clone(),
+                        false,
+                        error,
+                        lang.get_untracked(),
+                    );
                 }
-            };
-            let attachment_id = match aid.parse::<uuid::Uuid>() {
-                Ok(u) => u,
-                Err(_) => {
-                    error.set(Some("bad attachment id".into()));
-                    loading.set(false);
-                    return;
-                }
-            };
-            let ct = match api.download_attachment(attachment_id, None).await {
-                Ok(b) => b,
-                Err(e) => {
-                    error.set(Some(format!("download: {e}")));
-                    loading.set(false);
-                    return;
-                }
-            };
-            let key_bytes = match base64::engine::general_purpose::STANDARD.decode(&key_b64) {
-                Ok(b) if b.len() == 32 => b,
                 _ => {
-                    error.set(Some("bad key".into()));
                     loading.set(false);
-                    return;
+                    error.set(Some("no attachment".into()));
                 }
-            };
-            let mut key = [0u8; 32];
-            key.copy_from_slice(&key_bytes);
-            let plain = match messenger_core::attachment_crypto::decrypt_attachment(&key, &ct) {
-                Ok(p) => p,
-                Err(e) => {
-                    error.set(Some(format!("decrypt: {e:?}")));
-                    loading.set(false);
-                    return;
-                }
-            };
-            plain_audio.set(Some(plain.clone()));
-            // Wrap in Blob → object URL.
-            let u8a = js_sys::Uint8Array::from(plain.as_slice());
-            let arr = js_sys::Array::new();
-            arr.push(&u8a.into());
-            let mut bag = web_sys::BlobPropertyBag::new();
-            bag.type_(&mime);
-            let blob = match web_sys::Blob::new_with_u8_array_sequence_and_options(&arr, &bag) {
-                Ok(b) => b,
-                Err(_) => {
-                    error.set(Some("blob create failed".into()));
-                    loading.set(false);
-                    return;
-                }
-            };
-            let url = match web_sys::Url::create_object_url_with_blob(&blob) {
-                Ok(u) => u,
-                Err(_) => {
-                    error.set(Some("object url failed".into()));
-                    loading.set(false);
-                    return;
-                }
-            };
-            blob_url.set(Some(url));
-            loading.set(false);
+            }
         });
-    };
+    }
 
     let toggle_play = move |_| {
-        if blob_url.get_untracked().is_none() {
-            load_audio();
-            // Auto-play once the URL is set via the Effect below.
+        if !started.get_untracked() {
+            started.set(true);
             is_playing.set(true);
+            loading.set(true);
             return;
         }
         if let Some(el) = audio_ref.get_untracked() {
@@ -170,16 +116,6 @@ pub fn VoiceMessage(
             }
         }
     };
-
-    // When blob_url becomes Some after we already wanted to play, start playback.
-    Effect::new(move |_| {
-        if blob_url.get().is_some() && is_playing.get_untracked() {
-            if let Some(el) = audio_ref.get_untracked() {
-                let audio: &web_sys::HtmlAudioElement = el.unchecked_ref();
-                let _ = audio.play();
-            }
-        }
-    });
 
     // Fetch + decrypt the attachment if we don't have plaintext bytes yet.
     // Returns the bytes (cached in `plain_audio`) or `Err` on any pipeline step.
@@ -209,7 +145,7 @@ pub fn VoiceMessage(
             }
             let mut key = [0u8; 32];
             key.copy_from_slice(&key_bytes);
-            let plain = messenger_core::attachment_crypto::decrypt_attachment(&key, &ct)
+            let plain = messenger_core::attachment_crypto::decrypt_attachment_auto(&key, &ct)
                 .map_err(|e| format!("decrypt: {e:?}"))?;
             plain_audio.set(Some(plain.clone()));
             Ok(plain)
@@ -369,15 +305,19 @@ pub fn VoiceMessage(
                 </span>
             </div>
 
-            // Hidden audio element — wired only after blob URL is available.
+            // Hidden audio element — appears once the user taps play; its src is
+            // set by the stream driver (MediaSource) or the whole-blob fallback,
+            // and `autoplay` starts playback as soon as data buffers.
             {move || {
-                blob_url.get().map(|url| {
+                started.get().then(|| {
                     view! {
                         <audio
                             node_ref=audio_ref
-                            src=url
                             preload="auto"
+                            autoplay=true
                             on:timeupdate=on_time_update
+                            on:playing=move |_| { loading.set(false); is_playing.set(true); }
+                            on:pause=move |_| is_playing.set(false)
                             on:ended=on_ended
                         />
                     }

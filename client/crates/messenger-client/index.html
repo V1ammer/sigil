@@ -9,5 +9,65 @@
     <link data-trunk rel="icon" href="public/favicon.svg"/>
   </head>
   <body class="h-full">
+    <script>
+      // MediaSource streaming driver for chunked-encrypted voice/video. Rust
+      // (WASM) owns the crypto: it Range-fetches each encrypted chunk, decrypts
+      // it, and hands the plaintext here; this code feeds it to a SourceBuffer so
+      // playback starts on the first chunk. Backpressure: push() resolves only
+      // after the append's `updateend`, so Rust appends one chunk at a time.
+      (function () {
+        function supported(mime) {
+          try {
+            return !!(window.MediaSource && window.MediaSource.isTypeSupported(mime));
+          } catch (_) {
+            return false;
+          }
+        }
+        function start(el, mime) {
+          var ms = new MediaSource();
+          var handle = { ms: ms, sb: null, mime: mime };
+          handle.open = new Promise(function (resolve, reject) {
+            ms.addEventListener("sourceopen", function () {
+              try {
+                // Revoke the object URL once consumed to avoid leaks.
+                if (handle.url) { URL.revokeObjectURL(handle.url); handle.url = null; }
+                handle.sb = ms.addSourceBuffer(mime);
+                resolve();
+              } catch (e) { reject(e); }
+            }, { once: true });
+          });
+          handle.url = URL.createObjectURL(ms);
+          el.src = handle.url;
+          return handle;
+        }
+        function push(handle, data) {
+          return handle.open.then(function () {
+            return new Promise(function (resolve, reject) {
+              var sb = handle.sb;
+              function cleanup() {
+                sb.removeEventListener("updateend", onEnd);
+                sb.removeEventListener("error", onErr);
+              }
+              function onEnd() { cleanup(); resolve(); }
+              function onErr() { cleanup(); reject(new Error("appendBuffer error")); }
+              sb.addEventListener("updateend", onEnd);
+              sb.addEventListener("error", onErr);
+              try {
+                sb.appendBuffer(data);
+              } catch (e) { cleanup(); reject(e); }
+            });
+          });
+        }
+        function end(handle) {
+          try {
+            if (handle.ms.readyState === "open") handle.ms.endOfStream();
+          } catch (_) {}
+        }
+        window.__sigilStreamSupported = supported;
+        window.__sigilStreamStart = start;
+        window.__sigilStreamPush = push;
+        window.__sigilStreamEnd = end;
+      })();
+    </script>
   </body>
 </html>

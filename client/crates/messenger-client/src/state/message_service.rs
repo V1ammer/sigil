@@ -822,7 +822,7 @@ impl MessageService {
         payload: crate::chat::input_bar::VoicePayload,
         thread_root: Option<Uuid>,
     ) -> Option<Uuid> {
-        use messenger_core::attachment_crypto::encrypt_attachment;
+        use messenger_core::attachment_crypto::{encrypt_attachment_chunked, DEFAULT_CHUNK_SIZE};
         use rand::RngCore;
 
         let api = build_api_client()?;
@@ -831,7 +831,9 @@ impl MessageService {
         let mut key = [0u8; 32];
         rand::thread_rng().fill_bytes(&mut key);
 
-        let ciphertext = match encrypt_attachment(&key, &payload.bytes) {
+        // Voice is always chunked so the player can stream it (start on the first
+        // chunk instead of waiting for the whole blob).
+        let ciphertext = match encrypt_attachment_chunked(&key, &payload.bytes, DEFAULT_CHUNK_SIZE) {
             Ok(ct) => ct,
             Err(e) => {
                 tracing::warn!("attachment encrypt failed: {e:?}");
@@ -950,7 +952,9 @@ impl MessageService {
         payload: crate::chat::input_bar::AttachmentPayload,
         thread_root: Option<Uuid>,
     ) -> Option<Uuid> {
-        use messenger_core::attachment_crypto::encrypt_attachment;
+        use messenger_core::attachment_crypto::{
+            encrypt_attachment, encrypt_attachment_chunked, DEFAULT_CHUNK_SIZE,
+        };
         use rand::RngCore;
 
         let api = build_api_client()?;
@@ -1010,7 +1014,17 @@ impl MessageService {
         let mut key = [0u8; 32];
         rand::thread_rng().fill_bytes(&mut key);
 
-        let ciphertext = match encrypt_attachment(&key, &payload.bytes) {
+        // Stream-friendly (chunked) encryption for playable media — video and
+        // audio — so the player can start on the first chunk. Images and other
+        // files stay whole-blob (nothing to stream).
+        let stream_friendly =
+            payload.mime.starts_with("video/") || payload.mime.starts_with("audio/");
+        let encrypted = if stream_friendly {
+            encrypt_attachment_chunked(&key, &payload.bytes, DEFAULT_CHUNK_SIZE)
+        } else {
+            encrypt_attachment(&key, &payload.bytes)
+        };
+        let ciphertext = match encrypted {
             Ok(ct) => ct,
             Err(e) => {
                 tracing::warn!("attachment encrypt failed: {e:?}");
@@ -1168,7 +1182,7 @@ impl MessageService {
             let key_arr: [u8; 32] = key.try_into().ok()?;
             let api = build_api_client()?;
             let ct = api.download_attachment(attachment_id, None).await.ok()?;
-            messenger_core::attachment_crypto::decrypt_attachment(&key_arr, &ct).ok()
+            messenger_core::attachment_crypto::decrypt_attachment_auto(&key_arr, &ct).ok()
         }
 
         match body {
