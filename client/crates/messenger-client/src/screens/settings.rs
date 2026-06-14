@@ -123,7 +123,16 @@ pub fn SettingsScreen() -> impl IntoView {
                     "hidden md:block md:flex-1 md:overflow-y-auto".to_string()
                 }
             }>
-                <div class="max-w-2xl p-6">
+                <div class=move || {
+                    // The Users tab is a wide table — give it more room so the
+                    // columns fit without a horizontal scrollbar. Other tabs keep
+                    // a comfortable reading width.
+                    if section.get().as_str() == "admin-users" {
+                        "max-w-5xl p-6"
+                    } else {
+                        "max-w-2xl p-6"
+                    }
+                }>
                     {move || {
                         if has_sec.get() {
                             view! {
