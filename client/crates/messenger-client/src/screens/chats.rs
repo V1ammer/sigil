@@ -367,6 +367,9 @@ pub fn ChatsScreen() -> impl IntoView {
     let on_thread_open_list = Arc::new({
         move |msg_id: &str| {
             if let Ok(id) = uuid::Uuid::parse_str(msg_id) {
+                // Register a back handler so Android/browser back closes the
+                // thread instead of the chat (or exiting the app).
+                crate::state::back_stack::push(move || thread_root.set(None));
                 thread_root.set(Some(id));
             }
         }
@@ -717,7 +720,7 @@ pub fn ChatsScreen() -> impl IntoView {
                                         if let Some(group_id) = sel.get_untracked() {
                                             let svc = svc.clone();
                                             spawn_local(async move {
-                                                svc.send_voice(group_id, payload).await;
+                                                svc.send_voice(group_id, payload, None).await;
                                             });
                                         }
                                     }
@@ -733,7 +736,7 @@ pub fn ChatsScreen() -> impl IntoView {
                                         if let Some(group_id) = sel.get_untracked() {
                                             let svc = svc.clone();
                                             spawn_local(async move {
-                                                svc.send_attachment(group_id, payload).await;
+                                                svc.send_attachment(group_id, payload, None).await;
                                             });
                                         }
                                     }
@@ -781,7 +784,9 @@ pub fn ChatsScreen() -> impl IntoView {
                 let sel = sel_for_thread;
                 let messages_state = messages_state_for_thread;
                 let thread_is_open = Signal::derive(move || thread_root.get().is_some());
-                let on_close_thread = Box::new(move || thread_root.set(None)) as Box<dyn Fn() + Send + Sync + 'static>;
+                // Close via the back stack so history stays in sync (the open
+                // pushed a handler); pop() runs it and sets thread_root = None.
+                let on_close_thread = Box::new(|| crate::state::back_stack::pop()) as Box<dyn Fn() + Send + Sync + 'static>;
 
                 let messages_state_p = messages_state.clone();
                 let sel_p = sel.clone();
@@ -811,43 +816,49 @@ pub fn ChatsScreen() -> impl IntoView {
                         .unwrap_or_default()
                 });
 
-                let on_send_reply_arc = Arc::new(move |text: String| {
+                let msg_svc_a = msg_svc.clone();
+                let msg_svc_v = msg_svc.clone();
+                let on_send = Box::new(move |text: String| {
                     let svc = msg_svc.clone();
                     let gid = sel.get_untracked();
                     let root = thread_root.get_untracked();
                     if let (Some(group_id), Some(root_id)) = (gid, root) {
                         spawn_local(async move {
-                            svc.send_text_in_thread(group_id, &text, Some(root_id), Some(root_id))
-                                .await;
+                            svc.send_text_in_thread(group_id, &text, Some(root_id), Some(root_id)).await;
                         });
                     }
-                });
-                let on_close_arc = Arc::new(on_close_thread);
+                }) as Box<dyn Fn(String) + Send + Sync + 'static>;
+                let on_send_attachment = Box::new(move |payload: AttachmentPayload| {
+                    let svc = msg_svc_a.clone();
+                    let gid = sel.get_untracked();
+                    let root = thread_root.get_untracked();
+                    if let (Some(group_id), Some(root_id)) = (gid, root) {
+                        spawn_local(async move { svc.send_attachment(group_id, payload, Some(root_id)).await; });
+                    }
+                }) as Box<dyn Fn(AttachmentPayload) + Send + Sync + 'static>;
+                let on_send_voice = Box::new(move |payload: crate::chat::input_bar::VoicePayload| {
+                    let svc = msg_svc_v.clone();
+                    let gid = sel.get_untracked();
+                    let root = thread_root.get_untracked();
+                    if let (Some(group_id), Some(root_id)) = (gid, root) {
+                        spawn_local(async move { svc.send_voice(group_id, payload, Some(root_id)).await; });
+                    }
+                }) as Box<dyn Fn(crate::chat::input_bar::VoicePayload) + Send + Sync + 'static>;
 
-                // Rebuild the panel whenever the thread root / replies change —
-                // passing `.get()` snapshots once froze it at "no parent".
+                // The panel is built ONCE and reads parent/replies reactively, so a
+                // new reply or the periodic sync no longer rebuilds it (which used
+                // to wipe the composer input).
                 view! {
-                    {move || {
-                        let on_close = {
-                            let a = on_close_arc.clone();
-                            Box::new(move || a()) as Box<dyn Fn() + Send + Sync + 'static>
-                        };
-                        let on_send = {
-                            let a = on_send_reply_arc.clone();
-                            Box::new(move |t: String| a(t))
-                                as Box<dyn Fn(String) + Send + Sync + 'static>
-                        };
-                        view! {
-                            <ThreadPanel
-                                lang=locale_for_thread
-                                is_open=thread_is_open
-                                on_close=on_close
-                                parent_message=parent_message.get()
-                                replies=replies.get()
-                                on_send_reply=on_send
-                            />
-                        }
-                    }}
+                    <ThreadPanel
+                        lang=locale_for_thread
+                        is_open=thread_is_open
+                        on_close=on_close_thread
+                        parent_message=parent_message
+                        replies=replies
+                        on_send_reply=on_send
+                        on_send_attachment=on_send_attachment
+                        on_send_voice=on_send_voice
+                    />
                 }
             }
             </div>

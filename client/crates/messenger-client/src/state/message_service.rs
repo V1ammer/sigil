@@ -820,6 +820,7 @@ impl MessageService {
         &self,
         group_id: Uuid,
         payload: crate::chat::input_bar::VoicePayload,
+        thread_root: Option<Uuid>,
     ) -> Option<Uuid> {
         use messenger_core::attachment_crypto::encrypt_attachment;
         use rand::RngCore;
@@ -863,8 +864,8 @@ impl MessageService {
                 waveform: payload.waveform.clone(),
                 caption: None,
             },
-            reply_to_message_id: None,
-            thread_root_id: None,
+            reply_to_message_id: thread_root,
+            thread_root_id: thread_root,
             created_at: now,
             sender_display_name_override: me.clone(),
         };
@@ -888,9 +889,9 @@ impl MessageService {
         let req = PostMessageRequest {
             expected_epoch: 0,
             mls_ciphertext: envelope_ct,
-            parent_message_id: None,
-            reply_to_message_id: None,
-            thread_root_id: None,
+            parent_message_id: thread_root,
+            reply_to_message_id: thread_root,
+            thread_root_id: thread_root,
             client_message_id,
         };
         let resp = match api.post_message(group_id, &req).await {
@@ -927,8 +928,8 @@ impl MessageService {
                 sender_display_name: me.clone(),
                 kind: MessageKind::Voice,
                 body: voice_body,
-                reply_to_message_id: None,
-                thread_root_id: None,
+                reply_to_message_id: thread_root,
+                thread_root_id: thread_root,
                 created_at: now,
                 edited_at: None,
                 deleted_at: None,
@@ -947,6 +948,7 @@ impl MessageService {
         &self,
         group_id: Uuid,
         payload: crate::chat::input_bar::AttachmentPayload,
+        thread_root: Option<Uuid>,
     ) -> Option<Uuid> {
         use messenger_core::attachment_crypto::encrypt_attachment;
         use rand::RngCore;
@@ -994,8 +996,8 @@ impl MessageService {
                 sender_display_name: me.clone(),
                 kind: kind_for_display,
                 body: sending_body.clone(),
-                reply_to_message_id: None,
-                thread_root_id: None,
+                reply_to_message_id: thread_root,
+                thread_root_id: thread_root,
                 created_at: now,
                 edited_at: None,
                 deleted_at: None,
@@ -1078,8 +1080,8 @@ impl MessageService {
             client_message_id,
             kind,
             body,
-            reply_to_message_id: None,
-            thread_root_id: None,
+            reply_to_message_id: thread_root,
+            thread_root_id: thread_root,
             created_at: now,
             sender_display_name_override: me.clone(),
         };
@@ -1104,9 +1106,9 @@ impl MessageService {
         let req = PostMessageRequest {
             expected_epoch: 0,
             mls_ciphertext: envelope_ct,
-            parent_message_id: None,
-            reply_to_message_id: None,
-            thread_root_id: None,
+            parent_message_id: thread_root,
+            reply_to_message_id: thread_root,
+            thread_root_id: thread_root,
             client_message_id,
         };
         let resp = match api.post_message(group_id, &req).await {
@@ -1185,6 +1187,7 @@ impl MessageService {
                         is_image: true,
                         caption,
                     },
+                    None,
                 )
                 .await
             }
@@ -1194,6 +1197,7 @@ impl MessageService {
                 self.send_attachment(
                     target_group,
                     crate::chat::input_bar::AttachmentPayload { bytes, mime, name, size, is_image: false, caption },
+                    None,
                 )
                 .await
             }
@@ -1207,6 +1211,7 @@ impl MessageService {
                         duration_ms,
                         waveform,
                     },
+                    None,
                 )
                 .await
             }
