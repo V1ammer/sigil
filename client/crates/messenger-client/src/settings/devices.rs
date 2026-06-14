@@ -326,6 +326,7 @@ pub fn DevicesSettings() -> impl IntoView {
                         device_hpke_seed: new_device_hpke_seed,
                         key_package_bundle: kp_bundle_bytes,
                         role: account_role.clone(),
+                        avatar: crate::state::avatar_store::load_own_avatar(identity.user_id),
                     };
 
                     // Encrypt under the new device's temp X25519 pub key (from QR).

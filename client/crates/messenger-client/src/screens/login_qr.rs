@@ -274,6 +274,15 @@ pub fn LoginQrScreen() -> impl IntoView {
                                             let _ = local.set_setting("current_user_id", &payload.user_id.to_string()).await;
                                         }
 
+                                        // Carry over the user's own avatar (avatars are
+                                        // client-only; without this the new device shows
+                                        // none in settings).
+                                        if let Some(ref avatar) = payload.avatar {
+                                            if !avatar.is_empty() {
+                                                crate::state::avatar_store::save_own_avatar(payload.user_id, avatar);
+                                            }
+                                        }
+
                                         // Inherit the account's role from the bootstrap
                                         // blob (the approving device put it there), so an
                                         // admin's new device gets admin instead of user.

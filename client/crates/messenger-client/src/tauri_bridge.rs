@@ -27,6 +27,11 @@ pub struct BootstrapPayload {
     /// backward compatibility with blobs from older approving devices.
     #[serde(default)]
     pub role: String,
+    /// The user's own avatar (data-URL), so a provisioned device shows it in
+    /// settings — avatars are client-only (the server is blind to them), so the
+    /// new device has no other way to learn its own.
+    #[serde(default)]
+    pub avatar: Option<String>,
 }
 
 /// Check if the frontend is running inside a Tauri WebView.
