@@ -448,6 +448,10 @@ pub fn DevicesSettings() -> impl IntoView {
         let target = revoke_target;
         let show = show_revoke_dialog;
         let rev = revoking;
+        // t!() panics inside the spawn_local below (no leptos owner after the
+        // await) — that panic aborted the task before rev.set(false) ran, so
+        // the "Revoking…" spinner hung even though the revoke had succeeded.
+        let i18n = i18n.clone();
         move || {
             let sess = sess.clone();
             let nf = nf.clone();
@@ -455,6 +459,7 @@ pub fn DevicesSettings() -> impl IntoView {
             let target = target;
             let show = show;
             let rev = rev;
+            let i18n = i18n.clone();
             spawn_local(async move {
                 let device_id = match target.get_untracked() {
                     Some(ref d) => d.id,
@@ -501,7 +506,7 @@ pub fn DevicesSettings() -> impl IntoView {
 
                 match api.revoke_device(device_id, &req).await {
                     Ok(_) => {
-                        nf.push(ToastKind::Success, t!("settings.devices.revokedToast"));
+                        nf.push(ToastKind::Success, i18n.t("settings.devices.revokedToast"));
                         // Refresh device list
                         if let Some(client) = build_api_client() {
                             if let Ok(resp) = client.list_devices().await {
