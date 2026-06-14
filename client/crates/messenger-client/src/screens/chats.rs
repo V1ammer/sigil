@@ -14,7 +14,7 @@ use crate::components::alert_dialog::{
 };
 use crate::chat::input_bar::{stage_into, AttachmentPayload, InputBar, InputPreview};
 use wasm_bindgen::JsCast;
-use crate::chat::message_bridge::{display_to_mock, display_vec_to_mock};
+use crate::chat::message_bridge::{display_to_mock_with_owner, display_vec_to_mock};
 use crate::chat::message_list::MessageList;
 use crate::chat::thread_panel::ThreadPanel;
 use crate::components::dialog::{Dialog, DialogHeader, DialogTitle};
@@ -794,23 +794,25 @@ pub fn ChatsScreen() -> impl IntoView {
                     let root = thread_root.get()?;
                     let gid = sel_p.get()?;
                     let store = messages_state_p.by_group.get();
+                    let own = own_user_id();
                     store
                         .get(&gid)
                         .and_then(|ms| ms.iter().find(|m| m.id == root).cloned())
-                        .map(|m| display_to_mock(&m))
+                        .map(|m| display_to_mock_with_owner(&m, &own))
                 });
                 let messages_state_r = messages_state.clone();
                 let sel_r = sel.clone();
                 let replies = Signal::derive(move || {
                     let root = match thread_root.get() { Some(r) => r, None => return vec![] };
                     let gid = match sel_r.get() { Some(g) => g, None => return vec![] };
+                    let own = own_user_id();
                     let store = messages_state_r.by_group.get();
                     store
                         .get(&gid)
                         .map(|ms| {
                             ms.iter()
                                 .filter(|m| m.thread_root_id == Some(root))
-                                .map(display_to_mock)
+                                .map(|m| display_to_mock_with_owner(m, &own))
                                 .collect::<Vec<_>>()
                         })
                         .unwrap_or_default()

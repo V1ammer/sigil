@@ -157,6 +157,31 @@ fn quote_snippet(body: &MessageBody) -> String {
 
 /// Convert a slice of `DisplayMessage`s into `mock::Message`s for the main
 /// timeline: thread replies are folded into a counter badge on their root
+/// Convert a single `DisplayMessage` with sender identity resolved — for the
+/// thread panel, which renders messages standalone. The raw [`display_to_mock`]
+/// hardcodes `is_own = true` (expecting the caller to fix it); without this the
+/// thread showed every reply right-aligned with no name/avatar, so it was
+/// impossible to tell who wrote what.
+#[must_use]
+pub fn display_to_mock_with_owner(m: &DisplayMessage, own_user_id: &str) -> mock::Message {
+    use leptos::prelude::use_context;
+    let users = use_context::<crate::state::users::UsersState>();
+    let mut mock = display_to_mock(m);
+    let is_own =
+        m.sender_user_id.to_string() == own_user_id || m.sender_user_id == uuid::Uuid::nil();
+    mock.is_own = is_own;
+    mock.sender_id = m.sender_user_id.to_string();
+    if mock.sender_name.is_empty() {
+        if let Some(ref users) = users {
+            mock.sender_name = users.label_for(m.sender_user_id);
+        } else if !is_own {
+            mock.sender_name =
+                m.sender_user_id.to_string().chars().take(8).collect::<String>() + "…";
+        }
+    }
+    mock
+}
+
 /// (Slack model) instead of appearing inline as ordinary messages.
 pub fn display_vec_to_mock(msgs: &[DisplayMessage], own_user_id: &str) -> Vec<mock::Message> {
     use leptos::prelude::use_context;
