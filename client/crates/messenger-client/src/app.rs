@@ -99,6 +99,10 @@ pub fn App() -> impl IntoView {
     // isn't blocked by the browser autoplay policy.
     crate::sound::arm_audio_unlock();
 
+    // Expose window.__androidBack() so the native back button closes overlays
+    // (chat → chat list) instead of exiting the app.
+    crate::state::back_stack::install_android_back_bridge();
+
     // Android "Share into chat": drain the native share inbox on startup and
     // whenever the app returns to the foreground (warm-start shares). The chat
     // screen stages the shared file into the composer once a chat is picked.

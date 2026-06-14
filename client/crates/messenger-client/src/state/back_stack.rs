@@ -61,3 +61,37 @@ pub fn pop() {
     let Ok(history) = win.history() else { return };
     let _ = history.back();
 }
+
+/// Whether any overlay (chat, thread, dialog, lightbox) is currently open.
+#[must_use]
+pub fn has_overlay() -> bool {
+    HANDLERS.with(|h| !h.borrow().is_empty())
+}
+
+/// Handle the Android hardware-back button. Tauri's default exits the app
+/// instead of running the WebView's history, so the native `MainActivity`
+/// intercepts back and calls this via `window.__androidBack()`:
+///   - returns `true` and closes the topmost overlay if one is open;
+///   - returns `false` (at the chat list / root) so the native side can do its
+///     own "press again to exit" handling.
+fn handle_android_back() -> bool {
+    if has_overlay() {
+        pop();
+        true
+    } else {
+        false
+    }
+}
+
+/// Expose `window.__androidBack()` for the native back-button handler. Call once
+/// at startup.
+pub fn install_android_back_bridge() {
+    let Some(win) = web_sys::window() else { return };
+    let cb = Closure::<dyn Fn() -> bool>::new(handle_android_back);
+    let _ = js_sys::Reflect::set(
+        &win,
+        &JsValue::from_str("__androidBack"),
+        cb.as_ref().unchecked_ref(),
+    );
+    cb.forget();
+}

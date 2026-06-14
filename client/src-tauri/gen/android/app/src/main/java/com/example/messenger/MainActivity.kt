@@ -3,18 +3,69 @@ package com.example.messenger
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.OpenableColumns
 import android.util.Log
+import android.view.View
+import android.view.ViewGroup
+import android.webkit.WebView
+import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import org.json.JSONObject
 import java.io.File
 
 class MainActivity : TauriActivity() {
+  private var backPressedOnce = false
+
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
     // Cold start via "Share": the intent is already on the activity.
     handleShareIntent(intent)
+
+    // Route the hardware back button through the WebView's overlay stack: a
+    // back press first closes the open chat/thread/dialog (window.__androidBack);
+    // only at the chat list (root) does it fall through to "press again to exit"
+    // — instead of Tauri's default, which exits the app from anywhere.
+    onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+      override fun handleOnBackPressed() {
+        val wv = findWebView(window.decorView)
+        if (wv == null) {
+          confirmExit()
+          return
+        }
+        wv.evaluateJavascript("(window.__androidBack && window.__androidBack()) ? 'true' : 'false'") { result ->
+          if (result == null || !result.contains("true")) {
+            confirmExit()
+          }
+          // else: an overlay was closed in the WebView — consume the back.
+        }
+      }
+    })
+  }
+
+  /** Two-step exit: first back shows a hint, a second back within 2s exits. */
+  private fun confirmExit() {
+    if (backPressedOnce) {
+      finish()
+      return
+    }
+    backPressedOnce = true
+    Toast.makeText(applicationContext, "Нажмите «Назад» ещё раз для выхода", Toast.LENGTH_SHORT).show()
+    Handler(Looper.getMainLooper()).postDelayed({ backPressedOnce = false }, 2000)
+  }
+
+  /** Find the Tauri/wry WebView in the activity's view tree. */
+  private fun findWebView(view: View): WebView? {
+    if (view is WebView) return view
+    if (view is ViewGroup) {
+      for (i in 0 until view.childCount) {
+        findWebView(view.getChildAt(i))?.let { return it }
+      }
+    }
+    return null
   }
 
   override fun onNewIntent(intent: Intent) {
