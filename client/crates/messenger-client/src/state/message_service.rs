@@ -106,6 +106,10 @@ thread_local! {
     static MSG_SERVICE: RefCell<Option<MessageService>> = const { RefCell::new(None) };
     static TYPING_STATE: RefCell<Option<crate::state::typing::TypingState>> = const { RefCell::new(None) };
     static NOTIFICATIONS: RefCell<Option<crate::state::notifications::NotificationsState>> = const { RefCell::new(None) };
+    /// The AvatarUpdate message id whose avatar is currently shown, per sender.
+    /// Guards against re-downloading on every chat load (which flickered) and
+    /// against an OLDER update overwriting a newer one (UUIDv7 is time-ordered).
+    static AVATAR_APPLIED: RefCell<std::collections::HashMap<Uuid, Uuid>> = RefCell::new(std::collections::HashMap::new());
 }
 
 /// Toast notifications, for code paths outside the leptos owner.
@@ -1825,6 +1829,7 @@ impl MessageService {
                     {
                         Self::apply_avatar_update(
                             msg.sender_user_id,
+                            msg.id,
                             avatar_blob_id,
                             decryption_key.clone(),
                             mime.clone(),
@@ -1953,10 +1958,22 @@ impl MessageService {
 
     /// Fetch + decrypt a peer's avatar blob and cache it as a data URL.
     /// Own updates are ignored — the local store is the source of truth.
-    fn apply_avatar_update(sender: Uuid, blob_id: Option<Uuid>, key: Vec<u8>, mime: String) {
+    fn apply_avatar_update(sender: Uuid, msg_id: Uuid, blob_id: Option<Uuid>, key: Vec<u8>, mime: String) {
         if sender.is_nil() || Some(sender) == current_user_id() {
             return;
         }
+        // Only ever move FORWARD in time: ignore an AvatarUpdate that's older
+        // than (or equal to) the one already applied. UUIDv7 message ids are
+        // time-ordered, so this picks the newest avatar and means re-opening a
+        // chat (which re-processes the whole history) is a no-op — no flicker,
+        // no re-download, and a stale older update can't win the race.
+        let already = AVATAR_APPLIED.with(|c| c.borrow().get(&sender).copied());
+        if already.is_some_and(|cur| msg_id <= cur) {
+            return;
+        }
+        AVATAR_APPLIED.with(|c| {
+            c.borrow_mut().insert(sender, msg_id);
+        });
         let Some(users) = USERS_STATE.with(|c| c.borrow().clone()) else {
             return;
         };
@@ -1982,6 +1999,13 @@ impl MessageService {
                         tracing::warn!(%id, "avatar blob decrypt failed");
                         return;
                     };
+                    // A newer update may have superseded us while downloading.
+                    let still_latest = AVATAR_APPLIED
+                        .with(|c| c.borrow().get(&sender).copied())
+                        .is_some_and(|cur| msg_id >= cur);
+                    if !still_latest {
+                        return;
+                    }
                     let mime = if mime.is_empty() { "image/jpeg".to_string() } else { mime };
                     let data_url = crate::state::avatar_store::bytes_to_data_url(&mime, &plain);
                     users.remember_avatar(sender, &data_url);

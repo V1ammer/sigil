@@ -263,6 +263,12 @@ pub fn RealChatList(
                                                     triggered.set(false);
                                                     return;
                                                 }
+                                                // Already open → don't re-select; re-setting the
+                                                // signal re-runs the load effect and needlessly
+                                                // rebuilds the chat panel.
+                                                if selected.get_untracked() == Some(chat.group_id) {
+                                                    return;
+                                                }
                                                 let sel = selected;
                                                 crate::state::back_stack::push(move || sel.set(None));
                                                 selected.set(Some(chat.group_id));
