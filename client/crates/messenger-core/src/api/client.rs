@@ -71,7 +71,7 @@ impl ApiClient {
             let ts = signing::now_secs();
             let mut nonce = [0u8; 16];
             getrandom::getrandom(&mut nonce).map_err(|e| ApiError::Crypto(e.to_string()))?;
-            let canonical = signing::build_signed_message(method, path, ts, &nonce, &body_bytes);
+            let canonical = signing::build_signed_message(method, &wire_path(path), ts, &nonce, &body_bytes);
             let pair = Ed25519Pair::from_secret_bytes(&creds.device_signing_secret);
             let sig = pair.sign(&canonical);
             let auth_header = format!(
@@ -114,7 +114,7 @@ impl ApiClient {
             let ts = signing::now_secs();
             let mut nonce = [0u8; 16];
             getrandom::getrandom(&mut nonce).map_err(|e| ApiError::Crypto(e.to_string()))?;
-            let canonical = signing::build_signed_message(method, path, ts, &nonce, &body);
+            let canonical = signing::build_signed_message(method, &wire_path(path), ts, &nonce, &body);
             let pair = Ed25519Pair::from_secret_bytes(&creds.device_signing_secret);
             let sig = pair.sign(&canonical);
             let auth_header = format!(
@@ -130,6 +130,25 @@ impl ApiClient {
         let url = format!("{}{}", self.base_url, path);
         self.transport.request(method, &url, headers, body).await
     }
+}
+
+/// The request path as it will actually appear on the wire — what the signature
+/// must cover (the server verifies over the received `path_and_query`).
+///
+/// On wasm our HTTP transport is gloo-net 0.6, whose `build()` rewrites the URL
+/// query as `format!("{}&{}", existing_search, extra_params)`. With no extra
+/// `.query()` params that leaves a stray trailing `&` on any URL that already
+/// carries a query string. We don't add it, but gloo does — so sign the path
+/// with that `&` or every authenticated GET with query params 401s. Native
+/// (reqwest) sends the path unchanged.
+fn wire_path(path: &str) -> std::borrow::Cow<'_, str> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if path.contains('?') {
+            return std::borrow::Cow::Owned(format!("{path}&"));
+        }
+    }
+    std::borrow::Cow::Borrowed(path)
 }
 
 fn js_log(msg: impl std::fmt::Display) {
