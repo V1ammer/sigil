@@ -189,6 +189,9 @@ pub fn PrivacySettings() -> impl IntoView {
                                 <SelectOption value=String::from("10")>{"10 MB"}</SelectOption>
                                 <SelectOption value=String::from("50")>{"50 MB"}</SelectOption>
                                 <SelectOption value=String::from("100")>{"100 MB"}</SelectOption>
+                                <SelectOption value=String::from("250")>{"250 MB"}</SelectOption>
+                                <SelectOption value=String::from("500")>{"500 MB"}</SelectOption>
+                                <SelectOption value=String::from("1024")>{"1 GB"}</SelectOption>
                             </Select>
                         </div>
                     }.into_any()
