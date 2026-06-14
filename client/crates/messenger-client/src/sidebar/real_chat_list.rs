@@ -135,7 +135,7 @@ pub fn RealChatList(
         <div class=format!("flex flex-col h-full overflow-hidden {}", class)>
             {/* Header with app name, new chat, and settings */}
             <div class="flex items-center justify-between px-4 py-3 border-b border-border">
-                <h1 class="text-lg font-semibold text-foreground">"Messenger"</h1>
+                <h1 class="text-lg font-semibold text-foreground">"Sigil"</h1>
                 <div class="flex items-center gap-1">
                     <button
                         class="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent transition-colors"

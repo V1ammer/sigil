@@ -244,20 +244,19 @@ enum MessageGroup {
 
 fn group_messages_with_dates(messages: &[Message], lang: Language) -> Vec<MessageGroup> {
     let mut result = Vec::new();
+    // Track the last date we emitted a separator for. Checking `result.last()`
+    // failed because a `Messages` batch sits between separators, so every sender
+    // batch on the same day pushed a fresh "Today" — duplicated separators when
+    // senders alternated, and a flicker the moment a sent message added a batch.
+    let mut last_date: Option<String> = None;
     let mut i = 0;
 
     while i < messages.len() {
-        // Date separator for the current message
+        // Date separator only when the day actually changes.
         let date_str = format_date(messages[i].timestamp, lang);
-        if let Some(prev) = result.last() {
-            match prev {
-                MessageGroup::DateSeparator(d) if d == &date_str => { /* skip duplicate */ }
-                _ => {
-                    result.push(MessageGroup::DateSeparator(date_str.clone()));
-                }
-            }
-        } else {
-            result.push(MessageGroup::DateSeparator(date_str));
+        if last_date.as_deref() != Some(date_str.as_str()) {
+            result.push(MessageGroup::DateSeparator(date_str.clone()));
+            last_date = Some(date_str);
         }
 
         // Collect batch — consecutive messages from same sender within time window
@@ -266,9 +265,9 @@ fn group_messages_with_dates(messages: &[Message], lang: Language) -> Vec<Messag
         let first_sender = messages[i].sender_id.clone();
         let first_time = messages[i].timestamp;
 
+        let first_date = format_date(first_time, lang);
         i += 1;
         while i < messages.len() {
-            let next_date = format_date(messages[i].timestamp, lang);
             let prev_msg = &messages[i - 1];
             let next_msg = &messages[i];
 
@@ -284,9 +283,9 @@ fn group_messages_with_dates(messages: &[Message], lang: Language) -> Vec<Messag
             if next_msg.timestamp - prev_msg.timestamp > GROUP_TIME_WINDOW_MS {
                 break;
             }
-            // Date change breaks grouping
-            let current_date = format_date(next_msg.timestamp, lang);
-            if current_date != next_date {
+            // A message on a different day starts a fresh batch (so the next
+            // loop iteration emits that day's separator).
+            if format_date(next_msg.timestamp, lang) != first_date {
                 break;
             }
             batch.push(next_msg.clone());
