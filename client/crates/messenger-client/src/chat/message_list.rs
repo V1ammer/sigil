@@ -28,6 +28,7 @@ pub fn MessageList(
     #[prop(optional)] on_reply: Option<Box<dyn Fn(&str) + Send + Sync + 'static>>,
     #[prop(optional)] on_edit: Option<Box<dyn Fn(&str) + Send + Sync + 'static>>,
     #[prop(optional)] on_delete: Option<Box<dyn Fn(&str) + Send + Sync + 'static>>,
+    #[prop(optional)] on_forward: Option<Box<dyn Fn(&str) + Send + Sync + 'static>>,
     #[prop(optional)] on_reaction: Option<Box<dyn Fn(&str, String) + Send + Sync + 'static>>,
     #[prop(optional)] on_thread_open: Option<Box<dyn Fn(&str) + Send + Sync + 'static>>,
 ) -> impl IntoView {
@@ -40,6 +41,7 @@ pub fn MessageList(
     let on_reply = on_reply.map(Arc::new);
     let on_edit = on_edit.map(Arc::new);
     let on_delete = on_delete.map(Arc::new);
+    let on_forward = on_forward.map(Arc::new);
     let on_reaction = on_reaction.map(Arc::new);
 
     let container_ref: NodeRef<leptos::html::Div> = NodeRef::new();
@@ -147,6 +149,7 @@ pub fn MessageList(
                         let on_reply = on_reply.clone();
                         let on_edit = on_edit.clone();
                         let on_delete = on_delete.clone();
+                        let on_forward = on_forward.clone();
                         let on_reaction = on_reaction.clone();
                         let items = msg_batch.into_iter().enumerate().map(move |(idx, msg)| {
                             let is_first = idx == 0;
@@ -200,6 +203,13 @@ pub fn MessageList(
                                         let d = on_delete.clone();
                                         Box::new(move || {
                                             if let Some(ref f) = d { f(&id); }
+                                        })
+                                    }
+                                    on_forward={
+                                        let id = msg_id.clone();
+                                        let fw = on_forward.clone();
+                                        Box::new(move || {
+                                            if let Some(ref f) = fw { f(&id); }
                                         })
                                     }
                                     on_reaction={

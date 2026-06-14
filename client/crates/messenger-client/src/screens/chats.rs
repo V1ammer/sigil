@@ -16,6 +16,8 @@ use crate::chat::input_bar::{InputBar, InputPreview};
 use crate::chat::message_bridge::{display_to_mock, display_vec_to_mock};
 use crate::chat::message_list::MessageList;
 use crate::chat::thread_panel::ThreadPanel;
+use crate::components::dialog::{Dialog, DialogHeader, DialogTitle};
+use crate::state::notifications::{NotificationsState, ToastKind};
 use crate::i18n::I18n;
 use crate::mock;
 use crate::sidebar::real_chat_list::RealChatList;
@@ -296,6 +298,23 @@ pub fn ChatsScreen() -> impl IntoView {
         }
     }) as Arc<dyn Fn(&str) + Send + Sync + 'static>;
 
+    // Forward: clicking "Forward" in the message menu records the source
+    // (group, message) and opens a chat-picker dialog. The actual re-send runs
+    // from the dialog once a target chat is chosen.
+    let notifications = use_context::<NotificationsState>().expect("NotificationsState must be provided");
+    let forward_source: RwSignal<Option<(Uuid, Uuid)>> = RwSignal::new(None);
+    let show_forward = RwSignal::new(false);
+    let on_forward_list = Arc::new({
+        let sel = sel.clone();
+        move |msg_id: &str| {
+            let group_id = sel.get_untracked();
+            if let (Some(gid), Ok(id)) = (group_id, uuid::Uuid::parse_str(msg_id)) {
+                forward_source.set(Some((gid, id)));
+                show_forward.set(true);
+            }
+        }
+    }) as Arc<dyn Fn(&str) + Send + Sync + 'static>;
+
     // on_reaction callback for MessageList
     let on_reaction_list = Arc::new({
         let msg_svc = msg_svc.clone();
@@ -320,6 +339,11 @@ pub fn ChatsScreen() -> impl IntoView {
             }
         }
     }) as Arc<dyn Fn(&str) + Send + Sync + 'static>;
+
+    // Dedicated handles for the forward chat-picker dialog at the end of the
+    // view. StoredValue is Copy, so the reactive list closure stays `Fn`.
+    let forward_msg_svc = StoredValue::new(message_service.clone());
+    let forward_notifications = StoredValue::new(notifications.clone());
 
     view! {
         <div class="flex h-full bg-background overflow-hidden">
@@ -348,6 +372,7 @@ pub fn ChatsScreen() -> impl IntoView {
                 let on_reply_list = on_reply_list.clone();
                 let on_edit_list = on_edit_list.clone();
                 let on_delete_list = on_delete_list.clone();
+                let on_forward_list = on_forward_list.clone();
                 let on_reaction_list = on_reaction_list.clone();
                 let on_thread_open_list = on_thread_open_list.clone();
                 let messages_state_for_inner = messages_state_for_main.clone();
@@ -493,6 +518,10 @@ pub fn ChatsScreen() -> impl IntoView {
                                             on_delete=Box::new({
                                                 let d = on_delete_list.clone();
                                                 move |id: &str| d(id)
+                                            })
+                                            on_forward=Box::new({
+                                                let f = on_forward_list.clone();
+                                                move |id: &str| f(id)
                                             })
                                             on_reaction=Box::new({
                                                 let r = on_reaction_list.clone();
@@ -687,6 +716,67 @@ pub fn ChatsScreen() -> impl IntoView {
             </div>
                 }
             }
+
+            // Forward chat-picker — lists every other chat; choosing one
+            // re-sends the selected message into it via MessageService::forward_to.
+            <Dialog
+                is_open=show_forward
+                on_close=Box::new(move || show_forward.set(false))
+            >
+                <DialogHeader>
+                    <DialogTitle>{t!("chat.forwardTitle")}</DialogTitle>
+                </DialogHeader>
+                <div class="max-h-80 overflow-y-auto py-2 space-y-1">
+                    {move || {
+                        let src_group = forward_source.get().map(|(g, _)| g);
+                        let chats = chats_signal.get();
+                        let ok_msg = t!("chat.forwardSent");
+                        let err_msg = t!("chat.forwardFailed");
+                        if chats.iter().all(|c| src_group == Some(c.group_id)) {
+                            return view! {
+                                <p class="px-3 py-4 text-center text-sm text-muted-foreground">
+                                    {t!("chat.forwardEmpty")}
+                                </p>
+                            }.into_any();
+                        }
+                        chats.iter()
+                            .filter(|c| src_group.map(|sg| c.group_id != sg).unwrap_or(true))
+                            .map(|c| {
+                                let gid = c.group_id;
+                                let name = display_name_for(&chats, gid);
+                                let svc = forward_msg_svc.get_value();
+                                let notifications = forward_notifications.get_value();
+                                let ok_msg = ok_msg.clone();
+                                let err_msg = err_msg.clone();
+                                view! {
+                                    <button
+                                        class="flex w-full items-center rounded-md px-3 py-2 text-left text-sm text-foreground hover:bg-accent"
+                                        on:click=move |_| {
+                                            let ok_msg = ok_msg.clone();
+                                            let err_msg = err_msg.clone();
+                                            if let Some((src, mid)) = forward_source.get_untracked() {
+                                                let svc = svc.clone();
+                                                let notifications = notifications.clone();
+                                                spawn_local(async move {
+                                                    let ok = svc.forward_to(gid, src, mid).await.is_some();
+                                                    notifications.push(
+                                                        if ok { ToastKind::Success } else { ToastKind::Error },
+                                                        if ok { ok_msg } else { err_msg },
+                                                    );
+                                                });
+                                            }
+                                            show_forward.set(false);
+                                        }
+                                    >
+                                        {name}
+                                    </button>
+                                }
+                            })
+                            .collect_view()
+                            .into_any()
+                    }}
+                </div>
+            </Dialog>
         </div>
     }
 }

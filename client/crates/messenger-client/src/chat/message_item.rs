@@ -187,6 +187,7 @@ pub fn MessageItem(
     #[prop(optional)] on_reply: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     #[prop(optional)] on_edit: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     #[prop(optional)] on_delete: Option<Box<dyn Fn() + Send + Sync + 'static>>,
+    #[prop(optional)] on_forward: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     #[prop(optional)] on_reaction: Option<Box<dyn Fn(String) + Send + Sync + 'static>>,
 ) -> impl IntoView {
     let msg = message;
@@ -295,6 +296,7 @@ pub fn MessageItem(
     let on_reply = on_reply.map(std::sync::Arc::new);
     let on_edit = on_edit.map(std::sync::Arc::new);
     let on_delete = on_delete.map(std::sync::Arc::new);
+    let on_forward = on_forward.map(std::sync::Arc::new);
     let on_thread_open = on_thread_open.map(std::sync::Arc::new);
     let on_reaction = on_reaction.map(std::sync::Arc::new);
     // Clone for the quick-reaction picker inside the bottom sheet — the bubble's
@@ -306,6 +308,7 @@ pub fn MessageItem(
         let on_reply_arc = on_reply.clone();
         let on_edit_arc = on_edit.clone();
         let on_delete_arc = on_delete.clone();
+        let on_forward_arc = on_forward.clone();
         let on_thread_arc = on_thread_open.clone();
         Box::new(move || {
             let views = message_context_menu_items(
@@ -314,6 +317,7 @@ pub fn MessageItem(
                 on_reply_arc.clone().map(|f| f as Arc<dyn Fn() + Send + Sync + 'static>),
                 on_edit_arc.clone().map(|f| f as Arc<dyn Fn() + Send + Sync + 'static>),
                 on_delete_arc.clone().map(|f| f as Arc<dyn Fn() + Send + Sync + 'static>),
+                on_forward_arc.clone().map(|f| f as Arc<dyn Fn() + Send + Sync + 'static>),
                 on_thread_arc.clone().map(|f| f as Arc<dyn Fn() + Send + Sync + 'static>),
             );
 
@@ -539,6 +543,7 @@ pub fn MessageItem(
                     on_reply.clone().map(|f| f as Arc<dyn Fn() + Send + Sync + 'static>),
                     on_edit.clone().map(|f| f as Arc<dyn Fn() + Send + Sync + 'static>),
                     on_delete.clone().map(|f| f as Arc<dyn Fn() + Send + Sync + 'static>),
+                    on_forward.clone().map(|f| f as Arc<dyn Fn() + Send + Sync + 'static>),
                     on_thread_open.clone().map(|f| f as Arc<dyn Fn() + Send + Sync + 'static>),
                 )
                     .into_iter()
@@ -933,6 +938,7 @@ fn message_context_menu_items(
     on_reply: Option<Arc<dyn Fn() + Send + Sync + 'static>>,
     on_edit: Option<Arc<dyn Fn() + Send + Sync + 'static>>,
     on_delete: Option<Arc<dyn Fn() + Send + Sync + 'static>>,
+    on_forward: Option<Arc<dyn Fn() + Send + Sync + 'static>>,
     on_thread: Option<Arc<dyn Fn() + Send + Sync + 'static>>,
 ) -> Vec<AnyView> {
     let mut views: Vec<AnyView> = Vec::new();
@@ -991,8 +997,11 @@ fn message_context_menu_items(
         }.into_any());
     }
 
+    let forward_cb = on_forward.map(|f| {
+        Box::new(move || f()) as Box<dyn Fn() + Send + Sync + 'static>
+    });
     views.push(view! {
-        <ContextMenuItem>
+        <ContextMenuItem on_click=forward_cb.unwrap_or_else(|| Box::new(|| {}))>
             <Icon name="forward" class_name="mr-2 h-4 w-4"/>
             {t(lang, "message.forward")}
         </ContextMenuItem>

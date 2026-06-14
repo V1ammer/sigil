@@ -1077,6 +1077,78 @@ impl MessageService {
         Some(resp.message_id)
     }
 
+    /// Forward an existing message into another group.
+    ///
+    /// The message is re-sent as a brand-new message authored by us (no "via"
+    /// chain — the simplest, privacy-preserving model). Text is re-sent as
+    /// text; media is re-downloaded from the server, decrypted with the
+    /// original per-attachment key, then re-encrypted with a fresh key and
+    /// re-uploaded to the target group (attachments are scoped to their
+    /// message, so the target group must hold its own copy).
+    ///
+    /// Returns the new message id, or `None` if the source can't be found or
+    /// re-sending failed (e.g. the original attachment bytes were GC'd).
+    pub async fn forward_to(&self, target_group: Uuid, source_group: Uuid, message_id: Uuid) -> Option<Uuid> {
+        // Snapshot the source body — the message lives in the in-memory store.
+        let body = {
+            let map = self.messages.by_group.get_untracked();
+            map.get(&source_group)
+                .and_then(|list| list.iter().find(|m| m.id == message_id))
+                .map(|m| m.body.clone())
+        }?;
+
+        // Pull the encrypted attachment bytes for a media body and decrypt them
+        // with the original key, yielding the plaintext to re-upload.
+        async fn fetch_plain(attachment_id: Uuid, key: &[u8]) -> Option<Vec<u8>> {
+            let key_arr: [u8; 32] = key.try_into().ok()?;
+            let api = build_api_client()?;
+            let ct = api.download_attachment(attachment_id, None).await.ok()?;
+            messenger_core::attachment_crypto::decrypt_attachment(&key_arr, &ct).ok()
+        }
+
+        match body {
+            MessageBody::Text(text) => self.send_text(target_group, &text, None).await,
+            MessageBody::System { .. } => None, // system events aren't forwardable
+            MessageBody::Image { attachment_id, decryption_key, mime, .. } => {
+                let bytes = fetch_plain(attachment_id, &decryption_key).await?;
+                let size = bytes.len() as u64;
+                self.send_attachment(
+                    target_group,
+                    crate::chat::input_bar::AttachmentPayload {
+                        bytes,
+                        mime,
+                        name: "image".to_string(),
+                        size,
+                        is_image: true,
+                    },
+                )
+                .await
+            }
+            MessageBody::File { attachment_id, decryption_key, mime, name, .. } => {
+                let bytes = fetch_plain(attachment_id, &decryption_key).await?;
+                let size = bytes.len() as u64;
+                self.send_attachment(
+                    target_group,
+                    crate::chat::input_bar::AttachmentPayload { bytes, mime, name, size, is_image: false },
+                )
+                .await
+            }
+            MessageBody::Voice { attachment_id, decryption_key, duration_ms, waveform, .. } => {
+                let bytes = fetch_plain(attachment_id, &decryption_key).await?;
+                self.send_voice(
+                    target_group,
+                    crate::chat::input_bar::VoicePayload {
+                        bytes,
+                        mime: "audio/webm".to_string(),
+                        duration_ms,
+                        waveform,
+                    },
+                )
+                .await
+            }
+        }
+    }
+
     /// Mark an in-flight optimistic attachment message as failed to send, so the
     /// bubble shows an error icon instead of spinning forever.
     fn mark_attachment_failed(&self, group_id: Uuid, client_message_id: Uuid) {
