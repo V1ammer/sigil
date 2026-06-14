@@ -404,11 +404,22 @@ pub fn DevicesSettings() -> impl IntoView {
                                         }],
                                     };
                                     if let Err(e) = api.post_commit(g.id, &commit_req).await {
-                                        nf.push(ToastKind::Warning, format!("Add to group {} failed: {e}", g.id));
+                                        // Per-group; log instead of spamming a toast
+                                        // for every group the device couldn't be
+                                        // committed to (epoch races, etc.).
+                                        web_sys::console::warn_1(
+                                            &format!("[provision] add to group {} failed: {e}", g.id).into(),
+                                        );
                                     }
                                 }
                                 Err(e) => {
-                                    nf.push(ToastKind::Warning, format!("propose_add for group {} failed: {e}", g.id));
+                                    // "group not found" just means this device holds
+                                    // no local MLS state for that group, so it can't
+                                    // add the new device there. Expected for many
+                                    // groups — log it, don't toast one per group.
+                                    web_sys::console::warn_1(
+                                        &format!("[provision] propose_add for group {} skipped: {e}", g.id).into(),
+                                    );
                                 }
                             }
                         }
