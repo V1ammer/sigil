@@ -438,9 +438,6 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("error.retry", "Retry");
     m.insert("error.offline", "No connection to server. Messages will be sent when connection is restored.");
     m.insert("loading", "Loading...");
-    m.insert("cancel", "Cancel");
-    m.insert("confirm", "Confirm");
-    m.insert("back", "Back");
     m.insert("close", "Close");
 
     // Time

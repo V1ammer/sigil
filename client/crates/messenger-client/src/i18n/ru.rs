@@ -438,9 +438,6 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("error.retry", "Повторить");
     m.insert("error.offline", "Нет соединения с сервером. Сообщения будут отправлены при восстановлении.");
     m.insert("loading", "Загрузка...");
-    m.insert("cancel", "Отмена");
-    m.insert("confirm", "Подтвердить");
-    m.insert("back", "Назад");
     m.insert("close", "Закрыть");
 
     // Time
