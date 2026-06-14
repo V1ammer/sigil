@@ -41,22 +41,27 @@ pub fn LoginQrScreen() -> impl IntoView {
     let temp_signing_secret = RwSignal::new(Option::<[u8; 32]>::None);
     let temp_signing_public = RwSignal::new(Option::<[u8; 32]>::None);
 
-    // Countdown timer
+    // Countdown timer. Loops for the life of the screen (not just the first
+    // code) so "Refresh QR" — which resets `time_left` — gets a live countdown
+    // again; it self-terminates once the signal is disposed (screen gone).
     let tick_tl = time_left;
     leptos::task::spawn_local(async move {
         loop {
             gloo_timers::future::TimeoutFuture::new(1000).await;
-            let v = tick_tl.get_untracked();
-            if v <= 1 {
-                break;
+            match tick_tl.try_get_untracked() {
+                None => break,                       // screen disposed → stop
+                Some(v) if v > 0 => tick_tl.set(v - 1),
+                Some(_) => {}                        // idle at 0 until a refresh resets it
             }
-            tick_tl.set(v - 1);
         }
     });
 
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
     let nav_for_view = navigate.clone();
-    let on_create_request = Arc::new(Mutex::new(Some(Box::new(move || {
+    // Reusable so the button still works after a refresh (it used to be a
+    // one-shot FnOnce that was consumed on first click, leaving the "Create QR"
+    // button dead once you'd reset).
+    let on_create_request: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
         let uname = username.get().trim().to_string();
         if uname.is_empty() {
             error_msg.set(Some(t!("register.username.hint").to_string()));
@@ -365,18 +370,11 @@ pub fn LoginQrScreen() -> impl IntoView {
                 waiting_clone.set(false);
             });
         });
-    }) as Box<dyn FnOnce() + Send>)));
+    });
 
-    let on_reset = move || {
-        qr_svg.set(None);
-        provisioning_id.set(None);
-        time_left.set(300);
-        is_waiting.set(false);
-        is_success.set(false);
-        error_msg.set(None);
-        temp_signing_secret.set(None);
-        temp_signing_public.set(None);
-    };
+    // Separate handle for the "Refresh QR" button — the form button's reactive
+    // closure and the QR block's reactive closure each need to own one.
+    let on_create_request_refresh = on_create_request.clone();
 
     let format_time = move || {
         let secs = time_left.get();
@@ -431,10 +429,7 @@ pub fn LoginQrScreen() -> impl IntoView {
                                         disabled=move || is_creating.get() || username.get().trim().is_empty()
                                         on:click={
                                             let req = on_create_request.clone();
-                                            move |_| {
-                                                let cb = req.lock().unwrap().take();
-                                                if let Some(f) = cb { f(); }
-                                            }
+                                            move |_| req()
                                         }
                                     >
                                         {move || if is_creating.get() { t!("loading") } else { t!("qr.create") }}
@@ -446,12 +441,21 @@ pub fn LoginQrScreen() -> impl IntoView {
                         }
                     }}
 
-                    {move || qr_svg.get().map(|svg| {
+                    {move || {
+                        // Per-render clone so the QR view (and its refresh button)
+                        // can own a handle without moving it out of this reactive
+                        // closure, which would make it a one-shot FnOnce.
+                        let on_create_request_refresh = on_create_request_refresh.clone();
+                        qr_svg.get().map(move |svg| {
                         view! {
                             <div class="flex flex-col items-center space-y-4">
                                 <div class="relative">
-                                    <div class="flex h-64 w-64 items-center justify-center rounded-2xl border border-border bg-card">
-                                        <div inner_html=svg.clone()/>
+                                    <div class="flex h-64 w-64 items-center justify-center overflow-hidden rounded-2xl border border-border bg-card">
+                                        // The qrcode SVG carries no pixel size, so the
+                                        // browser would render it at its default ~300px
+                                        // and spill over the surrounding text. Pin it to
+                                        // a fixed box and force the child <svg> to fill it.
+                                        <div class="h-56 w-56 [&>svg]:block [&>svg]:h-full [&>svg]:w-full" inner_html=svg.clone()/>
 
                                         // Only the success overlay covers the QR —
                                         // once confirmed there's nothing left to scan.
@@ -501,7 +505,18 @@ pub fn LoginQrScreen() -> impl IntoView {
                                             </div>
                                             <button
                                                 class="inline-flex items-center justify-center gap-2 rounded-md border border-input bg-background h-10 px-4 py-2 text-sm font-medium hover:bg-accent"
-                                                on:click=move |_| on_reset()
+                                                on:click={
+                                                    // Regenerate a fresh QR for the same
+                                                    // username instead of throwing the user
+                                                    // back to the input form. The old code
+                                                    // stays visible until the new one lands.
+                                                    let req = on_create_request_refresh.clone();
+                                                    move |_| {
+                                                        error_msg.set(None);
+                                                        is_success.set(false);
+                                                        req();
+                                                    }
+                                                }
                                             >
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
                                                 {t!("qr.refresh")}
@@ -522,7 +537,8 @@ pub fn LoginQrScreen() -> impl IntoView {
                                 })}
                             </div>
                         }
-                    })}
+                    })
+                    }}
                 </div>
             </main>
         </div>
