@@ -281,11 +281,12 @@ pub struct AddReactionRequest {
 
 // ─── Constants ───
 
-/// Максимум сообщений при pull'е (по умолчанию).
-const DEFAULT_PULL_LIMIT: usize = 100;
+/// Максимум сообщений при pull'е (по умолчанию). Включает служебные строки
+/// (read-receipts, avatar-update), поэтому держим запас над числом видимых.
+const DEFAULT_PULL_LIMIT: usize = 300;
 
 /// Максимум сообщений при pull'е.
-const MAX_PULL_LIMIT: usize = 500;
+const MAX_PULL_LIMIT: usize = 1000;
 
 /// Ciphersuite по умолчанию.
 const MLS_CIPHERSUITE: i32 = 0x0001;
@@ -1244,15 +1245,35 @@ pub async fn pull_messages(
         cond = cond.add(mls_messages::Column::Id.gt(since_id));
     }
 
-    let messages = mls_messages::Entity::find()
-        .filter(cond)
-        .order_by_asc(mls_messages::Column::Id)
-        .limit(Some((limit + 1) as u64))
-        .all(&state.db)
-        .await?;
-
-    let has_more = messages.len() > limit;
-    let messages: Vec<_> = messages.into_iter().take(limit).collect();
+    // With a `since_id` cursor this is an incremental pull → messages strictly
+    // after the cursor, oldest-first. Without one it's a full load → return the
+    // LATEST `limit` messages (newest-first then reversed to oldest-first). The
+    // old code always returned the OLDEST `limit`, so once a chat exceeded the
+    // window the newest messages — including ones just sent — were never
+    // fetched and the chat appeared dead. (`mls_messages` also holds control
+    // rows — read receipts, avatar updates — so the window fills faster than the
+    // visible message count suggests.)
+    let (messages, has_more) = if query.since_id.is_some() {
+        let rows = mls_messages::Entity::find()
+            .filter(cond)
+            .order_by_asc(mls_messages::Column::Id)
+            .limit(Some((limit + 1) as u64))
+            .all(&state.db)
+            .await?;
+        let has_more = rows.len() > limit;
+        (rows.into_iter().take(limit).collect::<Vec<_>>(), has_more)
+    } else {
+        let mut rows = mls_messages::Entity::find()
+            .filter(cond)
+            .order_by_desc(mls_messages::Column::Id)
+            .limit(Some((limit + 1) as u64))
+            .all(&state.db)
+            .await?;
+        let has_more = rows.len() > limit;
+        rows.truncate(limit); // keep the newest `limit`
+        rows.reverse(); // oldest-first, as clients expect
+        (rows, has_more)
+    };
 
     // Bulk insert delivery receipts
     if !messages.is_empty() {
