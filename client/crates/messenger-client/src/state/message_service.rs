@@ -105,6 +105,26 @@ thread_local! {
     static CHATS_STATE: RefCell<Option<crate::state::chats::ChatsState>> = const { RefCell::new(None) };
     static MSG_SERVICE: RefCell<Option<MessageService>> = const { RefCell::new(None) };
     static TYPING_STATE: RefCell<Option<crate::state::typing::TypingState>> = const { RefCell::new(None) };
+    static NOTIFICATIONS: RefCell<Option<crate::state::notifications::NotificationsState>> = const { RefCell::new(None) };
+}
+
+/// Toast notifications, for code paths outside the leptos owner.
+pub fn notifications_handle() -> Option<crate::state::notifications::NotificationsState> {
+    NOTIFICATIONS.with(|c| c.borrow().clone())
+}
+
+/// Surface a user-meaningful toast for a failed send. Currently the only case
+/// worth telling the user about explicitly is messaging a suspended peer (the
+/// server rejects it for direct chats).
+fn notify_send_error(err: &messenger_core::api::ApiError) {
+    if err.error_code() == Some("ERR_RECIPIENT_SUSPENDED") {
+        if let Some(nf) = notifications_handle() {
+            nf.push(
+                crate::state::notifications::ToastKind::Error,
+                crate::i18n::tr("chat.recipientSuspended"),
+            );
+        }
+    }
 }
 
 /// The globally registered `MessageService`, for code paths that run outside
@@ -331,12 +351,14 @@ pub fn init_message_service_context(
     chats: crate::state::chats::ChatsState,
     svc: MessageService,
     typing: crate::state::typing::TypingState,
+    notifications: crate::state::notifications::NotificationsState,
 ) {
     SESSION_STATE.with(|c| *c.borrow_mut() = Some(session.state));
     USERS_STATE.with(|c| *c.borrow_mut() = Some(users));
     CHATS_STATE.with(|c| *c.borrow_mut() = Some(chats));
     MSG_SERVICE.with(|c| *c.borrow_mut() = Some(svc));
     TYPING_STATE.with(|c| *c.borrow_mut() = Some(typing));
+    NOTIFICATIONS.with(|c| *c.borrow_mut() = Some(notifications));
 }
 
 // MLS runtime is cached in a thread-local because `MessengerLocalStore` is ?Send
@@ -779,6 +801,7 @@ impl MessageService {
             }
             Err(e) => {
                 tracing::warn!(%group_id, error = %e, "failed to send message");
+                notify_send_error(&e);
                 None
             }
         }
@@ -870,6 +893,7 @@ impl MessageService {
             Ok(r) => r,
             Err(e) => {
                 web_sys::console::error_1(&format!("[send_voice] post_message failed: {e}").into());
+                notify_send_error(&e);
                 return None;
             }
         };
@@ -1085,6 +1109,7 @@ impl MessageService {
             Ok(r) => r,
             Err(e) => {
                 web_sys::console::error_1(&format!("[send_attachment] post_message failed: {e}").into());
+                notify_send_error(&e);
                 self.mark_attachment_failed(group_id, client_message_id);
                 return None;
             }

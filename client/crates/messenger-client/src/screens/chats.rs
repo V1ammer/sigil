@@ -18,6 +18,7 @@ use crate::chat::message_bridge::{display_to_mock, display_vec_to_mock};
 use crate::chat::message_list::MessageList;
 use crate::chat::thread_panel::ThreadPanel;
 use crate::components::dialog::{Dialog, DialogHeader, DialogTitle};
+use crate::components::button::Button;
 use crate::state::notifications::{NotificationsState, ToastKind};
 use crate::i18n::I18n;
 use crate::mock;
@@ -100,6 +101,21 @@ pub fn ChatsScreen() -> impl IntoView {
         let us = users_for_header_avatar.as_ref()?;
         let peer = us.peer_by_group.with(|m| m.get(&gid).copied())?;
         us.avatar_by_id.with(|m| m.get(&peer).cloned())
+    });
+
+    // Blocking: the open direct chat's peer user id, and whether they're blocked.
+    let block_state = use_context::<crate::state::blocks::BlockState>();
+    let users_for_peer = use_context::<crate::state::users::UsersState>();
+    let peer_user_id: Signal<Option<Uuid>> = Signal::derive(move || {
+        let gid = selected.get()?;
+        let us = users_for_peer.as_ref()?;
+        us.peer_by_group.with(|m| m.get(&gid).copied())
+    });
+    let peer_blocked: Signal<bool> = Signal::derive(move || {
+        match (block_state, peer_user_id.get()) {
+            (Some(bs), Some(uid)) => bs.is_blocked(uid),
+            _ => false,
+        }
     });
     // Per-chat composer drafts, created once so they outlive the re-renders
     // that rebuild the chat view (incoming messages bump the chat list).
@@ -397,6 +413,16 @@ pub fn ChatsScreen() -> impl IntoView {
                 let cs2 = chats_state.clone();
                 let on_mute_toggle = Box::new(move || cs2.toggle_mute(group_id)) as Box<dyn Fn() + Send + Sync + 'static>;
                 let on_mark_read_cb = Box::new(|| {}) as Box<dyn Fn() + Send + Sync + 'static>;
+                // Toggle block for the open direct chat's peer.
+                let on_block_cb = Box::new(move || {
+                    if let (Some(bs), Some(uid)) = (block_state, peer_user_id.get_untracked()) {
+                        if bs.is_blocked(uid) {
+                            bs.unblock(uid);
+                        } else {
+                            bs.block(uid);
+                        }
+                    }
+                }) as Box<dyn Fn() + Send + Sync + 'static>;
                 // Delete a chat: drop it from the local list and permanently
                 // clear its conversation, then leave the chat view. The server
                 // keeps the (deduped) group and has no delete endpoint, so
@@ -525,6 +551,8 @@ pub fn ChatsScreen() -> impl IntoView {
                             on_mark_read=on_mark_read_cb
                             on_leave_group=on_leave_cb
                             on_delete_chat=on_delete_cb
+                            is_blocked=peer_blocked
+                            on_block_toggle=on_block_cb
                         />
 
                         // Confirmation before the (irreversible) chat deletion.
@@ -561,7 +589,12 @@ pub fn ChatsScreen() -> impl IntoView {
                                     </div>
                                 }.into_any()
                             } else {
-                                let display_msgs = msgs.get();
+                                let mut display_msgs = msgs.get();
+                                // Hide messages from blocked users (reactive: unblocking
+                                // re-shows them).
+                                if let Some(bs) = block_state {
+                                    display_msgs.retain(|m| !bs.is_blocked(m.sender_user_id));
+                                }
                                 if display_msgs.is_empty() {
                                     view! {
                                         <div class="flex-1 flex flex-col items-center justify-center p-8 text-center">
@@ -625,8 +658,9 @@ pub fn ChatsScreen() -> impl IntoView {
                                 })
                         }}
 
-                        {/* Input bar — always visible when a chat is selected */}
-                        <div class="shrink-0">
+                        {/* Input bar — hidden when the peer is blocked (a notice
+                            with an Unblock action takes its place below). */}
+                        <div class="shrink-0" class:hidden=move || peer_blocked.get()>
                             <InputBar
                                 locale=locale
                                 group_id=group_id
@@ -692,6 +726,25 @@ pub fn ChatsScreen() -> impl IntoView {
                                     }
                                 })
                             />
+                        </div>
+
+                        {/* Blocked notice — shown in place of the composer. */}
+                        <div
+                            class="shrink-0 flex flex-col items-center gap-2 border-t border-border bg-muted/30 px-4 py-4 text-center"
+                            class:hidden=move || !peer_blocked.get()
+                        >
+                            <p class="text-sm text-muted-foreground">{t!("chat.blockedNotice")}</p>
+                            <Button
+                                variant=Signal::derive(move || crate::components::button::ButtonVariant::Outline)
+                                size=Signal::derive(move || crate::components::button::ButtonSize::Sm)
+                                on_click=Box::new(move |_| {
+                                    if let (Some(bs), Some(uid)) = (block_state, peer_user_id.get_untracked()) {
+                                        bs.unblock(uid);
+                                    }
+                                })
+                            >
+                                {t!("profile.unblock")}
+                            </Button>
                         </div>
                     </div>
                 }.into_any()

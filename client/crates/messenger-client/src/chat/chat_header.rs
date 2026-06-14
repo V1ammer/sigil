@@ -21,6 +21,9 @@ pub fn ChatHeader(
     #[prop(optional)] on_mark_read: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     #[prop(optional)] on_leave_group: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     #[prop(optional)] on_delete_chat: Option<Box<dyn Fn() + Send + Sync + 'static>>,
+    /// Whether the direct-chat peer is blocked (drives the Block/Unblock label).
+    #[prop(optional, into)] is_blocked: Signal<bool>,
+    #[prop(optional)] on_block_toggle: Option<Box<dyn Fn() + Send + Sync + 'static>>,
 ) -> impl IntoView {
     let is_group = chat.as_ref().map(|c| c.chat_type == "group").unwrap_or(false);
     let chat_name = chat.as_ref().map(|c| c.name.clone()).unwrap_or_default();
@@ -58,6 +61,12 @@ pub fn ChatHeader(
 
     let on_delete_chat_cb = {
         let cb = delete_chat_cb;
+        Box::new(move || cb()) as Box<dyn Fn() + Send + Sync + 'static>
+    };
+
+    let block_cb = on_block_toggle.unwrap_or_else(|| Box::new(|| {}));
+    let on_block_toggle_cb = {
+        let cb = block_cb;
         Box::new(move || cb()) as Box<dyn Fn() + Send + Sync + 'static>
     };
 
@@ -148,6 +157,22 @@ pub fn ChatHeader(
                             <Icon name="check-check" class_name="mr-2 h-4 w-4"/>
                             {t(lang.get(), "chat.markRead")}
                         </DropdownMenuItem>
+
+                        // Block / unblock — direct chats only.
+                        {if !is_group {
+                            view! {
+                                <DropdownMenuItem on_click=on_block_toggle_cb>
+                                    <Icon name="x-circle" class_name="mr-2 h-4 w-4"/>
+                                    {move || if is_blocked.get() {
+                                        t(lang.get(), "profile.unblock")
+                                    } else {
+                                        t(lang.get(), "profile.block")
+                                    }}
+                                </DropdownMenuItem>
+                            }.into_any()
+                        } else {
+                            view! {}.into_any()
+                        }}
 
                         <DropdownMenuSeparator/>
 

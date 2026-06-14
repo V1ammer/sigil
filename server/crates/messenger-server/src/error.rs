@@ -64,6 +64,8 @@ pub enum AppError {
     AttachmentNotFinalized,
     #[error("ERR_BOOTSTRAP_ALREADY_DONE")]
     BootstrapAlreadyDone,
+    #[error("ERR_RECIPIENT_SUSPENDED")]
+    RecipientSuspended,
 }
 
 /// Тело ошибки в msgpack-формате.
@@ -87,9 +89,10 @@ impl AppError {
             | Self::AttachmentNotFinalized
             | Self::BootstrapAlreadyDone => StatusCode::CONFLICT,
             Self::IdentityNotFound | Self::NotFound => StatusCode::NOT_FOUND,
-            Self::DeviceRevoked | Self::Forbidden | Self::GroupMembershipRequired => {
-                StatusCode::FORBIDDEN
-            }
+            Self::DeviceRevoked
+            | Self::Forbidden
+            | Self::GroupMembershipRequired
+            | Self::RecipientSuspended => StatusCode::FORBIDDEN,
             Self::SignatureInvalid
             | Self::TimestampOutOfWindow
             | Self::NonceReplay
@@ -127,6 +130,7 @@ impl AppError {
             Self::ProvisioningExpired => "ERR_PROVISIONING_EXPIRED",
             Self::AttachmentNotFinalized => "ERR_ATTACHMENT_NOT_FINALIZED",
             Self::BootstrapAlreadyDone => "ERR_BOOTSTRAP_ALREADY_DONE",
+            Self::RecipientSuspended => "ERR_RECIPIENT_SUSPENDED",
         }
     }
 }

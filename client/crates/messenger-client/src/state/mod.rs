@@ -20,6 +20,7 @@ pub mod sync_service;
 pub mod back_stack;
 pub mod avatar_store;
 pub mod profile_store;
+pub mod blocks;
 
 pub use session::*;
 pub use chats::*;
@@ -45,16 +46,18 @@ pub fn provide_app_state() {
     provide_context(UiState::new());
     provide_context(SettingsState::new());
     provide_context(ConnectivityState::new());
-    provide_context(NotificationsState::new());
+    let notifications = NotificationsState::new();
+    provide_context(notifications.clone());
     let users = UsersState::new();
     provide_context(users.clone());
     let typing = crate::state::typing::TypingState::new();
     provide_context(typing);
     provide_context(crate::state::share::ShareState::new());
+    provide_context(crate::state::blocks::BlockState::new());
     let msg_svc = MessageService::new();
     provide_context(msg_svc.clone());
     // Wire up state for code paths that run outside the leptos owner
     // (nested spawn_local tasks in the voice/attachment pipelines,
     // the background sync loop).
-    init_message_service_context(&session, users, chats, msg_svc, typing);
+    init_message_service_context(&session, users, chats, msg_svc, typing, notifications);
 }

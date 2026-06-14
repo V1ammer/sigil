@@ -144,6 +144,27 @@ pub fn use_i18n() -> I18n {
     use_context::<I18n>().expect("I18n must be provided via provide_i18n()")
 }
 
+thread_local! {
+    static I18N_HANDLE: std::cell::RefCell<Option<I18n>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Register the app's `I18n` so code paths outside the leptos owner (background
+/// loops, the message-service send path) can still translate. Call once at App.
+pub fn register_i18n(i: I18n) {
+    I18N_HANDLE.with(|c| *c.borrow_mut() = Some(i));
+}
+
+/// Translate `key` via the globally-registered `I18n`, falling back to the key.
+/// Use only where `t!()`/`use_i18n()` can't (no leptos owner).
+#[must_use]
+pub fn tr(key: &'static str) -> String {
+    I18N_HANDLE.with(|c| {
+        c.borrow()
+            .as_ref()
+            .map_or_else(|| key.to_string(), |i| i.t(key))
+    })
+}
+
 /// Macro shorthand for `use_i18n().t(key)`.
 #[macro_export]
 macro_rules! t {

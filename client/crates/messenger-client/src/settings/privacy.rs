@@ -21,6 +21,8 @@ pub fn PrivacySettings() -> impl IntoView {
         .expect("SettingsState must be provided via provide_context()");
     let session = use_session();
     let navigate = use_navigate();
+    let block_state = use_context::<crate::state::blocks::BlockState>();
+    let users_state = use_context::<crate::state::users::UsersState>();
 
     // Show clear-cache confirmation dialog
     let show_clear_cache = RwSignal::new(false);
@@ -198,6 +200,41 @@ pub fn PrivacySettings() -> impl IntoView {
                 } else {
                     view! {}.into_any()
                 }}
+
+                <Separator />
+
+                // Blocked users (Чёрный список) — manage who you've blocked.
+                <div class="space-y-2">
+                    <Label class="text-foreground">{t!("settings.privacy.blockList")}</Label>
+                    <p class="text-xs text-muted-foreground">{t!("settings.privacy.blockListDesc")}</p>
+                    {move || {
+                        let Some(bs) = block_state else { return view! {}.into_any(); };
+                        let ids: Vec<uuid::Uuid> = bs.blocked.get().into_iter().collect();
+                        if ids.is_empty() {
+                            return view! {
+                                <p class="py-2 text-sm text-muted-foreground">{t!("settings.privacy.blockListEmpty")}</p>
+                            }.into_any();
+                        }
+                        ids.into_iter().map(|uid| {
+                            let name = users_state
+                                .as_ref()
+                                .and_then(|u| u.get(uid))
+                                .unwrap_or_else(|| uid.to_string().chars().take(8).collect::<String>() + "…");
+                            view! {
+                                <div class="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+                                    <span class="truncate text-sm text-foreground">{name}</span>
+                                    <Button
+                                        variant=Signal::derive(move || ButtonVariant::Outline)
+                                        size=Signal::derive(move || crate::components::button::ButtonSize::Sm)
+                                        on_click=Box::new(move |_| bs.unblock(uid))
+                                    >
+                                        {t!("profile.unblock")}
+                                    </Button>
+                                </div>
+                            }
+                        }).collect_view().into_any()
+                    }}
+                </div>
 
                 <Separator />
 

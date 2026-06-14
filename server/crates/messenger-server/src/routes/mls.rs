@@ -1363,6 +1363,33 @@ pub async fn post_message(
         return Err(AppError::GroupMembershipRequired);
     }
 
+    // Zero-knowledge-safe suspend enforcement: for a DIRECT (1:1) chat, refuse
+    // to post if the counterpart account is suspended. This uses only group
+    // membership and account status — both already known to the server — and
+    // never inspects message content, so it preserves zero-knowledge.
+    if let Some(group) = mls_groups::Entity::find_by_id(group_id).one(&state.db).await? {
+        if group.group_type == "direct" {
+            let other = mls_group_members::Entity::find()
+                .filter(
+                    Condition::all()
+                        .add(mls_group_members::Column::GroupId.eq(group_id))
+                        .add(mls_group_members::Column::UserId.ne(ctx.user.id))
+                        .add(mls_group_members::Column::LeftAtEpoch.is_null()),
+                )
+                .one(&state.db)
+                .await?;
+            if let Some(member) = other {
+                let suspended = Users::find_by_id(member.user_id)
+                    .one(&state.db)
+                    .await?
+                    .map_or(false, |u| u.status == "suspended");
+                if suspended {
+                    return Err(AppError::RecipientSuspended);
+                }
+            }
+        }
+    }
+
     // Idempotency: check if (sender_device_id, client_message_id) already exists
     let existing = mls_messages::Entity::find()
         .filter(

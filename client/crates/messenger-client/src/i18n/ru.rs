@@ -434,6 +434,10 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("profile.title", "Профиль");
     m.insert("profile.participants", "участников");
     m.insert("profile.block", "Заблокировать");
+    m.insert("profile.unblock", "Разблокировать");
+    m.insert("chat.blockedNotice", "Вы заблокировали этого пользователя. Разблокируйте, чтобы писать.");
+    m.insert("chat.recipientSuspended", "Пользователь заморожен — отправка невозможна");
+    m.insert("settings.privacy.blockListEmpty", "Чёрный список пуст");
     m.insert("profile.addMembers", "Добавить участников");
 
     // Errors and states

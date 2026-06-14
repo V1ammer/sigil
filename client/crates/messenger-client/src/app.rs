@@ -85,6 +85,9 @@ pub fn App() -> impl IntoView {
     let i18n = I18n::new();
     i18n.locale.set(initial_locale);
     provide_context(i18n.clone());
+    // Make i18n reachable from non-owner code paths (e.g. the message-service
+    // send path that toasts when the server rejects a message).
+    crate::i18n::register_i18n(i18n.clone());
 
     // 4. Persist locale on change.
     Effect::new(move |_| {

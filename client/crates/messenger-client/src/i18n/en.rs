@@ -434,6 +434,10 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("profile.title", "Profile");
     m.insert("profile.participants", "participants");
     m.insert("profile.block", "Block");
+    m.insert("profile.unblock", "Unblock");
+    m.insert("chat.blockedNotice", "You blocked this user. Unblock to message.");
+    m.insert("chat.recipientSuspended", "User is suspended — can't send");
+    m.insert("settings.privacy.blockListEmpty", "No blocked users");
     m.insert("profile.addMembers", "Add members");
 
     // Errors and states
