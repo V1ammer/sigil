@@ -40,6 +40,11 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("invite.connecting", "Подключаемся к серверу…");
     m.insert("invite.failed", "Не удалось перейти по приглашению");
     m.insert("invite.back", "Назад");
+    m.insert("invite.title", "Приглашение");
+    m.insert("invite.signedInAs", "Вы вошли как");
+    m.insert("invite.signedInHint", "Приглашение создаёт новый аккаунт. Выйдите, чтобы им воспользоваться.");
+    m.insert("invite.signOutAndUse", "Выйти и продолжить");
+    m.insert("invite.goToChats", "Перейти в чаты");
 
     // QR login
     m.insert("qr.title", "Отсканируйте QR код");

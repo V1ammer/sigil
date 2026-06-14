@@ -40,6 +40,11 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("invite.connecting", "Connecting to server…");
     m.insert("invite.failed", "Couldn't follow invitation link");
     m.insert("invite.back", "Back to start");
+    m.insert("invite.title", "Invitation");
+    m.insert("invite.signedInAs", "You're signed in as");
+    m.insert("invite.signedInHint", "An invite creates a new account. Sign out to use it.");
+    m.insert("invite.signOutAndUse", "Sign out & continue");
+    m.insert("invite.goToChats", "Go to chats");
 
     // QR login
     m.insert("qr.title", "Scan QR code");
