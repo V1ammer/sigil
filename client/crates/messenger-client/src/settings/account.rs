@@ -220,30 +220,57 @@ pub fn AccountSettings() -> impl IntoView {
 
     let on_logout_confirm = {
         let navigate = navigate.clone();
-        let notifications = notifications.clone();
         move || {
             show_logout_confirm.set(false);
+            let navigate = navigate.clone();
+            spawn_local(async move {
+                // a. Best-effort: mark THIS device revoked on the server while we
+                //    still hold signing credentials, so it shows as "revoked" in
+                //    Settings → Devices instead of lingering as active. Same
+                //    signed payload the revoke button uses: "revoke:" ||
+                //    device_id bytes || ":" || ts.
+                if let SessionState::Authenticated { identity, .. } =
+                    session.state.get_untracked()
+                {
+                    if let Some(api) = build_api_client() {
+                        let device_id = identity.device_id;
+                        let ts = messenger_core::api::signing::now_secs();
+                        let mut msg = b"revoke:".to_vec();
+                        msg.extend_from_slice(device_id.as_bytes());
+                        msg.push(b':');
+                        msg.extend_from_slice(ts.to_string().as_bytes());
+                        let signature = identity.identity_signing_key.sign(&msg);
+                        let req = messenger_proto::users::RevokeDeviceRequest {
+                            revocation_signature: signature.to_vec(),
+                            revocation_timestamp: ts,
+                        };
+                        // Ignore failures (offline, already revoked) — logout
+                        // must still proceed locally.
+                        let _ = api.revoke_device(device_id, &req).await;
+                    }
+                }
 
-            // a. Clear persisted session
-            clear_persisted_session();
+                // b. Clear persisted session
+                clear_persisted_session();
 
-            // b. Clear device credentials from localStorage
-            if let Some(storage) = web_sys::window()
-                .and_then(|w| w.local_storage().ok())
-                .flatten()
-            {
-                let _ = storage.remove_item("messenger_device_id");
-                let _ = storage.remove_item("messenger_device_signing_secret");
-            }
+                // c. Clear device credentials from localStorage
+                if let Some(storage) = web_sys::window()
+                    .and_then(|w| w.local_storage().ok())
+                    .flatten()
+                {
+                    let _ = storage.remove_item("messenger_device_id");
+                    let _ = storage.remove_item("messenger_device_signing_secret");
+                }
 
-            // c. Wipe all settings
-            SettingsState::wipe_all();
+                // d. Wipe all settings
+                SettingsState::wipe_all();
 
-            // d. Set session to Disconnected
-            session.state.set(SessionState::Disconnected);
+                // e. Set session to Disconnected
+                session.state.set(SessionState::Disconnected);
 
-            // e. Navigate to root
-            _ = navigate("/", Default::default());
+                // f. Navigate to root
+                _ = navigate("/", Default::default());
+            });
         }
     };
 
