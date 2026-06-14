@@ -443,6 +443,12 @@ pub fn MessageItem(
                                         view! {
                                             <span class="text-[10px] leading-none">
                                                 {match msg.status.as_str() {
+                                                    // Media messages already show a loader in the media
+                                                    // placeholder while uploading — don't add a second
+                                                    // spinner in the status row.
+                                                    "sending" if matches!(msg.msg_type.as_str(), "image" | "video" | "audio" | "file" | "voice") => {
+                                                        view! {}.into_any()
+                                                    }
                                                     "sending" => view! { <Icon name="loader" class_name="h-3 w-3 opacity-60 animate-spin"/> }.into_any(),
                                                     "failed" => view! { <Icon name="alert-circle" class_name="h-3 w-3 text-destructive"/> }.into_any(),
                                                     "sent" => view! { <Icon name="check" class_name="h-3 w-3 opacity-60"/> }.into_any(),
