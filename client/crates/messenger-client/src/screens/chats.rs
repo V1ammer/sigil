@@ -98,6 +98,10 @@ pub fn ChatsScreen() -> impl IntoView {
     // that rebuild the chat view (incoming messages bump the chat list).
     let drafts: RwSignal<std::collections::HashMap<Uuid, String>> =
         RwSignal::new(std::collections::HashMap::new());
+    // Per-chat staged attachment (picked but not yet sent) — same rationale as
+    // `drafts`: it must outlive the chat-view rebuilds incoming messages cause.
+    let staged: RwSignal<std::collections::HashMap<Uuid, crate::chat::input_bar::StagedAttachment>> =
+        RwSignal::new(std::collections::HashMap::new());
 
     // Load chats from server on mount, then hydrate each chat's last-message
     // preview by loading messages — `GroupSummary` from the server only carries
@@ -480,6 +484,7 @@ pub fn ChatsScreen() -> impl IntoView {
                                 locale=locale
                                 group_id=group_id
                                 drafts=drafts
+                                staged=staged
                                 preview=preview.get()
                                 on_send=Box::new({
                                     let os = on_send.clone();

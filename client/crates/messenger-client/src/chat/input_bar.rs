@@ -39,6 +39,25 @@ pub struct AttachmentPayload {
     pub is_image: bool,
 }
 
+/// A picked attachment held in the composer until the user presses send.
+/// `preview_url` is an object URL for an image thumbnail (None for non-images).
+#[derive(Clone)]
+pub struct StagedAttachment {
+    pub payload: AttachmentPayload,
+    pub preview_url: Option<String>,
+}
+
+/// Build a blob object URL from raw bytes for an inline preview thumbnail.
+fn object_url_from_bytes(bytes: &[u8], mime: &str) -> Option<String> {
+    let u8a = js_sys::Uint8Array::from(bytes);
+    let arr = js_sys::Array::new();
+    arr.push(&u8a.into());
+    let mut bag = web_sys::BlobPropertyBag::new();
+    bag.type_(mime);
+    let blob = web_sys::Blob::new_with_u8_array_sequence_and_options(&arr, &bag).ok()?;
+    web_sys::Url::create_object_url_with_blob(&blob).ok()
+}
+
 /// Command queued while `Recorder::start()` is still in flight.
 #[cfg(feature = "voice")]
 #[derive(Clone, Copy)]
@@ -103,6 +122,9 @@ pub fn InputBar(
     /// re-renders that rebuild this component (incoming messages bump the chat
     /// list, which rebuilds the whole chat view including the InputBar).
     #[prop(optional)] drafts: Option<RwSignal<HashMap<Uuid, String>>>,
+    /// Persistent per-chat staged attachment (picked but not yet sent). Owned
+    /// by the chat screen for the same rebuild-survival reason as `drafts`.
+    #[prop(optional)] staged: Option<RwSignal<HashMap<Uuid, StagedAttachment>>>,
 ) -> impl IntoView {
     // Seed the text from the saved draft so a rebuild doesn't wipe it.
     let initial_draft = match (drafts, group_id) {
@@ -143,8 +165,45 @@ pub fn InputBar(
     let file_input_ref: NodeRef<leptos::html::Input> = NodeRef::new();
 
     let on_send_attachment_arc = on_send_attachment.map(Arc::new);
-    // Kept aside for the paste handler — `make_on_change` moves the original.
-    let on_paste_attachment = on_send_attachment_arc.clone();
+
+    // Picking/pasting an attachment STAGES it in the composer (preview) instead
+    // of sending immediately — it's sent only when the user presses send. Falls
+    // back to immediate send if no staging store was provided.
+    let stage_attachment: Arc<dyn Fn(AttachmentPayload) + Send + Sync> = {
+        let on_send_attachment = on_send_attachment_arc.clone();
+        Arc::new(move |payload: AttachmentPayload| {
+            let (Some(staged), Some(gid)) = (staged, group_id) else {
+                if let Some(f) = on_send_attachment.as_ref() {
+                    f(payload);
+                }
+                return;
+            };
+            let preview_url = if payload.is_image {
+                object_url_from_bytes(&payload.bytes, &payload.mime)
+            } else {
+                None
+            };
+            staged.update(|m| {
+                if let Some(old) = m.insert(gid, StagedAttachment { payload, preview_url }) {
+                    if let Some(url) = old.preview_url {
+                        let _ = web_sys::Url::revoke_object_url(&url);
+                    }
+                }
+            });
+        })
+    };
+    // Remove the staged attachment for this chat (revoking its preview URL).
+    let clear_staged: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+        let (Some(staged), Some(gid)) = (staged, group_id) else { return };
+        staged.update(|m| {
+            if let Some(old) = m.remove(&gid) {
+                if let Some(url) = old.preview_url {
+                    let _ = web_sys::Url::revoke_object_url(&url);
+                }
+            }
+        });
+    });
+    let stage_for_paste = stage_attachment.clone();
 
     // Trigger native file picker by clicking the hidden input.
     let click_hidden = |node: NodeRef<leptos::html::Input>| {
@@ -164,11 +223,11 @@ pub fn InputBar(
             as Box<dyn Fn() + Send + Sync + 'static>
     };
 
-    // Common file→bytes→callback bridge for both inputs.
+    // Common file→bytes→stage bridge for both inputs.
     let make_on_change = move |is_image: bool| {
-        let on_send_attachment = on_send_attachment_arc.clone();
+        let stage = stage_attachment.clone();
         move |ev: leptos::ev::Event| {
-            let on_send_attachment = on_send_attachment.clone();
+            let stage = stage.clone();
             let target = match ev.target() {
                 Some(t) => t,
                 None => return,
@@ -195,15 +254,13 @@ pub fn InputBar(
                 };
                 let arr_buf: js_sys::ArrayBuffer = buf_js.unchecked_into();
                 let bytes = js_sys::Uint8Array::new(&arr_buf).to_vec();
-                if let Some(f) = on_send_attachment.as_ref() {
-                    f(AttachmentPayload {
-                        bytes,
-                        mime: if mime.is_empty() { "application/octet-stream".into() } else { mime },
-                        name,
-                        size,
-                        is_image,
-                    });
-                }
+                stage(AttachmentPayload {
+                    bytes,
+                    mime: if mime.is_empty() { "application/octet-stream".into() } else { mime },
+                    name,
+                    size,
+                    is_image,
+                });
             });
         }
     };
@@ -215,7 +272,7 @@ pub fn InputBar(
     // through the `Textarea`'s own `on:paste` so Leptos owns the listener
     // (no leaked native handler that would fire once per re-render).
     let on_paste_cb = {
-        let on_send_attachment = on_paste_attachment.clone();
+        let stage = stage_for_paste.clone();
         Box::new(move |ev: web_sys::ClipboardEvent| {
             let Some(dt) = ev.clipboard_data() else { return };
             let items = dt.items();
@@ -239,7 +296,7 @@ pub fn InputBar(
                         n
                     }
                 };
-                let on_send_attachment = on_send_attachment.clone();
+                let stage = stage.clone();
                 spawn_local(async move {
                     let buf_js = match wasm_bindgen_futures::JsFuture::from(file.array_buffer())
                         .await
@@ -252,8 +309,8 @@ pub fn InputBar(
                     };
                     let arr_buf: js_sys::ArrayBuffer = buf_js.unchecked_into();
                     let bytes = js_sys::Uint8Array::new(&arr_buf).to_vec();
-                    if let Some(f) = on_send_attachment.as_ref() {
-                        f(AttachmentPayload {
+                    {
+                        stage(AttachmentPayload {
                             bytes,
                             mime: if mime.is_empty() { "image/png".into() } else { mime },
                             name,
@@ -319,13 +376,40 @@ pub fn InputBar(
     let emit_stop_for_send = emit_typing_stop.clone();
     let emit_stop_for_keydown = emit_typing_stop.clone();
 
+    // Send the chat's staged attachment (if any), then clear it.
+    let send_staged: Arc<dyn Fn() + Send + Sync> = {
+        let on_send_attachment = on_send_attachment_arc.clone();
+        let clear_staged = clear_staged.clone();
+        Arc::new(move || {
+            let payload = match (staged, group_id) {
+                (Some(s), Some(g)) => s.with_untracked(|m| m.get(&g).map(|st| st.payload.clone())),
+                _ => None,
+            };
+            if let Some(payload) = payload {
+                if let Some(f) = on_send_attachment.as_ref() {
+                    f(payload);
+                }
+                clear_staged();
+            }
+        })
+    };
+    // Reactive: is an attachment staged for this chat? (drives send-button.)
+    let has_staged = move || match (staged, group_id) {
+        (Some(s), Some(g)) => s.with(|m| m.contains_key(&g)),
+        _ => false,
+    };
+    let send_staged_for_send = send_staged.clone();
+    let send_staged_for_keydown = send_staged.clone();
+    let clear_staged_for_preview = clear_staged.clone();
+
     let handle_send = move |()| {
+        // Staged attachment goes first, then any typed text/caption.
+        send_staged_for_send();
         let msg = text.get().trim().to_string();
         if !msg.is_empty() {
             if let Some(ref f) = on_send_arc {
                 f(msg);
             }
-            emit_stop_for_send();
             text.set(String::new());
             clear_draft();
             // Clear textarea value via node_ref
@@ -335,19 +419,24 @@ pub fn InputBar(
                 let _ = textarea.set_attribute("style", "height: auto");
             }
         }
+        emit_stop_for_send();
     };
 
     let handle_send = Arc::new(handle_send);
 
     let handle_key_down = move |ev: KeyboardEvent| {
         if ev.key() == "Enter" && !ev.shift_key() {
-            ev.prevent_default();
             let msg = text.get().trim().to_string();
+            // Enter sends when there's text OR a staged attachment.
+            if msg.is_empty() && !has_staged() {
+                return;
+            }
+            ev.prevent_default();
+            send_staged_for_keydown();
             if !msg.is_empty() {
                 if let Some(ref f) = on_send_for_keydown {
                     f(msg);
                 }
-                emit_stop_for_keydown();
                 text.set(String::new());
                 clear_draft();
                 if let Some(el) = textarea_ref.get() {
@@ -356,6 +445,7 @@ pub fn InputBar(
                     let _ = textarea.set_attribute("style", "height: auto");
                 }
             }
+            emit_stop_for_keydown();
         }
     };
 
@@ -652,6 +742,40 @@ pub fn InputBar(
                 InputPreview::None => view! {}.into_any(),
             }}
 
+            // Staged attachment preview — held here until the user presses send.
+            {move || {
+                let st = match (staged, group_id) {
+                    (Some(s), Some(g)) => s.with(|m| m.get(&g).cloned()),
+                    _ => None,
+                };
+                st.map(|st| {
+                    let clear = clear_staged_for_preview.clone();
+                    let name = st.payload.name.clone();
+                    let thumb = st.preview_url.clone();
+                    view! {
+                        <div class="flex items-center gap-2 mb-1.5 px-2 py-1.5 rounded-lg bg-accent/30 border-l-2 border-primary">
+                            {match thumb {
+                                Some(url) => view! {
+                                    <img src=url class="h-12 w-12 shrink-0 rounded object-cover"/>
+                                }.into_any(),
+                                None => view! {
+                                    <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded bg-muted">
+                                        <Icon name="paperclip" class_name="h-5 w-5 text-muted-foreground"/>
+                                    </div>
+                                }.into_any(),
+                            }}
+                            <span class="min-w-0 flex-1 truncate text-sm text-foreground">{name}</span>
+                            <button
+                                class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md hover:bg-accent"
+                                on:click=move |_| clear()
+                            >
+                                <Icon name="x" class_name="h-3.5 w-3.5"/>
+                            </button>
+                        </div>
+                    }
+                })
+            }}
+
             // Recording UI
             {move || {
                 if !is_recording.get() { return None; }
@@ -726,7 +850,7 @@ pub fn InputBar(
             // without DOM-swap issues.
             {move || {
                 let handle_send = handle_send.clone();
-                if has_text() {
+                if has_text() || has_staged() {
                     view! {
                         <button
                             class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
