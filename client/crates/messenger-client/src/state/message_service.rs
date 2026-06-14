@@ -90,7 +90,7 @@ fn current_display_name() -> Option<String> {
 }
 
 /// Current user's id — same access pattern as [`current_username`].
-fn current_user_id() -> Option<Uuid> {
+pub fn current_user_id() -> Option<Uuid> {
     SESSION_STATE.with(|c| c.borrow().as_ref().and_then(|s| {
         match s.get_untracked() {
             SessionState::Authenticated { identity, .. } => Some(identity.user_id),

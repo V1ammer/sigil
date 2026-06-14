@@ -166,15 +166,22 @@ impl WsManager {
                                 svc.refresh_incoming(group_id).await;
                             }
                             // Notification sound — only for a genuine incoming
-                            // content message. Control/side-channel messages
-                            // (read receipts, avatar updates, edits) are consumed
-                            // during the pull and never land in the buffer, so a
-                            // message id that's present now is a real message.
-                            let is_content = svc.messages.by_group.with_untracked(|map| {
+                            // content message from SOMEONE ELSE. Control/side-channel
+                            // messages (read receipts, avatar updates, edits) are
+                            // consumed during the pull and never land in the buffer.
+                            // The sender check matters on reload: the buffer is empty
+                            // so `already_known` can't suppress our own echoes (e.g.
+                            // the read-receipt/avatar re-announce posted during the
+                            // initial sync), which otherwise dinged on every refresh.
+                            let me = crate::state::message_service::current_user_id();
+                            let is_incoming_content = svc.messages.by_group.with_untracked(|map| {
                                 map.get(&group_id)
-                                    .is_some_and(|list| list.iter().any(|m| m.id == message_id))
+                                    .and_then(|list| list.iter().find(|m| m.id == message_id))
+                                    .is_some_and(|m| {
+                                        !m.sender_user_id.is_nil() && Some(m.sender_user_id) != me
+                                    })
                             });
-                            if is_content {
+                            if is_incoming_content {
                                 crate::sound::play_message_sound();
                             }
                         });
