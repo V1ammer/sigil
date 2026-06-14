@@ -33,6 +33,7 @@ pub mod ws;
 /// - `DELETE /v1/admin/invites/:id` — отозвать инвайт.
 /// - `POST   /v1/admin/users/:id/suspend` — заморозить пользователя.
 /// - `POST   /v1/admin/users/:id/unsuspend` — разморозить пользователя.
+/// - `POST   /v1/admin/users/:id/role` — сменить роль пользователя.
 /// - `GET    /v1/admin/users` — пагинированный список пользователей.
 ///
 /// ## Защищённые endpoints (требуют `X-Auth-Signature`)
@@ -77,6 +78,7 @@ pub fn build_router(state: AppState) -> Router {
             "/v1/admin/users/:id/unsuspend",
             post(admin::unsuspend_user),
         )
+        .route("/v1/admin/users/:id/role", post(admin::set_role))
         .route("/v1/admin/users", get(admin::list_users))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),

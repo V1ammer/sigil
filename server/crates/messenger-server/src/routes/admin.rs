@@ -285,6 +285,52 @@ pub async fn unsuspend_user(
     Ok(typed_response::<()>(&headers, StatusCode::NO_CONTENT, &()))
 }
 
+/// Тело запроса на смену роли пользователя.
+#[derive(Deserialize)]
+pub struct SetRoleRequest {
+    pub role: String, // "admin" | "user"
+}
+
+/// `POST /v1/admin/users/:id/role` — сменить роль пользователя.
+///
+/// # Errors
+///
+/// - `400 BadRequest` — невалидная роль или попытка снять админку с себя.
+/// - `404 Not Found` — пользователь не существует.
+/// - `401 Unauthorized` — отсутствует auth context.
+/// - `403 Forbidden` — вызывающий не admin.
+/// - `500` — внутренняя ошибка.
+pub async fn set_role(
+    CurrentAuth(ctx): CurrentAuth,
+    RequireAdmin(_): RequireAdmin,
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(user_id): Path<Uuid>,
+    body: Bytes,
+) -> Result<Response, AppError> {
+    use messenger_entity::users::{self, Entity as Users};
+
+    let req: SetRoleRequest = decode_body(&headers, &body)?;
+    if req.role != "admin" && req.role != "user" {
+        return Err(AppError::BadRequest("role must be 'admin' or 'user'".into()));
+    }
+    // Guard against an admin demoting themselves (self-lockout).
+    if user_id == ctx.user.id && req.role != "admin" {
+        return Err(AppError::BadRequest("cannot remove your own admin role".into()));
+    }
+
+    let user = Users::find_by_id(user_id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    let mut active: users::ActiveModel = user.into();
+    active.role = sea_orm::Set(req.role);
+    active.update(&state.db).await?;
+
+    Ok(typed_response::<()>(&headers, StatusCode::NO_CONTENT, &()))
+}
+
 /// Query параметры для пагинированного списка пользователей.
 #[derive(Deserialize)]
 pub struct ListUsersQuery {

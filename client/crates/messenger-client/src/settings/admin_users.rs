@@ -434,6 +434,33 @@ pub fn AdminUsersSettings() -> impl IntoView {
         }
     };
 
+    // ── Role change handler ────────────────────────────────────────────
+    // Applies immediately from the per-row <select>; the server guards
+    // against an admin demoting themselves.
+    let do_set_role: Arc<dyn Fn(Uuid, String) + Send + Sync + 'static> = Arc::new({
+        let nf = notifications.clone();
+        let refresh = refresh.clone();
+        move |user_id: Uuid, role: String| {
+            let nf = nf.clone();
+            let refresh = refresh.clone();
+            spawn_local(async move {
+                let Some(api) = build_api_client() else {
+                    nf.push(ToastKind::Error, "Not authenticated".to_string());
+                    return;
+                };
+                let req = SetRoleRequest { role: role.clone() };
+                match api.set_user_role(user_id, &req).await {
+                    Ok(_) => nf.push(ToastKind::Success, format!("Role changed to {role}")),
+                    Err(e) => nf.push(ToastKind::Error, format!("Role change failed: {e}")),
+                }
+                // Re-sync from the server either way (reverts the <select> on error).
+                refresh();
+            });
+        }
+    });
+    let set_role_signal: RwSignal<Option<Arc<dyn Fn(Uuid, String) + Send + Sync + 'static>>> =
+        RwSignal::new(Some(do_set_role));
+
     // Wrap non-Copy closures in RwSignal so they can be captured by Copy
     let open_suspend_signal: RwSignal<Option<Arc<dyn Fn(Uuid) + Send + Sync + 'static>>> =
         RwSignal::new(Some(open_suspend.clone()));
@@ -482,6 +509,7 @@ pub fn AdminUsersSettings() -> impl IntoView {
                     // Users table
                     let on_suspend = open_suspend_signal;
                     let on_unsuspend = open_unsuspend_signal;
+                    let on_set_role = set_role_signal;
                     view! {
                         <div class="overflow-x-auto">
                             <table class="w-full text-sm">
@@ -502,7 +530,7 @@ pub fn AdminUsersSettings() -> impl IntoView {
                                     {move || users.get().into_iter().map(move |u| {
                                         let user_id = u.id;
                                         let is_suspended = u.status == "suspended";
-                                        let role_display = user_role(&u.role);
+                                        let current_role = u.role.clone();
                                         let created_display = format_ts(u.created_at);
                                         let devices_count = u.devices_count;
 
@@ -510,9 +538,12 @@ pub fn AdminUsersSettings() -> impl IntoView {
                                             let (ref cache, own_id, ref own_uname, ref own_name, ref own_avatar) = row_meta.get_value();
                                             resolve_row(user_id, cache.as_ref(), own_id, own_uname, own_name, own_avatar)
                                         };
+                                        // An admin can't change their own role (server enforces it too).
+                                        let is_own = row_meta.get_value().1 == Some(user_id);
 
                                         let on_suspend = on_suspend;
                                         let on_unsuspend = on_unsuspend;
+                                        let on_set_role = on_set_role;
 
                                         view! {
                                             <tr class="border-b last:border-0">
@@ -525,8 +556,31 @@ pub fn AdminUsersSettings() -> impl IntoView {
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td class="py-3 pr-4 capitalize text-foreground">
-                                                    {role_display.clone()}
+                                                <td class="py-3 pr-4">
+                                                    {
+                                                        let on_set_role = on_set_role;
+                                                        let uid = user_id;
+                                                        let current = current_role.clone();
+                                                        let current_for_cmp = current_role.clone();
+                                                        view! {
+                                                            <select
+                                                                class="rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                                                                disabled=is_own
+                                                                prop:value=current.clone()
+                                                                on:change=move |ev| {
+                                                                    let new_role = event_target_value(&ev);
+                                                                    if new_role != current_for_cmp {
+                                                                        if let Some(cb) = on_set_role.get_untracked() {
+                                                                            cb(uid, new_role);
+                                                                        }
+                                                                    }
+                                                                }
+                                                            >
+                                                                <option value="user">{user_role("user")}</option>
+                                                                <option value="admin">{user_role("admin")}</option>
+                                                            </select>
+                                                        }
+                                                    }
                                                 </td>
                                                 <td class="py-3 pr-4">
                                                     {user_status_badge(&u.status)}

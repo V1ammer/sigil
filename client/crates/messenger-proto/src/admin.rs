@@ -28,3 +28,9 @@ pub struct SuspendUserRequest {
 pub struct UnsuspendUserRequest {
     pub reason: Option<String>,
 }
+
+/// Request to change a user's role (`"admin"` | `"user"`).
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SetRoleRequest {
+    pub role: String,
+}

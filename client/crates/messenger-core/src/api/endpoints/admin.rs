@@ -39,4 +39,18 @@ impl ApiClient {
         let path = format!("/v1/admin/users/{}/unsuspend", user_id);
         self.send("POST", &path, Some(req)).await
     }
+
+    /// Change a user's role to `"admin"` or `"user"` (admin only).
+    ///
+    /// # Errors
+    ///
+    /// Returns `ApiError` on network, permission, or validation failure.
+    pub async fn set_user_role(
+        &self,
+        user_id: Uuid,
+        req: &SetRoleRequest,
+    ) -> Result<(), ApiError> {
+        let path = format!("/v1/admin/users/{}/role", user_id);
+        self.send("POST", &path, Some(req)).await
+    }
 }
