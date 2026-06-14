@@ -6,7 +6,7 @@ use leptos_router::path;
 use crate::screens::*;
 use crate::screens::chats::ChatsScreen;
 use crate::screens::settings::SettingsScreen;
-use crate::state::session::{use_session, UserRole};
+use crate::state::session::use_session;
 
 #[must_use]
 #[component]

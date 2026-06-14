@@ -1,4 +1,3 @@
-use std::sync::Arc;
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;

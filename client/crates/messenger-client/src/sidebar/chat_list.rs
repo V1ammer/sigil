@@ -4,7 +4,6 @@ use crate::components::button::{Button, ButtonVariant, ButtonSize};
 use crate::components::badge::Badge;
 use crate::components::input::Input;
 use crate::components::scroll_area::ScrollArea;
-use crate::components::separator::Separator;
 use crate::components::dropdown_menu::{
     DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
     DropdownMenuItem, DropdownMenuSeparator,

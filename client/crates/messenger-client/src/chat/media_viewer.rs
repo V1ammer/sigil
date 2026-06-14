@@ -1,9 +1,7 @@
 //! Full-screen media viewer — shows images/videos in an overlay with zoom, pan, and
 //! navigation controls.
 use leptos::prelude::*;
-use crate::i18n::Language;
 use crate::icons::Icon;
-use crate::components::button::{Button, ButtonVariant, ButtonSize};
 
 #[must_use]
 #[component]

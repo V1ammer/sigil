@@ -171,7 +171,7 @@ async fn start_barcode_wasm(
         .map_err(|_| "invalid video element")?;
 
     // Get camera stream (rear-facing)
-    let mut constraints = web_sys::MediaStreamConstraints::new();
+    let constraints = web_sys::MediaStreamConstraints::new();
     let video_obj = js_sys::Object::new();
     js_sys::Reflect::set(&video_obj, &"facingMode".into(), &"environment".into())
         .map_err(|_| "failed to set facingMode")?;

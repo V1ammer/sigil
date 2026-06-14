@@ -1,9 +1,8 @@
 //! Thread panel — shows replies to a specific message in a slide-over panel.
 use std::sync::Arc;
 use leptos::prelude::*;
-use leptos::either::Either;
-use crate::i18n::{Language, t, format_time, format_date};
-use crate::mock::{Message, ReplyTo};
+use crate::i18n::{Language, t, format_time};
+use crate::mock::Message;
 use crate::icons::Icon;
 use crate::components::sheet::{Sheet, SheetHeader, SheetTitle};
 use crate::components::scroll_area::ScrollArea;

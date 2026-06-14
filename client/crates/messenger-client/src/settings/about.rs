@@ -3,7 +3,6 @@ use leptos::task::spawn_local;
 use crate::components::separator::Separator;
 use crate::components::card::{Card, CardContent};
 use crate::components::label::Label;
-use crate::i18n::I18n;
 use crate::state::session::{build_api_client, load_server_url};
 use crate::t;
 

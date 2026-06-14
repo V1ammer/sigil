@@ -4,19 +4,13 @@
 //! в релизных сборках.
 
 use axum::extract::{Path, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::HeaderMap;
 use axum::response::Response;
-use rand::RngCore;
-use sea_orm::{ActiveModelTrait, EntityTrait, Set};
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::error::{typed_response, AppError};
-use crate::services::invite::now_secs;
+use crate::error::AppError;
 use crate::state::AppState;
-use messenger_entity::device_provisioning_requests;
-use messenger_entity::device_provisioning_requests::Entity as ProvRequests;
-use messenger_entity::invitation_tokens;
 
 #[derive(Serialize)]
 pub struct DevTokenResponse {

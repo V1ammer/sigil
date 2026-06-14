@@ -9,7 +9,6 @@ use std::sync::Arc;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use messenger_core::api::client::ApiClient;
-use messenger_core::api::endpoints::mls::*;
 use messenger_core::mls::application::{AppMessageBody, AppMessageKind, ApplicationEnvelope};
 use messenger_core::mls::group::MlsRuntime;
 use messenger_proto::mls::{PostMessageRequest, UpdateMessageStateRequest};
@@ -126,19 +125,8 @@ pub fn typing_handle() -> Option<crate::state::typing::TypingState> {
     TYPING_STATE.with(|c| *c.borrow())
 }
 
-/// Bump a chat's `last_message_at` if `ts_ms` is newer than what's stored.
-/// Safe to call from detached async tasks — uses the thread-local copy of
-/// `ChatsState` mirrored at startup.
-fn touch_chat_last_message(group_id: Uuid, ts_ms: i64) {
-    CHATS_STATE.with(|c| {
-        if let Some(chats) = c.borrow().as_ref() {
-            chats.touch_last_message(group_id, ts_ms);
-        }
-    });
-}
-
-/// Same as [`touch_chat_last_message`] but also publishes a preview snippet
-/// and the message kind so the sidebar can render a Telegram-style preview.
+/// Publishes a chat's `last_message_at` along with a preview snippet and the
+/// message kind so the sidebar can render a Telegram-style preview.
 fn set_chat_last_message(
     group_id: Uuid,
     ts_ms: i64,
@@ -1523,34 +1511,6 @@ impl MessageService {
                 }
             }
         }
-    }
-
-    /// Add an own message to the local buffer (optimistic update).
-    fn add_own_message(&self, group_id: Uuid, text: &str, client_msg_id: Uuid, created_at: i64) {
-        let msg = DisplayMessage {
-            id: client_msg_id,
-            client_message_id: client_msg_id,
-            group_id,
-            sender_user_id: Uuid::nil(),
-            sender_device_id: Uuid::nil(),
-            sender_display_name: current_display_name(),
-            kind: MessageKind::Text,
-            body: MessageBody::Text(text.to_string()),
-            reply_to_message_id: None,
-            thread_root_id: None,
-            created_at,
-            edited_at: None,
-            deleted_at: None,
-            delivery_status: DeliveryStatus::SentToServer,
-            reactions: Vec::new(),
-        };
-
-        let preview = Some(preview_from_body(&msg.body));
-        let kind = msg.kind;
-        self.messages.by_group.update(|map| {
-            map.entry(group_id).or_default().push(msg);
-        });
-        set_chat_last_message(group_id, created_at * 1000, preview, Some(kind));
     }
 
     /// Encrypt an `ApplicationEnvelope` via MLS, falling back to plaintext.

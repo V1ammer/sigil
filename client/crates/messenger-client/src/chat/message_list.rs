@@ -3,7 +3,7 @@ use leptos::prelude::*;
 use std::sync::Arc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
-use crate::i18n::{Language, t, format_date};
+use crate::i18n::{Language, format_date};
 use crate::mock::Message;
 use super::message_item::MessageItem;
 

@@ -2019,16 +2019,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "messenger-proto"
-version = "0.1.0"
-dependencies = [
- "rmp-serde",
- "serde",
- "serde_bytes",
- "uuid",
-]
-
-[[package]]
 name = "messenger-server"
 version = "0.1.0"
 dependencies = [

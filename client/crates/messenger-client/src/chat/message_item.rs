@@ -12,7 +12,6 @@ use super::voice_message::VoiceMessage;
 use super::image_lightbox::ImageLightbox;
 use crate::components::context_menu::{ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem, ContextMenuSeparator};
 use crate::components::sheet::{Sheet, SheetHeader, SheetTitle};
-use crate::components::tooltip::Tooltip;
 
 thread_local! {
     /// Session cache of decoded attachment object URLs, keyed by attachment id.

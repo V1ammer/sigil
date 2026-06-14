@@ -8,11 +8,11 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use js_sys::{ArrayBuffer, Uint8Array};
+use js_sys::Uint8Array;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{
-    Blob, BlobEvent, MediaRecorder, MediaRecorderOptions, MediaStream,
+    BlobEvent, MediaRecorder, MediaRecorderOptions, MediaStream,
     MediaStreamConstraints, MediaStreamTrack,
 };
 
@@ -34,7 +34,6 @@ pub struct Recorder {
     media: MediaStream,
     recorder: MediaRecorder,
     chunks: Rc<RefCell<Vec<u8>>>,
-    duration_ms: Rc<RefCell<u32>>,
     start_time: f64,
 }
 
@@ -97,7 +96,6 @@ impl Recorder {
             media: stream,
             recorder,
             chunks,
-            duration_ms: Rc::new(RefCell::new(0)),
             start_time,
         })
     }

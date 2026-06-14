@@ -7,10 +7,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use uuid::Uuid;
 
-use crate::state::chats::ChatsState;
-use crate::state::message_service::MessageService;
 use crate::state::session::build_api_client;
 
 /// Sync loop interval (seconds).

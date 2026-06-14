@@ -5,7 +5,7 @@
 //! the mock format so we can reuse those components until they are refactored.
 
 use crate::mock;
-use crate::state::messages::{DeliveryStatus, DisplayMessage, MessageBody, MessageKind};
+use crate::state::messages::{DeliveryStatus, DisplayMessage, MessageBody};
 
 /// Convert a `DisplayMessage` into a `mock::Message` for UI rendering.
 pub fn display_to_mock(msg: &DisplayMessage) -> mock::Message {

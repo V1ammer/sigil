@@ -4,7 +4,6 @@
 //! persistence across reloads.
 
 use leptos::prelude::*;
-use leptos::task::spawn_local;
 
 /// Load a string value from localStorage, returning `None` if missing.
 fn load_str(key: &str) -> Option<String> {

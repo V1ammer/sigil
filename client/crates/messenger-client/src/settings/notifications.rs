@@ -3,8 +3,6 @@ use crate::components::switch::Switch;
 use crate::components::separator::Separator;
 use crate::components::label::Label;
 use crate::components::select::{Select, SelectOption};
-use crate::components::input::Input;
-use crate::i18n::I18n;
 use crate::state::settings::SettingsState;
 use crate::t;
 

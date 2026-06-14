@@ -15,7 +15,6 @@ use messenger_proto::ws::{ClientFrame, ServerFrame};
 use uuid::Uuid;
 
 use super::connectivity::{ConnectivityState, WsConnectivity};
-use super::chats::ChatsState;
 
 /// Whether typing indicators are enabled (privacy setting, default on). Gates
 /// both sending our own typing and surfacing peers' — reciprocal, like read
