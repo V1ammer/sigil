@@ -701,9 +701,9 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
             }.into_any()
         }
         "audio" => {
-            // A sent audio file (music) — play it inline instead of forcing a
-            // download. Click-to-load (don't fetch every track on chat open),
-            // then an <audio controls> player.
+            // A sent audio file (music) — played inline with a player styled to
+            // match the app (not the native browser <audio controls>). Click-to-
+            // load on first play, then a custom play/pause + seek bar.
             let file_name = msg.file_name.as_deref().unwrap_or("Audio").to_string();
             let attachment_id = msg.attachment_id.clone();
             let decryption_key = msg.decryption_key.clone();
@@ -711,44 +711,149 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
             let blob_url: RwSignal<Option<String>> = RwSignal::new(None);
             let err: RwSignal<Option<String>> = RwSignal::new(None);
             let started: RwSignal<bool> = RwSignal::new(false);
+            let is_playing = RwSignal::new(false);
+            let current_ms = RwSignal::new(0u32);
+            let duration_ms = RwSignal::new(0u32);
+            let audio_ref: NodeRef<leptos::html::Audio> = NodeRef::new();
+
+            // Play/pause; loads (and arms autoplay) on the first tap.
+            let toggle = move |_| {
+                if blob_url.get_untracked().is_none() {
+                    if !started.get_untracked() {
+                        started.set(true);
+                        load_media_blob(
+                            attachment_id.clone(),
+                            decryption_key.clone(),
+                            mime.clone(),
+                            blob_url,
+                            err,
+                            l,
+                        );
+                    }
+                    is_playing.set(true);
+                    return;
+                }
+                if let Some(el) = audio_ref.get_untracked() {
+                    let audio: &web_sys::HtmlAudioElement = el.unchecked_ref();
+                    if is_playing.get_untracked() {
+                        let _ = audio.pause();
+                        is_playing.set(false);
+                    } else {
+                        let _ = audio.play();
+                        is_playing.set(true);
+                    }
+                }
+            };
+            // Start playback once the blob URL lands (the user already tapped).
+            Effect::new(move |_| {
+                if blob_url.get().is_some() && is_playing.get_untracked() {
+                    if let Some(el) = audio_ref.get_untracked() {
+                        let audio: &web_sys::HtmlAudioElement = el.unchecked_ref();
+                        let _ = audio.play();
+                    }
+                }
+            });
+            let on_time = move |ev: leptos::ev::Event| {
+                if let Some(t) = ev.target() {
+                    let audio: web_sys::HtmlAudioElement = t.unchecked_into();
+                    current_ms.set((audio.current_time() * 1000.0) as u32);
+                }
+            };
+            let on_loaded = move |ev: leptos::ev::Event| {
+                if let Some(t) = ev.target() {
+                    let audio: web_sys::HtmlAudioElement = t.unchecked_into();
+                    let d = audio.duration();
+                    if d.is_finite() && d > 0.0 {
+                        duration_ms.set((d * 1000.0) as u32);
+                    }
+                }
+            };
+            let on_ended = move |_: leptos::ev::Event| {
+                is_playing.set(false);
+                current_ms.set(0);
+            };
+            // Click anywhere on the bar to seek.
+            let seek = move |ev: leptos::ev::MouseEvent| {
+                let Some(el) = audio_ref.get_untracked() else { return };
+                let audio: &web_sys::HtmlAudioElement = el.unchecked_ref();
+                let dur = audio.duration();
+                if !dur.is_finite() || dur <= 0.0 {
+                    return;
+                }
+                if let Some(target) = ev.current_target() {
+                    let bar: web_sys::Element = target.unchecked_into();
+                    let rect = bar.get_bounding_client_rect();
+                    if rect.width() > 0.0 {
+                        let frac = ((f64::from(ev.client_x()) - rect.left()) / rect.width())
+                            .clamp(0.0, 1.0);
+                        audio.set_current_time(frac * dur);
+                        current_ms.set((frac * dur * 1000.0) as u32);
+                    }
+                }
+            };
+
+            let fmt = |ms: u32| {
+                let s = ms / 1000;
+                format!("{}:{:02}", s / 60, s % 60)
+            };
 
             view! {
-                <div class="flex min-w-[220px] max-w-xs flex-col gap-2 rounded-lg bg-muted/40 p-2">
+                <div class="flex w-64 max-w-full flex-col gap-2 rounded-lg bg-muted/40 p-2.5">
                     <div class="flex items-center gap-2">
-                        <Icon name="music" class_name="h-5 w-5 shrink-0 text-muted-foreground"/>
+                        <Icon name="music" class_name="h-4 w-4 shrink-0 text-muted-foreground"/>
                         <span class="truncate text-sm text-foreground">{file_name.clone()}</span>
                     </div>
-                    {move || {
-                        if !started.get() {
-                            let aid = attachment_id.clone();
-                            let key = decryption_key.clone();
-                            let m = mime.clone();
-                            view! {
-                                <button
-                                    class="flex items-center gap-1.5 self-start rounded-md bg-primary/10 px-3 py-1 text-xs font-medium text-primary hover:bg-primary/20"
-                                    on:click=move |_| {
-                                        started.set(true);
-                                        load_media_blob(aid.clone(), key.clone(), m.clone(), blob_url, err, l);
+                    <div class="flex items-center gap-2.5">
+                        <button
+                            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-60"
+                            on:click=toggle
+                        >
+                            {move || {
+                                if started.get() && blob_url.get().is_none() && err.get().is_none() {
+                                    view! { <span class="block h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin"/> }.into_any()
+                                } else if is_playing.get() {
+                                    view! { <Icon name="pause" class_name="h-4 w-4"/> }.into_any()
+                                } else {
+                                    view! { <Icon name="play" class_name="h-4 w-4"/> }.into_any()
+                                }
+                            }}
+                        </button>
+                        <div class="flex-1 min-w-0">
+                            <div
+                                class="group h-1.5 w-full cursor-pointer rounded-full bg-foreground/15"
+                                on:click=seek
+                            >
+                                <div
+                                    class="h-full rounded-full bg-primary"
+                                    style=move || {
+                                        let d = duration_ms.get().max(1);
+                                        let pct = (current_ms.get() as f64 / d as f64 * 100.0).clamp(0.0, 100.0);
+                                        format!("width:{pct}%")
                                     }
-                                >
-                                    <Icon name="play" class_name="h-3.5 w-3.5"/>
-                                    {t(l, "message.playAudio")}
-                                </button>
-                            }.into_any()
-                        } else if let Some(url) = blob_url.get() {
-                            view! {
-                                <audio src=url controls=true autoplay=true class="h-9 w-full"/>
-                            }.into_any()
-                        } else if let Some(e) = err.get() {
-                            view! {
-                                <span class="text-[10px] text-destructive">{e}</span>
-                            }.into_any()
-                        } else {
-                            view! {
-                                <span class="inline-block h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent text-muted-foreground"/>
-                            }.into_any()
-                        }
-                    }}
+                                />
+                            </div>
+                            <div class="mt-1 flex justify-between text-[10px] tabular-nums text-muted-foreground">
+                                <span>{move || fmt(current_ms.get())}</span>
+                                <span>{move || fmt(duration_ms.get())}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    // Hidden native element — drives playback; UI above is ours.
+                    {move || blob_url.get().map(|url| view! {
+                        <audio
+                            node_ref=audio_ref
+                            src=url
+                            preload="auto"
+                            on:timeupdate=on_time
+                            on:loadedmetadata=on_loaded
+                            on:ended=on_ended
+                        />
+                    })}
+
+                    {move || err.get().map(|e| view! {
+                        <span class="text-[10px] text-destructive">{e}</span>
+                    })}
                 </div>
             }.into_any()
         }
