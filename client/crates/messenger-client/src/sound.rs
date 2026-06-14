@@ -122,10 +122,15 @@ pub fn arm_audio_unlock() {
                     }
                 }
             }
-            // A muted play during the gesture unlocks the element for later.
+            // Unlock the element for later autoplay by play()+pause() during the
+            // gesture. The pause is essential: play() is async, so unmuting
+            // immediately after it (without pausing) let the beep start UNMUTED
+            // on the next tick — an audible "ding" on the first interaction after
+            // every reload. Pausing first cancels playback, so unmuting is safe.
             if let Some(audio) = slot.as_ref() {
                 audio.set_muted(true);
                 let _ = audio.play();
+                let _ = audio.pause();
                 audio.set_current_time(0.0);
                 audio.set_muted(false);
             }
