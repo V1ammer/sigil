@@ -8,8 +8,8 @@ use crate::t;
 
 /// External resource URLs.
 const DOCS_URL: &str = "https://docs.example.com/messenger";
-const SOURCE_URL: &str = "https://github.com/example/messenger";
-const BUG_TRACKER_URL: &str = "https://github.com/example/messenger/issues";
+const SOURCE_URL: &str = "https://github.com/V1ammer/sigil";
+const BUG_TRACKER_URL: &str = "https://github.com/V1ammer/sigil/issues";
 
 /// About settings — version, server address, license, MLS info.
 #[must_use]

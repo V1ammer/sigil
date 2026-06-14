@@ -47,6 +47,21 @@ pub fn vibrate_message() {
 thread_local! {
     static AUDIO: RefCell<Option<web_sys::HtmlAudioElement>> = const { RefCell::new(None) };
     static UNLOCKED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// `Date.now()` at app start, for the startup grace period below.
+    static START_MS: std::cell::Cell<f64> = const { std::cell::Cell::new(0.0) };
+}
+
+/// Grace period after page load during which notification sounds are suppressed.
+/// On reload the WS reconnects and the catch-up sync (read-receipts, our own
+/// message echoes, etc.) briefly looks like incoming traffic; this keeps the
+/// app from dinging on every refresh, regardless of the exact source.
+const STARTUP_GRACE_MS: f64 = 4000.0;
+
+/// Whether we're still inside the post-load grace window.
+fn within_startup_grace() -> bool {
+    let start = START_MS.with(std::cell::Cell::get);
+    // start == 0.0 means `arm_audio_unlock` hasn't run (no app) → don't suppress.
+    start > 0.0 && (js_sys::Date::now() - start) < STARTUP_GRACE_MS
 }
 
 /// Play the new-message sound, respecting the user's notification settings.
@@ -57,6 +72,7 @@ pub fn play_message_sound() {
     if !setting_on("ms_settings_notifications_enabled")
         || !setting_on("ms_settings_notification_sound")
         || in_do_not_disturb()
+        || within_startup_grace()
     {
         return;
     }
@@ -85,6 +101,9 @@ pub fn play_message_sound() {
 pub fn arm_audio_unlock() {
     use wasm_bindgen::closure::Closure;
     use wasm_bindgen::JsCast;
+
+    // Mark app start for the notification-sound grace period.
+    START_MS.with(|s| s.set(js_sys::Date::now()));
 
     let Some(win) = web_sys::window() else { return };
     let Some(doc) = win.document() else { return };
