@@ -36,6 +36,7 @@ pub enum MessageBody {
         duration_ms: u32,
         waveform: Vec<u8>,
         transcription: Option<String>,
+        caption: Option<String>,
     },
     Image {
         attachment_id: Uuid,
@@ -44,6 +45,7 @@ pub enum MessageBody {
         width: u32,
         height: u32,
         thumb: Option<Vec<u8>>,
+        caption: Option<String>,
     },
     File {
         attachment_id: Uuid,
@@ -51,6 +53,7 @@ pub enum MessageBody {
         mime: String,
         name: String,
         size: u64,
+        caption: Option<String>,
     },
     System {
         action: String,

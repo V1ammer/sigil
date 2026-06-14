@@ -280,9 +280,13 @@ fn preview_from_body(body: &MessageBody) -> String {
                 trimmed.to_string()
             }
         }
-        MessageBody::Voice { .. }
-        | MessageBody::Image { .. } => String::new(),
-        MessageBody::File { name, .. } => name.clone(),
+        // Prefer the caption in the sidebar preview when one was sent.
+        MessageBody::Voice { caption, .. } | MessageBody::Image { caption, .. } => {
+            caption.clone().unwrap_or_default()
+        }
+        MessageBody::File { name, caption, .. } => {
+            caption.clone().filter(|c| !c.is_empty()).unwrap_or_else(|| name.clone())
+        }
         MessageBody::System { action } => action.clone(),
     }
 }
@@ -830,6 +834,7 @@ impl MessageService {
                 decryption_key: key.to_vec(),
                 duration_ms: payload.duration_ms,
                 waveform: payload.waveform.clone(),
+                caption: None,
             },
             reply_to_message_id: None,
             thread_root_id: None,
@@ -880,6 +885,7 @@ impl MessageService {
             duration_ms: payload.duration_ms,
             waveform: payload.waveform,
             transcription: None,
+            caption: None,
         };
         // Cache our own voice body so it survives refreshes (no MLS self-decrypt).
         own_msgs_record(resp.message_id, MessageKind::Voice, voice_body.clone());
@@ -929,6 +935,7 @@ impl MessageService {
         // feedback and look like it failed. Reconciled to the real message on
         // success, or marked Failed on error. The placeholder body carries no
         // attachment id yet; the image renderer stays in its spinner for nil.
+        let caption = payload.caption.clone().filter(|c| !c.trim().is_empty());
         let sending_body = if payload.is_image {
             MessageBody::Image {
                 attachment_id: Uuid::nil(),
@@ -937,6 +944,7 @@ impl MessageService {
                 width: 0,
                 height: 0,
                 thumb: None,
+                caption: caption.clone(),
             }
         } else {
             MessageBody::File {
@@ -945,6 +953,7 @@ impl MessageService {
                 mime: payload.mime.clone(),
                 name: payload.name.clone(),
                 size: payload.size,
+                caption: caption.clone(),
             }
         };
         self.messages.by_group.update(|map| {
@@ -1003,6 +1012,7 @@ impl MessageService {
                     width: 0,
                     height: 0,
                     thumb: None,
+                    caption: caption.clone(),
                 },
                 MessageBody::Image {
                     attachment_id: upload.attachment_id,
@@ -1011,6 +1021,7 @@ impl MessageService {
                     width: 0,
                     height: 0,
                     thumb: None,
+                    caption: caption.clone(),
                 },
             )
         } else {
@@ -1022,6 +1033,7 @@ impl MessageService {
                     mime: payload.mime.clone(),
                     filename: payload.name.clone(),
                     size: payload.size,
+                    caption: caption.clone(),
                 },
                 MessageBody::File {
                     attachment_id: upload.attachment_id,
@@ -1029,6 +1041,7 @@ impl MessageService {
                     mime: payload.mime.clone(),
                     name: payload.name.clone(),
                     size: payload.size,
+                    caption: caption.clone(),
                 },
             )
         };
@@ -1130,7 +1143,7 @@ impl MessageService {
         match body {
             MessageBody::Text(text) => self.send_text(target_group, &text, None).await,
             MessageBody::System { .. } => None, // system events aren't forwardable
-            MessageBody::Image { attachment_id, decryption_key, mime, .. } => {
+            MessageBody::Image { attachment_id, decryption_key, mime, caption, .. } => {
                 let bytes = fetch_plain(attachment_id, &decryption_key).await?;
                 let size = bytes.len() as u64;
                 self.send_attachment(
@@ -1141,16 +1154,17 @@ impl MessageService {
                         name: "image".to_string(),
                         size,
                         is_image: true,
+                        caption,
                     },
                 )
                 .await
             }
-            MessageBody::File { attachment_id, decryption_key, mime, name, .. } => {
+            MessageBody::File { attachment_id, decryption_key, mime, name, caption, .. } => {
                 let bytes = fetch_plain(attachment_id, &decryption_key).await?;
                 let size = bytes.len() as u64;
                 self.send_attachment(
                     target_group,
-                    crate::chat::input_bar::AttachmentPayload { bytes, mime, name, size, is_image: false },
+                    crate::chat::input_bar::AttachmentPayload { bytes, mime, name, size, is_image: false, caption },
                 )
                 .await
             }
@@ -1962,6 +1976,7 @@ impl MessageService {
                 ref decryption_key,
                 duration_ms,
                 ref waveform,
+                ref caption,
             } => (
                 MessageKind::Voice,
                 MessageBody::Voice {
@@ -1970,6 +1985,7 @@ impl MessageService {
                     duration_ms,
                     waveform: waveform.clone(),
                     transcription: None,
+                    caption: caption.clone(),
                 },
             ),
             AppMessageBody::File {
@@ -1978,6 +1994,7 @@ impl MessageService {
                 ref mime,
                 ref filename,
                 size,
+                ref caption,
             } => (
                 MessageKind::File,
                 MessageBody::File {
@@ -1986,6 +2003,7 @@ impl MessageService {
                     mime: mime.clone(),
                     name: filename.clone(),
                     size,
+                    caption: caption.clone(),
                 },
             ),
             AppMessageBody::Image {
@@ -1995,6 +2013,7 @@ impl MessageService {
                 width,
                 height,
                 ref thumb,
+                ref caption,
             } => (
                 MessageKind::Image,
                 MessageBody::Image {
@@ -2004,6 +2023,7 @@ impl MessageService {
                     width,
                     height,
                     thumb: thumb.clone(),
+                    caption: caption.clone(),
                 },
             ),
             AppMessageBody::SystemNote { ref code, .. } => {

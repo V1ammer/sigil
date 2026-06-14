@@ -25,13 +25,14 @@ pub fn display_to_mock(msg: &DisplayMessage) -> mock::Message {
                 duration_ms,
                 waveform: wf,
                 transcription: tr,
+                caption,
             } => {
                 media_attachment_id = Some(attachment_id.to_string());
                 media_decryption_key = Some(b64.encode(decryption_key));
                 media_mime = Some("audio/webm;codecs=opus".to_string());
                 (
                     "voice".to_string(),
-                    String::new(),
+                    caption.clone().unwrap_or_default(),
                     Some(*duration_ms / 1000),
                     wf.iter().map(|&b| f64::from(b) / 255.0).collect(),
                     tr.clone(),
@@ -43,12 +44,15 @@ pub fn display_to_mock(msg: &DisplayMessage) -> mock::Message {
                 attachment_id,
                 decryption_key,
                 mime,
+                caption,
                 ..
             } => {
                 media_attachment_id = Some(attachment_id.to_string());
                 media_decryption_key = Some(b64.encode(decryption_key));
                 media_mime = Some(mime.clone());
-                ("image".to_string(), String::new(), None, vec![], None, None, None)
+                // The caption rides along as the bubble's text so the media and
+                // its caption render as one message.
+                ("image".to_string(), caption.clone().unwrap_or_default(), None, vec![], None, None, None)
             }
             MessageBody::File {
                 attachment_id,
@@ -56,6 +60,7 @@ pub fn display_to_mock(msg: &DisplayMessage) -> mock::Message {
                 mime,
                 name,
                 size,
+                caption,
             } => {
                 media_attachment_id = Some(attachment_id.to_string());
                 media_decryption_key = Some(b64.encode(decryption_key));
@@ -70,7 +75,7 @@ pub fn display_to_mock(msg: &DisplayMessage) -> mock::Message {
                 };
                 (
                     kind.to_string(),
-                    String::new(),
+                    caption.clone().unwrap_or_default(),
                     None,
                     vec![],
                     None,

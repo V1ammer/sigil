@@ -37,6 +37,9 @@ pub struct AttachmentPayload {
     pub size: u64,
     /// Whether the user picked an image (kind hint for the envelope).
     pub is_image: bool,
+    /// Caption typed in the composer alongside the attachment, sent as one
+    /// message so the text renders under the media (not as a separate bubble).
+    pub caption: Option<String>,
 }
 
 /// A picked attachment held in the composer until the user presses send.
@@ -282,6 +285,7 @@ pub fn InputBar(
                     name,
                     size,
                     is_image,
+                    caption: None,
                 });
             });
         }
@@ -338,6 +342,7 @@ pub fn InputBar(
                             name,
                             size,
                             is_image: true,
+                            caption: None,
                         });
                     }
                 });
@@ -398,16 +403,19 @@ pub fn InputBar(
     let emit_stop_for_send = emit_typing_stop.clone();
     let emit_stop_for_keydown = emit_typing_stop.clone();
 
-    // Send the chat's staged attachment (if any), then clear it.
-    let send_staged: Arc<dyn Fn() + Send + Sync> = {
+    // Send the chat's staged attachment (if any) with an optional caption, then
+    // clear it. The caption rides on the same message so it renders under the
+    // media instead of as a separate text bubble.
+    let send_staged: Arc<dyn Fn(Option<String>) + Send + Sync> = {
         let on_send_attachment = on_send_attachment_arc.clone();
         let clear_staged = clear_staged.clone();
-        Arc::new(move || {
+        Arc::new(move |caption: Option<String>| {
             let payload = match (staged, group_id) {
                 (Some(s), Some(g)) => s.with_untracked(|m| m.get(&g).map(|st| st.payload.clone())),
                 _ => None,
             };
-            if let Some(payload) = payload {
+            if let Some(mut payload) = payload {
+                payload.caption = caption;
                 if let Some(f) = on_send_attachment.as_ref() {
                     f(payload);
                 }
@@ -425,16 +433,21 @@ pub fn InputBar(
     let clear_staged_for_preview = clear_staged.clone();
 
     let handle_send = move |()| {
-        // Staged attachment goes first, then any typed text/caption.
-        send_staged_for_send();
         let msg = text.get().trim().to_string();
-        if !msg.is_empty() {
+        let caption = (!msg.is_empty()).then(|| msg.clone());
+        if has_staged() {
+            // Attachment + typed text travel as ONE message (text becomes the
+            // media caption), so they render together rather than as two bubbles.
+            send_staged_for_send(caption);
+        } else if !msg.is_empty() {
             if let Some(ref f) = on_send_arc {
                 f(msg);
             }
+        }
+        // Reset the composer once (covers both the caption and plain-text paths).
+        if !text.get().is_empty() {
             text.set(String::new());
             clear_draft();
-            // Clear textarea value via node_ref
             if let Some(el) = textarea_ref.get() {
                 let textarea: &web_sys::HtmlTextAreaElement = el.unchecked_ref();
                 textarea.set_value("");
@@ -454,11 +467,15 @@ pub fn InputBar(
                 return;
             }
             ev.prevent_default();
-            send_staged_for_keydown();
-            if !msg.is_empty() {
+            let caption = (!msg.is_empty()).then(|| msg.clone());
+            if has_staged() {
+                send_staged_for_keydown(caption);
+            } else if !msg.is_empty() {
                 if let Some(ref f) = on_send_for_keydown {
                     f(msg);
                 }
+            }
+            if !text.get().is_empty() {
                 text.set(String::new());
                 clear_draft();
                 if let Some(el) = textarea_ref.get() {

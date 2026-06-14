@@ -66,6 +66,7 @@ pub async fn poll_shared(share: ShareState) -> usize {
                 name: it.name.clone(),
                 size,
                 is_image,
+                caption: None,
             });
         });
         added += 1;

@@ -72,6 +72,9 @@ pub enum AppMessageBody {
         duration_ms: u32,
         /// Waveform data.
         waveform: Vec<u8>,
+        /// Optional caption typed alongside the attachment.
+        #[serde(default)]
+        caption: Option<String>,
     },
     /// File attachment.
     File {
@@ -85,6 +88,9 @@ pub enum AppMessageBody {
         filename: String,
         /// File size.
         size: u64,
+        /// Optional caption typed alongside the attachment.
+        #[serde(default)]
+        caption: Option<String>,
     },
     /// Image attachment.
     Image {
@@ -100,6 +106,9 @@ pub enum AppMessageBody {
         height: u32,
         /// Thumbnail data.
         thumb: Option<Vec<u8>>,
+        /// Optional caption typed alongside the attachment.
+        #[serde(default)]
+        caption: Option<String>,
     },
     /// System event.
     SystemNote {

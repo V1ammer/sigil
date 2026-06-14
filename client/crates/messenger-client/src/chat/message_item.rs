@@ -557,7 +557,11 @@ pub fn MessageItem(
 
 /// Render message content based on type.
 fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn() + Send + Sync + 'static>>>, l: Language) -> AnyView {
-    match msg.msg_type.as_str() {
+    // For media messages `content` carries the optional caption, rendered under
+    // the media so the two read as one message.
+    let caption = msg.content.clone();
+    let is_media = matches!(msg.msg_type.as_str(), "voice" | "image" | "video" | "audio" | "file");
+    let media = match msg.msg_type.as_str() {
         "voice" => {
             // Duration arrives in seconds via the bridge; the player uses ms.
             let duration_ms = msg.duration.unwrap_or(0) * 1000;
@@ -911,6 +915,17 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                 <p class="whitespace-pre-wrap break-words">{msg.content.clone()}</p>
             }.into_any()
         }
+    };
+    // Append the caption under the media as part of the same bubble.
+    if is_media && !caption.trim().is_empty() {
+        view! {
+            <div>
+                {media}
+                <p class="whitespace-pre-wrap break-words mt-1.5">{caption}</p>
+            </div>
+        }.into_any()
+    } else {
+        media
     }
 }
 
