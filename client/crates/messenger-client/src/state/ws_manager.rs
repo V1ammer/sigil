@@ -183,6 +183,7 @@ impl WsManager {
                             });
                             if is_incoming_content {
                                 crate::sound::play_message_sound();
+                                crate::sound::vibrate_message();
                             }
                         });
                     }

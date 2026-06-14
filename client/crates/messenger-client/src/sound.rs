@@ -26,6 +26,24 @@ fn in_do_not_disturb() -> bool {
     setting_str("ms_settings_quiet_hours_enabled").as_deref() == Some("true")
 }
 
+/// Vibrate on an incoming message, respecting the user's settings.
+///
+/// Gated by the master notifications toggle, the vibration toggle (off by
+/// default), and Do Not Disturb. The Vibration API is a no-op on devices
+/// without a vibration motor (most desktops), so this silently does nothing
+/// there — it's effective on Android/mobile.
+pub fn vibrate_message() {
+    if !setting_on("ms_settings_notifications_enabled")
+        || setting_str("ms_settings_notification_vibration").as_deref() != Some("true")
+        || in_do_not_disturb()
+    {
+        return;
+    }
+    if let Some(nav) = web_sys::window().map(|w| w.navigator()) {
+        let _ = nav.vibrate_with_duration(200);
+    }
+}
+
 thread_local! {
     static AUDIO: RefCell<Option<web_sys::HtmlAudioElement>> = const { RefCell::new(None) };
     static UNLOCKED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
