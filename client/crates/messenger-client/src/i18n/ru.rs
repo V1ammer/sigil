@@ -150,7 +150,8 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("chat.create_direct.title", "Новый диалог");
     m.insert("chat.typing", "печатает…");
     m.insert("chat.forwardTitle", "Переслать в…");
-    m.insert("chat.forwardEmpty", "Нет других чатов");
+    m.insert("chat.forwardSearch", "Поиск людей…");
+    m.insert("chat.forwardEmpty", "Никого не найдено");
     m.insert("chat.forwardSent", "Сообщение переслано");
     m.insert("chat.forwardFailed", "Не удалось переслать");
     m.insert("share.pickChat", "Выберите чат, чтобы отправить файл");

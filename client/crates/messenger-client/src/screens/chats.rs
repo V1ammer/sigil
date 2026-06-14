@@ -304,12 +304,18 @@ pub fn ChatsScreen() -> impl IntoView {
     let notifications = use_context::<NotificationsState>().expect("NotificationsState must be provided");
     let forward_source: RwSignal<Option<(Uuid, Uuid)>> = RwSignal::new(None);
     let show_forward = RwSignal::new(false);
+    let forward_query = RwSignal::new(String::new());
+    // Peer-avatar lookups for the forward picker (same source the sidebar uses).
+    let forward_users = use_context::<crate::state::users::UsersState>();
+    let forward_peer_by_group = forward_users.as_ref().map(|u| u.peer_by_group);
+    let forward_avatar_by_id = forward_users.as_ref().map(|u| u.avatar_by_id);
     let on_forward_list = Arc::new({
         let sel = sel.clone();
         move |msg_id: &str| {
             let group_id = sel.get_untracked();
             if let (Some(gid), Ok(id)) = (group_id, uuid::Uuid::parse_str(msg_id)) {
                 forward_source.set(Some((gid, id)));
+                forward_query.set(String::new());
                 show_forward.set(true);
             }
         }
@@ -726,31 +732,52 @@ pub fn ChatsScreen() -> impl IntoView {
                 <DialogHeader>
                     <DialogTitle>{t!("chat.forwardTitle")}</DialogTitle>
                 </DialogHeader>
+                // People search
+                <input
+                    class="mb-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    placeholder=t!("chat.forwardSearch")
+                    prop:value=move || forward_query.get()
+                    on:input=move |ev| forward_query.set(event_target_value(&ev))
+                />
                 <div class="max-h-80 overflow-y-auto py-2 space-y-1">
                     {move || {
                         let src_group = forward_source.get().map(|(g, _)| g);
+                        let query = forward_query.get().trim().to_lowercase();
                         let chats = chats_signal.get();
                         let ok_msg = t!("chat.forwardSent");
                         let err_msg = t!("chat.forwardFailed");
-                        if chats.iter().all(|c| src_group == Some(c.group_id)) {
+                        let rows: Vec<_> = chats.iter()
+                            .filter(|c| src_group.map(|sg| c.group_id != sg).unwrap_or(true))
+                            .map(|c| (c.group_id, display_name_for(&chats, c.group_id)))
+                            .filter(|(_, name)| query.is_empty() || name.to_lowercase().contains(&query))
+                            .collect();
+                        if rows.is_empty() {
                             return view! {
                                 <p class="px-3 py-4 text-center text-sm text-muted-foreground">
                                     {t!("chat.forwardEmpty")}
                                 </p>
                             }.into_any();
                         }
-                        chats.iter()
-                            .filter(|c| src_group.map(|sg| c.group_id != sg).unwrap_or(true))
-                            .map(|c| {
-                                let gid = c.group_id;
-                                let name = display_name_for(&chats, gid);
+                        rows.into_iter()
+                            .map(|(gid, name)| {
                                 let svc = forward_msg_svc.get_value();
                                 let notifications = forward_notifications.get_value();
                                 let ok_msg = ok_msg.clone();
                                 let err_msg = err_msg.clone();
+                                let initials = name
+                                    .split_whitespace()
+                                    .filter_map(|w| w.chars().next())
+                                    .take(2)
+                                    .collect::<String>()
+                                    .to_uppercase();
+                                // Peer avatar (direct chats): pulled from the same
+                                // UsersState the sidebar rows use.
+                                let avatar_url = forward_peer_by_group
+                                    .and_then(|p| p.get().get(&gid).copied())
+                                    .and_then(|peer| forward_avatar_by_id.and_then(|a| a.get().get(&peer).cloned()));
                                 view! {
                                     <button
-                                        class="flex w-full items-center rounded-md px-3 py-2 text-left text-sm text-foreground hover:bg-accent"
+                                        class="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm text-foreground hover:bg-accent"
                                         on:click=move |_| {
                                             let ok_msg = ok_msg.clone();
                                             let err_msg = err_msg.clone();
@@ -768,7 +795,15 @@ pub fn ChatsScreen() -> impl IntoView {
                                             show_forward.set(false);
                                         }
                                     >
-                                        {name}
+                                        <div class="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-xs font-semibold text-muted-foreground">
+                                            {match avatar_url {
+                                                Some(url) => view! {
+                                                    <img class="h-full w-full object-cover" src=url alt=""/>
+                                                }.into_any(),
+                                                None => initials.into_any(),
+                                            }}
+                                        </div>
+                                        <span class="truncate">{name}</span>
                                     </button>
                                 }
                             })
