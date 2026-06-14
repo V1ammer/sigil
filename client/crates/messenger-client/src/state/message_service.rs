@@ -61,6 +61,13 @@ enum Converted {
     },
     /// A delete of an earlier message: mark it deleted.
     Delete { target: Uuid },
+    /// A reaction (add/remove an emoji) on an earlier message.
+    Reaction {
+        target: Uuid,
+        emoji: String,
+        add: bool,
+        sender: Uuid,
+    },
     /// A consumed side-channel (avatar/read-receipt) — nothing to show.
     Drop,
 }
@@ -281,6 +288,68 @@ fn own_deletes_record(id: Uuid) {
     let mut set = own_deletes_load();
     if set.insert(id) {
         own_deletes_store(&set);
+    }
+}
+
+// Reactions are E2E control messages, but the sender can't self-decrypt their
+// own Reaction envelope — so own reactions are re-applied from this cache on
+// reload (message_id -> emojis this device reacted with).
+const OWN_REACTIONS_KEY: &str = "messenger_own_reactions";
+// Message ids of our own Reaction envelopes: undecryptable to us, so we drop
+// them from the timeline instead of rendering ciphertext garbage.
+const OWN_REACTION_MSGS_KEY: &str = "messenger_own_reaction_msgs";
+
+fn own_reactions_load() -> std::collections::HashMap<Uuid, std::collections::HashSet<String>> {
+    local_storage()
+        .and_then(|s| s.get_item(OWN_REACTIONS_KEY).ok().flatten())
+        .and_then(|j| serde_json::from_str::<Vec<(String, Vec<String>)>>(&j).ok())
+        .map(|v| {
+            v.into_iter()
+                .filter_map(|(k, e)| k.parse::<Uuid>().ok().map(|id| (id, e.into_iter().collect())))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn own_reactions_set(msg_id: Uuid, emoji: &str, add: bool) {
+    let mut map = own_reactions_load();
+    let entry = map.entry(msg_id).or_default();
+    if add {
+        entry.insert(emoji.to_string());
+    } else {
+        entry.remove(emoji);
+    }
+    if entry.is_empty() {
+        map.remove(&msg_id);
+    }
+    if let Some(s) = local_storage() {
+        let v: Vec<(String, Vec<String>)> = map
+            .iter()
+            .map(|(k, e)| (k.to_string(), e.iter().cloned().collect()))
+            .collect();
+        if let Ok(j) = serde_json::to_string(&v) {
+            let _ = s.set_item(OWN_REACTIONS_KEY, &j);
+        }
+    }
+}
+
+fn own_reaction_msgs_load() -> std::collections::HashSet<Uuid> {
+    local_storage()
+        .and_then(|s| s.get_item(OWN_REACTION_MSGS_KEY).ok().flatten())
+        .and_then(|j| serde_json::from_str::<Vec<String>>(&j).ok())
+        .map(|v| v.into_iter().filter_map(|k| k.parse::<Uuid>().ok()).collect())
+        .unwrap_or_default()
+}
+
+fn own_reaction_msgs_record(id: Uuid) {
+    let mut set = own_reaction_msgs_load();
+    if set.insert(id) {
+        if let Some(s) = local_storage() {
+            let v: Vec<String> = set.iter().map(ToString::to_string).collect();
+            if let Ok(j) = serde_json::to_string(&v) {
+                let _ = s.set_item(OWN_REACTION_MSGS_KEY, &j);
+            }
+        }
     }
 }
 
@@ -1591,7 +1660,7 @@ impl MessageService {
     /// Toggle a reaction on a message.
     pub async fn toggle_reaction(
         &self,
-        _group_id: Uuid,
+        group_id: Uuid,
         message_id: Uuid,
         emoji: &str,
     ) -> bool {
@@ -1600,7 +1669,7 @@ impl MessageService {
             None => return false,
         };
 
-        // Check if we already have this reaction
+        // Do we already have this reaction?
         let has_own = self
             .messages
             .by_group
@@ -1610,60 +1679,85 @@ impl MessageService {
             .find(|m| m.id == message_id)
             .map_or(false, |m| m.reactions.iter().any(|r| r.emoji == emoji && r.has_own));
 
-        // Compute blind index — use BLAKE3 of (message_id, emoji)
-        let blind_index = blake3::hash(format!("{}:{}", message_id, emoji).as_bytes())
-            .as_bytes()
-            .to_vec();
-
-        // Optimistic update — toggle locally immediately
+        // Optimistic toggle — reflect immediately. When a peer also reacted with
+        // the same emoji, decrement (don't drop the whole reaction).
         let emoji_owned = emoji.to_string();
         self.messages.by_group.update(|map| {
             for msgs in map.values_mut() {
                 if let Some(msg) = msgs.iter_mut().find(|m| m.id == message_id) {
                     if has_own {
-                        msg.reactions.retain(|r| r.emoji != emoji_owned);
-                    } else {
-                        if let Some(existing) = msg.reactions.iter_mut().find(|r| r.emoji == emoji_owned) {
-                            existing.count += 1;
-                            existing.has_own = true;
-                        } else {
-                            msg.reactions.push(DisplayReaction {
-                                emoji: emoji_owned.clone(),
-                                count: 1,
-                                has_own: true,
-                            });
+                        if let Some(existing) =
+                            msg.reactions.iter_mut().find(|r| r.emoji == emoji_owned)
+                        {
+                            existing.count = existing.count.saturating_sub(1);
+                            existing.has_own = false;
                         }
+                        msg.reactions.retain(|r| r.count > 0);
+                    } else if let Some(existing) =
+                        msg.reactions.iter_mut().find(|r| r.emoji == emoji_owned)
+                    {
+                        existing.count += 1;
+                        existing.has_own = true;
+                    } else {
+                        msg.reactions.push(DisplayReaction {
+                            emoji: emoji_owned.clone(),
+                            count: 1,
+                            has_own: true,
+                        });
                     }
                 }
             }
         });
 
-        // Call server
-        if has_own {
-            use messenger_proto::reactions::RemoveReactionRequest;
-            let req = RemoveReactionRequest {
-                message_id,
-                reaction_blind_index: blind_index,
-            };
-            match api.remove_reaction(message_id, &req).await {
-                Ok(_) => true,
-                Err(e) => {
-                    tracing::warn!(%message_id, error = %e, "failed to remove reaction");
-                    false
-                }
-            }
+        // Persist our own reaction (the sender can't self-decrypt the Reaction
+        // envelope on reload), and broadcast it E2E to the group via MLS.
+        own_reactions_set(message_id, emoji, !has_own);
+
+        let action = if has_own {
+            messenger_core::mls::application::ReactionAction::Remove
         } else {
-            use messenger_proto::reactions::AddReactionRequest;
-            let req = AddReactionRequest {
-                message_id,
-                reaction_blind_index: blind_index,
-            };
-            match api.add_reaction(message_id, &req).await {
-                Ok(_) => true,
-                Err(e) => {
-                    tracing::warn!(%message_id, error = %e, "failed to add reaction");
-                    false
-                }
+            messenger_core::mls::application::ReactionAction::Add
+        };
+        let client_message_id = Uuid::now_v7();
+        let now = js_sys::Date::now() as i64 / 1000;
+        let envelope = ApplicationEnvelope {
+            client_message_id,
+            kind: AppMessageKind::Reaction,
+            body: AppMessageBody::Reaction {
+                target_message_id: message_id,
+                emoji: emoji.to_string(),
+                action,
+            },
+            reply_to_message_id: None,
+            thread_root_id: None,
+            created_at: now,
+            sender_display_name_override: current_display_name(),
+        };
+        let envelope_ct = match self.encrypt_envelope(group_id, &envelope).await {
+            Some(ct) => ct,
+            None => match rmp_serde::to_vec_named(&envelope) {
+                Ok(plain) => plain,
+                Err(_) => return false,
+            },
+        };
+        let req = PostMessageRequest {
+            expected_epoch: 0,
+            mls_ciphertext: envelope_ct,
+            parent_message_id: None,
+            reply_to_message_id: None,
+            thread_root_id: None,
+            client_message_id,
+        };
+        match api.post_message(group_id, &req).await {
+            Ok(resp) => {
+                // Our own Reaction envelope is undecryptable to us — remember it
+                // so the timeline drops it instead of showing garbage.
+                own_reaction_msgs_record(resp.message_id);
+                true
+            }
+            Err(e) => {
+                tracing::warn!(%message_id, error = %e, "failed to broadcast reaction");
+                false
             }
         }
     }
@@ -1757,6 +1851,9 @@ impl MessageService {
         // arrive in chronological order, so the last edit for an id wins.
         let mut edits: HashMap<Uuid, (String, i64)> = HashMap::new();
         let mut deletes: HashSet<Uuid> = HashSet::new();
+        // target message -> emoji -> set of users who currently react with it.
+        // Messages arrive chronologically, so add/remove apply in order.
+        let mut reactions: HashMap<Uuid, HashMap<String, HashSet<Uuid>>> = HashMap::new();
         for msg in stored {
             if msg.wire_format != "application" {
                 continue;
@@ -1769,6 +1866,14 @@ impl MessageService {
                 Converted::Delete { target } => {
                     deletes.insert(target);
                 }
+                Converted::Reaction { target, emoji, add, sender } => {
+                    let users = reactions.entry(target).or_default().entry(emoji).or_default();
+                    if add {
+                        users.insert(sender);
+                    } else {
+                        users.remove(&sender);
+                    }
+                }
                 Converted::Drop => {}
             }
         }
@@ -1776,8 +1881,52 @@ impl MessageService {
         // self-decrypt), so re-apply their cached body, our edits, and deletes.
         let own_msgs = own_msgs_load();
         let own_deletes = own_deletes_load();
+        // Our own Reaction envelopes are undecryptable to us — drop them rather
+        // than show ciphertext garbage. Own reactions come from the cache below.
+        let own_reaction_msgs = own_reaction_msgs_load();
+        if !own_reaction_msgs.is_empty() {
+            result.retain(|m| !own_reaction_msgs.contains(&m.id));
+        }
+        let own_reactions = own_reactions_load();
+        let me = current_user_id();
 
         for m in &mut result {
+            // Fold reactions (peers' from MLS + ours from the local cache) into
+            // this message.
+            let peer = reactions.get(&m.id);
+            let mine = own_reactions.get(&m.id);
+            if peer.is_some() || mine.is_some() {
+                let mut list: Vec<DisplayReaction> = Vec::new();
+                if let Some(emoji_map) = peer {
+                    for (emoji, users) in emoji_map {
+                        if users.is_empty() {
+                            continue;
+                        }
+                        let has_me = me.is_some_and(|me| users.contains(&me));
+                        let own_here = mine.is_some_and(|s| s.contains(emoji));
+                        // This device's own reaction isn't in the (undecryptable)
+                        // envelope set, so add it if the cache has it.
+                        let count = users.len() as u32 + u32::from(own_here && !has_me);
+                        list.push(DisplayReaction {
+                            emoji: emoji.clone(),
+                            count,
+                            has_own: has_me || own_here,
+                        });
+                    }
+                }
+                if let Some(s) = mine {
+                    for emoji in s {
+                        if !list.iter().any(|r| &r.emoji == emoji) {
+                            list.push(DisplayReaction {
+                                emoji: emoji.clone(),
+                                count: 1,
+                                has_own: true,
+                            });
+                        }
+                    }
+                }
+                m.reactions = list;
+            }
             // Own message body cache wins (image/file/video attachment data,
             // own text) — but an edit on top of it still applies below.
             if let Some((kind, body)) = own_msgs.get(&m.id) {
@@ -1881,6 +2030,25 @@ impl MessageService {
                     if let AppMessageBody::DeleteNotice { target_message_id } = envelope.body {
                         return Converted::Delete {
                             target: target_message_id,
+                        };
+                    }
+                    // Reaction: add/remove an emoji on an earlier message.
+                    // Consumed here and folded into that message's reaction list
+                    // by the caller, so it never shows as its own bubble.
+                    if let AppMessageBody::Reaction {
+                        target_message_id,
+                        ref emoji,
+                        ref action,
+                    } = envelope.body
+                    {
+                        return Converted::Reaction {
+                            target: target_message_id,
+                            emoji: emoji.clone(),
+                            add: matches!(
+                                action,
+                                messenger_core::mls::application::ReactionAction::Add
+                            ),
+                            sender: msg.sender_user_id,
                         };
                     }
                     let (k, b) = Self::envelope_to_display(&envelope);
