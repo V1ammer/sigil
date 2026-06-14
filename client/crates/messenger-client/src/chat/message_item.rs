@@ -642,7 +642,10 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
 
             view! {
                 <div class="block overflow-hidden rounded-lg -mx-1 -mt-1 mb-1">
-                    <div class="aspect-video max-h-64 w-full bg-black flex items-center justify-center">
+                    // Definite width so the bubble doesn't collapse to the play
+                    // icon: matches an image's max footprint (max-h-64 × 16:9 ≈
+                    // 455px), shrinking responsively via max-w-full.
+                    <div class="aspect-video max-h-64 w-[455px] max-w-full bg-black flex items-center justify-center">
                         {move || {
                             if !started.get() {
                                 let aid = attachment_id.clone();
