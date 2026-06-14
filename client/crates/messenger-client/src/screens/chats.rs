@@ -122,9 +122,22 @@ pub fn ChatsScreen() -> impl IntoView {
     // updates or the periodic (30s) sync rewrites the list. Without this, those
     // whole-list writes tore down the message list every 30s, resetting inline
     // video/audio playback and closing the image lightbox.
+    // Only the OPEN chat's *stable* identity drives the panel. We zero the
+    // volatile fields (last message + unread) that every incoming/outgoing
+    // message bumps — otherwise this memo would change on each message and
+    // rebuild the whole panel, including the composer, killing an in-progress
+    // voice recording. The header reads none of these.
     let open_chat: Memo<Option<StateChat>> = Memo::new(move |_| {
         let gid = selected.get()?;
-        chats_signal.with(|cs| cs.iter().find(|c| c.group_id == gid).cloned())
+        chats_signal.with(|cs| {
+            cs.iter().find(|c| c.group_id == gid).cloned().map(|mut c| {
+                c.last_message_preview = None;
+                c.last_message_kind = None;
+                c.last_message_at = None;
+                c.unread_count = 0;
+                c
+            })
+        })
     });
     // Per-chat composer drafts, created once so they outlive the re-renders
     // that rebuild the chat view (incoming messages bump the chat list).
@@ -420,7 +433,6 @@ pub fn ChatsScreen() -> impl IntoView {
                     .map(|c| c.display_name.clone())
                     .unwrap_or_else(|| group_id.to_string());
                 let msgs = messages_state_for_inner.for_group(group_id);
-                let is_loading = loading_messages.get();
                 let on_send = on_send_handler.clone();
 
                 // Wire chat-header actions to ChatsState mutators.
@@ -597,21 +609,32 @@ pub fn ChatsScreen() -> impl IntoView {
                         </AlertDialog>
 
                         {/* Messages */}
-                        {move || {
-                            if is_loading {
-                                view! {
-                                    <div class="flex-1 flex items-center justify-center">
-                                        <span class="h-8 w-8 block rounded-full border-2 border-primary border-t-transparent animate-spin"/>
-                                    </div>
-                                }.into_any()
-                            } else {
-                                let mut display_msgs = msgs.get();
-                                // Hide messages from blocked users (reactive: unblocking
-                                // re-shows them).
+                        {
+                            // The mock message list is a reactive signal; the
+                            // loading/empty swap below is gated on bool memos, NOT
+                            // the message vec — so once the chat is non-empty the
+                            // <MessageList> is created once and stays mounted, and
+                            // a new/incoming message updates it in place (keyed
+                            // list) instead of rebuilding it and resetting a
+                            // playing video/voice.
+                            let mock_signal = Signal::derive(move || {
+                                let mut dm = msgs.get();
                                 if let Some(bs) = block_state {
-                                    display_msgs.retain(|m| !bs.is_blocked(m.sender_user_id));
+                                    dm.retain(|m| !bs.is_blocked(m.sender_user_id));
                                 }
-                                if display_msgs.is_empty() {
+                                display_vec_to_mock(&dm, &own_user_id())
+                            });
+                            // Memo (deduped bool) so the swap below only re-runs when
+                            // emptiness flips — keeping MessageList mounted otherwise.
+                            let is_empty = Memo::new(move |_| mock_signal.get().is_empty());
+                            move || {
+                                if loading_messages.get() {
+                                    view! {
+                                        <div class="flex-1 flex items-center justify-center">
+                                            <span class="h-8 w-8 block rounded-full border-2 border-primary border-t-transparent animate-spin"/>
+                                        </div>
+                                    }.into_any()
+                                } else if is_empty.get() {
                                     view! {
                                         <div class="flex-1 flex flex-col items-center justify-center p-8 text-center">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="text-muted-foreground mb-4">
@@ -621,11 +644,10 @@ pub fn ChatsScreen() -> impl IntoView {
                                         </div>
                                     }.into_any()
                                 } else {
-                                    let mock_msgs = display_vec_to_mock(&display_msgs, &own_user_id());
                                     view! {
                                         <MessageList
                                             lang=locale
-                                            messages=mock_msgs
+                                            messages=mock_signal
                                             is_mobile=is_mobile
                                             on_reply=Box::new({
                                                 let r = on_reply_list.clone();
@@ -661,7 +683,7 @@ pub fn ChatsScreen() -> impl IntoView {
                                     }.into_any()
                                 }
                             }
-                        }}
+                        }
 
                         {/* Peer typing indicator — reactive to TypingState */}
                         {move || {
