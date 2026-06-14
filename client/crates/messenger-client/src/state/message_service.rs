@@ -463,6 +463,27 @@ impl MessageService {
     /// (preview + unread + reordering) without opening the conversation.
     pub async fn refresh_incoming(&self, group_id: Uuid) {
         let Some(api) = build_api_client() else { return };
+        // Cheap incremental probe: ask only for messages newer than the newest
+        // one we already hold. The background sync runs this for every chat on
+        // a timer, so on an idle chat (the common case) this returns nothing and
+        // we skip re-pulling + MLS-decrypting the entire history. New activity
+        // (including edit/delete control messages, which are new rows with newer
+        // ids) trips the probe and falls through to the full reconcile below —
+        // needed so an edit/delete targeting an older message still applies.
+        let last_id = self
+            .messages
+            .by_group
+            .with_untracked(|map| map.get(&group_id).and_then(|l| l.iter().map(|m| m.id).max()));
+        if last_id.is_some() {
+            match api.list_messages(group_id, last_id, Some(1)).await {
+                Ok(r) if r.messages.is_empty() => return, // nothing new — done
+                Ok(_) => {}                               // new activity → reconcile
+                Err(e) => {
+                    tracing::warn!(%group_id, error = %e, "refresh_incoming: probe failed");
+                    return;
+                }
+            }
+        }
         let resp = match api.list_messages(group_id, None, None).await {
             Ok(r) => r,
             Err(e) => {

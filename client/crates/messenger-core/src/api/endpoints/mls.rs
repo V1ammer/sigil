@@ -96,7 +96,9 @@ impl ApiClient {
         let mut path = format!("/v1/groups/{}/messages", group_id);
         let mut qs = Vec::new();
         if let Some(cursor) = since {
-            qs.push(format!("since={}", cursor));
+            // Server reads `since_id` (PullMessagesQuery); `since` is silently
+            // ignored, which is why incremental pulls never actually worked.
+            qs.push(format!("since_id={}", cursor));
         }
         if let Some(l) = limit {
             qs.push(format!("limit={}", l));
