@@ -12,7 +12,8 @@ use crate::components::alert_dialog::{
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogDescription, AlertDialogFooter,
     AlertDialogHeader, AlertDialogTitle,
 };
-use crate::chat::input_bar::{InputBar, InputPreview};
+use crate::chat::input_bar::{stage_into, AttachmentPayload, InputBar, InputPreview};
+use wasm_bindgen::JsCast;
 use crate::chat::message_bridge::{display_to_mock, display_vec_to_mock};
 use crate::chat::message_list::MessageList;
 use crate::chat::thread_panel::ThreadPanel;
@@ -442,14 +443,78 @@ pub fn ChatsScreen() -> impl IntoView {
                 // top-level `header_avatar` signal — kept out of this closure so
                 // an avatar landing doesn't rebuild the whole chat panel.
 
+                // Desktop drag-and-drop: drop a file from the OS onto the chat to
+                // stage it in the composer (waiting for caption/send) instead of
+                // the browser navigating to/opening the file. A depth counter on
+                // dragenter/dragleave keeps the overlay from flickering as the
+                // cursor crosses child elements.
+                let drag_depth = RwSignal::new(0i32);
+                let on_drag_enter = move |ev: leptos::ev::DragEvent| {
+                    ev.prevent_default();
+                    drag_depth.update(|d| *d += 1);
+                };
+                let on_drag_over = move |ev: leptos::ev::DragEvent| {
+                    // Required every tick, otherwise `drop` never fires.
+                    ev.prevent_default();
+                };
+                let on_drag_leave = move |_ev: leptos::ev::DragEvent| {
+                    drag_depth.update(|d| *d = (*d - 1).max(0));
+                };
+                let on_drop = move |ev: leptos::ev::DragEvent| {
+                    ev.prevent_default();
+                    drag_depth.set(0);
+                    let Some(dt) = ev.data_transfer() else { return };
+                    let Some(files) = dt.files() else { return };
+                    // One staged attachment per chat — take the first dropped file.
+                    let Some(file) = files.get(0) else { return };
+                    let name = file.name();
+                    let size = file.size() as u64;
+                    let mime = file.type_();
+                    let is_image = mime.starts_with("image/");
+                    spawn_local(async move {
+                        let buf = match wasm_bindgen_futures::JsFuture::from(file.array_buffer()).await {
+                            Ok(v) => v,
+                            Err(e) => {
+                                web_sys::console::error_1(&format!("drop read: {e:?}").into());
+                                return;
+                            }
+                        };
+                        let arr_buf: js_sys::ArrayBuffer = buf.unchecked_into();
+                        let bytes = js_sys::Uint8Array::new(&arr_buf).to_vec();
+                        stage_into(staged, group_id, AttachmentPayload {
+                            bytes,
+                            mime: if mime.is_empty() { "application/octet-stream".into() } else { mime },
+                            name,
+                            size,
+                            is_image,
+                            caption: None,
+                        });
+                    });
+                };
+
                 view! {
-                    <div class=move || {
-                        if selected.get().is_some() {
-                            "flex flex-1 flex-col w-full min-w-0 min-h-0"
-                        } else {
-                            "hidden md:flex flex-1 flex-col"
+                    <div
+                        class=move || {
+                            if selected.get().is_some() {
+                                "relative flex flex-1 flex-col w-full min-w-0 min-h-0"
+                            } else {
+                                "relative hidden md:flex flex-1 flex-col"
+                            }
                         }
-                    }>
+                        on:dragenter=on_drag_enter
+                        on:dragover=on_drag_over
+                        on:dragleave=on_drag_leave
+                        on:drop=on_drop
+                    >
+                        // Drop hint overlay (pointer-events-none so the drop still
+                        // lands on the panel below).
+                        {move || (drag_depth.get() > 0).then(|| view! {
+                            <div class="pointer-events-none absolute inset-2 z-30 flex items-center justify-center rounded-xl border-2 border-dashed border-primary bg-primary/10">
+                                <span class="rounded-md bg-background/90 px-4 py-2 text-sm font-medium text-foreground shadow">
+                                    {t!("chat.dropToAttach")}
+                                </span>
+                            </div>
+                        })}
                         <ChatHeader
                             lang=locale
                             chat=chat_for_header

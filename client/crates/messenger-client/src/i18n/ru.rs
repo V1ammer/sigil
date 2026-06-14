@@ -149,6 +149,7 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     // Direct chat creation
     m.insert("chat.create_direct.title", "Новый диалог");
     m.insert("chat.typing", "печатает…");
+    m.insert("chat.dropToAttach", "Отпустите файл, чтобы прикрепить");
     m.insert("chat.forwardTitle", "Переслать в…");
     m.insert("chat.forwardSearch", "Поиск людей…");
     m.insert("chat.forwardEmpty", "Никого не найдено");
