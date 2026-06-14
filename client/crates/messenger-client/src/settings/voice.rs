@@ -11,8 +11,8 @@ use crate::state::notifications::ToastKind;
 use crate::t;
 use crate::tauri_bridge::{
     is_tauri_context, transcription_delete_model, transcription_download_model,
-    transcription_get_active, transcription_list_downloaded, transcription_list_models,
-    transcription_set_active, WhisperModelInfo,
+    transcription_download_progress, transcription_get_active, transcription_list_downloaded,
+    transcription_list_models, transcription_set_active, WhisperModelInfo,
 };
 
 #[must_use]
@@ -24,6 +24,8 @@ pub fn VoiceSettings() -> impl IntoView {
     let downloaded: RwSignal<Vec<String>> = RwSignal::new(Vec::new());
     let active: RwSignal<Option<String>> = RwSignal::new(None);
     let downloading: RwSignal<Option<String>> = RwSignal::new(None);
+    // Bytes (downloaded, total) for the in-flight download, polled natively.
+    let progress: RwSignal<Option<(u64, u64)>> = RwSignal::new(None);
     let in_tauri = is_tauri_context();
 
     if in_tauri {
@@ -94,6 +96,21 @@ pub fn VoiceSettings() -> impl IntoView {
                         let on_download = move |_| {
                             let mid = id_for_dl.clone();
                             downloading.set(Some(mid.clone()));
+                            progress.set(None);
+                            // Poll native download progress while this model is downloading.
+                            let mid_poll = mid.clone();
+                            spawn_local(async move {
+                                loop {
+                                    gloo_timers::future::TimeoutFuture::new(300).await;
+                                    if downloading.get_untracked().as_deref() != Some(&mid_poll) {
+                                        break;
+                                    }
+                                    if let Some(p) = transcription_download_progress().await {
+                                        progress.set(Some((p.downloaded_bytes, p.total_bytes)));
+                                    }
+                                }
+                                progress.set(None);
+                            });
                             let notif = notifications_dl.clone();
                             spawn_local(async move {
                                 let res = transcription_download_model(&mid).await;
@@ -156,7 +173,30 @@ pub fn VoiceSettings() -> impl IntoView {
                                 <div class="flex items-center gap-2 shrink-0">
                                     {if is_downloading {
                                         view! {
-                                            <span class="text-xs text-muted-foreground">{t!("settings.voice.downloading")}</span>
+                                            <div class="flex flex-col items-end gap-1 min-w-[120px]">
+                                                <span class="text-xs text-muted-foreground tabular-nums">
+                                                    {move || match progress.get() {
+                                                        Some((d, t)) if t > 0 => format!(
+                                                            "{} / {} MB · {}%",
+                                                            d / 1_048_576, t / 1_048_576, d * 100 / t,
+                                                        ),
+                                                        Some((d, _)) => format!("{} MB", d / 1_048_576),
+                                                        None => t!("settings.voice.downloading"),
+                                                    }}
+                                                </span>
+                                                <div class="h-1.5 w-28 overflow-hidden rounded-full bg-muted">
+                                                    <div
+                                                        class="h-full bg-primary transition-all"
+                                                        style=move || {
+                                                            let pct = match progress.get() {
+                                                                Some((d, t)) if t > 0 => d * 100 / t,
+                                                                _ => 0,
+                                                            };
+                                                            format!("width: {pct}%")
+                                                        }
+                                                    />
+                                                </div>
+                                            </div>
                                         }.into_any()
                                     } else if is_downloaded {
                                         let label = if is_active {

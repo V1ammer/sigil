@@ -14,6 +14,7 @@ pub fn run() {
             transcription::transcription_list_models,
             transcription::transcription_list_downloaded,
             transcription::transcription_download_model,
+            transcription::transcription_download_progress,
             transcription::transcription_delete_model,
             transcription::transcription_get_active,
             transcription::transcription_set_active,

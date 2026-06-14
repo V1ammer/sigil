@@ -22,6 +22,17 @@ pub struct ProgressEvent {
     pub total_bytes: u64,
 }
 
+/// Latest progress of the in-flight model download, so the WASM UI can poll it
+/// (the WebView can't subscribe to native Tauri events without fragile callback
+/// plumbing). `None` means no download is running.
+static DOWNLOAD_PROGRESS: Mutex<Option<ProgressEvent>> = Mutex::new(None);
+
+/// Current download progress, polled by the settings UI.
+#[tauri::command]
+pub fn transcription_download_progress() -> Option<ProgressEvent> {
+    DOWNLOAD_PROGRESS.lock().ok().and_then(|g| g.clone())
+}
+
 #[tauri::command]
 pub fn transcription_list_models() -> Vec<WhisperModel> {
     available_models().to_vec()
@@ -42,17 +53,23 @@ pub async fn transcription_download_model<R: Runtime>(
     let dest = model_path(&model_id);
     let id_for_emit = model_id.clone();
     let app_emit = app.clone();
+    *DOWNLOAD_PROGRESS.lock().unwrap() = Some(ProgressEvent {
+        model_id: model_id.clone(),
+        downloaded_bytes: 0,
+        total_bytes: 0,
+    });
     let result = download_model(model, &dest, move |p: DownloadProgress| {
-        let _ = app_emit.emit(
-            "transcription://progress",
-            ProgressEvent {
-                model_id: id_for_emit.clone(),
-                downloaded_bytes: p.downloaded_bytes,
-                total_bytes: p.total_bytes,
-            },
-        );
+        let ev = ProgressEvent {
+            model_id: id_for_emit.clone(),
+            downloaded_bytes: p.downloaded_bytes,
+            total_bytes: p.total_bytes,
+        };
+        // Stored for polling and emitted for any future event listener.
+        *DOWNLOAD_PROGRESS.lock().unwrap() = Some(ev.clone());
+        let _ = app_emit.emit("transcription://progress", ev);
     })
     .await;
+    *DOWNLOAD_PROGRESS.lock().unwrap() = None;
     match result {
         Ok(()) => Ok(dest.to_string_lossy().into_owned()),
         Err(TranscriptionError::AlreadyExists) => Ok(dest.to_string_lossy().into_owned()),

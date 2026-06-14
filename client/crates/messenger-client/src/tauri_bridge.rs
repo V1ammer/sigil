@@ -331,6 +331,25 @@ pub async fn transcription_list_downloaded() -> Result<Vec<String>, String> {
     serde_wasm_bindgen::from_value(result).map_err(|e| e.to_string())
 }
 
+/// Download progress of the in-flight model: `(downloaded_bytes, total_bytes)`.
+/// `None` when no download is running or not in a Tauri context.
+#[derive(Debug, Clone, Deserialize)]
+pub struct DownloadProgress {
+    pub downloaded_bytes: u64,
+    pub total_bytes: u64,
+}
+
+/// Poll the current model-download progress (the settings UI calls this on a
+/// short interval while a download is running).
+pub async fn transcription_download_progress() -> Option<DownloadProgress> {
+    if !is_tauri_context() {
+        return None;
+    }
+    let args = js_sys::Object::new();
+    let result = tauri_invoke("transcription_download_progress", &args).await.ok()?;
+    Some(serde_wasm_bindgen::from_value(result).ok()?)
+}
+
 /// Trigger a model download. Progress is emitted as `transcription://progress` events.
 pub async fn transcription_download_model(model_id: &str) -> Result<String, String> {
     if !is_tauri_context() {
