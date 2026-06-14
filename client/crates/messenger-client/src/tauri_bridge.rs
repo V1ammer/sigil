@@ -444,3 +444,26 @@ async fn tauri_invoke(cmd: &str, args: &js_sys::Object) -> Result<JsValue, Strin
         .await
         .map_err(|e| format!("invoke rejected: {:?}", e))
 }
+
+/// One attachment shared into the app via the Android "Share" sheet.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SharedAttachment {
+    pub name: String,
+    pub mime: String,
+    /// File bytes, base64 (standard) encoded.
+    pub b64: String,
+}
+
+/// Drain the Android "share" inbox: files the user shared into the app from
+/// the gallery or another app. Each call returns the pending items and clears
+/// them natively. Empty on non-Tauri / non-Android builds.
+pub async fn take_shared_attachments() -> Vec<SharedAttachment> {
+    if !is_tauri_context() {
+        return Vec::new();
+    }
+    let args = js_sys::Object::new();
+    match tauri_invoke("take_shared_attachments", &args).await {
+        Ok(result) => serde_wasm_bindgen::from_value(result).unwrap_or_default(),
+        Err(_) => Vec::new(),
+    }
+}

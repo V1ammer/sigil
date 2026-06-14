@@ -97,6 +97,42 @@ pub fn App() -> impl IntoView {
     // isn't blocked by the browser autoplay policy.
     crate::sound::arm_audio_unlock();
 
+    // Android "Share into chat": drain the native share inbox on startup and
+    // whenever the app returns to the foreground (warm-start shares). The chat
+    // screen stages the shared file into the composer once a chat is picked.
+    {
+        use wasm_bindgen::closure::Closure;
+        use wasm_bindgen::JsCast;
+        let share = use_context::<crate::state::share::ShareState>()
+            .expect("ShareState must be provided");
+        let notifications = use_context::<crate::state::notifications::NotificationsState>();
+        let i18n_share = i18n.clone();
+        let poll = move || {
+            let share = share;
+            let notifications = notifications.clone();
+            let i18n = i18n_share.clone();
+            spawn_local(async move {
+                if crate::state::share::poll_shared(share).await > 0 {
+                    if let Some(nf) = notifications {
+                        nf.push(
+                            crate::state::notifications::ToastKind::Info,
+                            i18n.t("share.pickChat"),
+                        );
+                    }
+                }
+            });
+        };
+        poll();
+        if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
+            let cb = Closure::<dyn FnMut()>::new(move || poll());
+            let _ = doc.add_event_listener_with_callback(
+                "visibilitychange",
+                cb.as_ref().unchecked_ref(),
+            );
+            cb.forget();
+        }
+    }
+
     // 5. Provide WebSocket manager (starts disconnected).
     let ws = WsManager::new();
     provide_context(ws.clone());

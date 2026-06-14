@@ -47,6 +47,28 @@ pub struct StagedAttachment {
     pub preview_url: Option<String>,
 }
 
+/// Stage an attachment into the per-chat store, building an image preview URL
+/// and revoking any previously staged item for that chat. Shared by the
+/// in-composer picker and the Android "share into chat" flow.
+pub fn stage_into(
+    staged: RwSignal<HashMap<Uuid, StagedAttachment>>,
+    group_id: Uuid,
+    payload: AttachmentPayload,
+) {
+    let preview_url = if payload.is_image {
+        object_url_from_bytes(&payload.bytes, &payload.mime)
+    } else {
+        None
+    };
+    staged.update(|m| {
+        if let Some(old) = m.insert(group_id, StagedAttachment { payload, preview_url }) {
+            if let Some(url) = old.preview_url {
+                let _ = web_sys::Url::revoke_object_url(&url);
+            }
+        }
+    });
+}
+
 /// Build a blob object URL from raw bytes for an inline preview thumbnail.
 fn object_url_from_bytes(bytes: &[u8], mime: &str) -> Option<String> {
     let u8a = js_sys::Uint8Array::from(bytes);

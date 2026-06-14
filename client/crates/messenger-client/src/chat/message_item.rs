@@ -25,9 +25,22 @@ thread_local! {
     /// Attachments the server has confirmed gone (HTTP 404). The blob was GC'd
     /// (its finalize never bound it to a message, back when finalize 500'd), so
     /// it will never return — caching the verdict stops every chat re-render /
-    /// sync tick from firing another 6-attempt download storm at a dead id.
+    /// sync tick from firing another download at a dead id. Seeded from (and
+    /// persisted to) localStorage so a dead id is requested at most once per
+    /// device, ever — not once per page load.
     static ATTACHMENT_MISSING: std::cell::RefCell<std::collections::HashSet<uuid::Uuid>> =
-        std::cell::RefCell::new(std::collections::HashSet::new());
+        std::cell::RefCell::new(load_missing_attachments());
+}
+
+const MISSING_ATTACHMENTS_KEY: &str = "messenger_missing_attachments";
+
+fn load_missing_attachments() -> std::collections::HashSet<uuid::Uuid> {
+    web_sys::window()
+        .and_then(|w| w.local_storage().ok().flatten())
+        .and_then(|s| s.get_item(MISSING_ATTACHMENTS_KEY).ok().flatten())
+        .and_then(|j| serde_json::from_str::<Vec<String>>(&j).ok())
+        .map(|v| v.into_iter().filter_map(|s| s.parse().ok()).collect())
+        .unwrap_or_default()
 }
 
 fn cached_attachment_url(id: uuid::Uuid) -> Option<String> {
@@ -46,7 +59,17 @@ fn attachment_known_missing(id: uuid::Uuid) -> bool {
 
 fn mark_attachment_missing(id: uuid::Uuid) {
     ATTACHMENT_MISSING.with(|c| {
-        c.borrow_mut().insert(id);
+        let mut set = c.borrow_mut();
+        if !set.insert(id) {
+            return;
+        }
+        // Persist so the dead id is never re-requested, even after a reload.
+        if let Some(storage) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
+            let v: Vec<String> = set.iter().map(ToString::to_string).collect();
+            if let Ok(j) = serde_json::to_string(&v) {
+                let _ = storage.set_item(MISSING_ATTACHMENTS_KEY, &j);
+            }
+        }
     });
 }
 

@@ -10,6 +10,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::age_encrypt_bootstrap,
             commands::age_decrypt_bootstrap,
+            commands::take_shared_attachments,
             transcription::transcription_list_models,
             transcription::transcription_list_downloaded,
             transcription::transcription_download_model,

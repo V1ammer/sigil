@@ -107,6 +107,22 @@ pub fn ChatsScreen() -> impl IntoView {
     let staged: RwSignal<std::collections::HashMap<Uuid, crate::chat::input_bar::StagedAttachment>> =
         RwSignal::new(std::collections::HashMap::new());
 
+    // Android "Share into chat": when a file was shared into the app and the
+    // user picks (or is already in) a chat, stage it into that chat's composer.
+    {
+        let share_state = use_context::<crate::state::share::ShareState>();
+        Effect::new(move |_| {
+            let Some(share) = share_state else { return };
+            let selected_gid = selected.get();
+            let has_pending = share.has_pending();
+            if let (Some(gid), true) = (selected_gid, has_pending) {
+                if let Some(payload) = share.take_one() {
+                    crate::chat::input_bar::stage_into(staged, gid, payload);
+                }
+            }
+        });
+    }
+
     // Load chats from server on mount, then hydrate each chat's last-message
     // preview by loading messages — `GroupSummary` from the server only carries
     // metadata, so the sidebar snippets need a per-chat message fetch.

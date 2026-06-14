@@ -149,6 +149,7 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     // Direct chat creation
     m.insert("chat.create_direct.title", "New Direct Chat");
     m.insert("chat.typing", "typing…");
+    m.insert("share.pickChat", "Pick a chat to send the file");
     m.insert("chat.create_direct.placeholder", "Enter username");
     m.insert("chat.create_direct.create", "Create chat");
     m.insert("chat.create_direct.creating", "Creating...");

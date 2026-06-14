@@ -13,6 +13,7 @@ pub mod connectivity;
 pub mod notifications;
 pub mod users;
 pub mod typing;
+pub mod share;
 pub mod ws_manager;
 pub mod message_service;
 pub mod sync_service;
@@ -49,6 +50,7 @@ pub fn provide_app_state() {
     provide_context(users.clone());
     let typing = crate::state::typing::TypingState::new();
     provide_context(typing);
+    provide_context(crate::state::share::ShareState::new());
     let msg_svc = MessageService::new();
     provide_context(msg_svc.clone());
     // Wire up state for code paths that run outside the leptos owner
