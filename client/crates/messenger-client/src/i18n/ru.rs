@@ -92,6 +92,8 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("chat.archiveChat", "Архивировать");
     m.insert("chat.clearHistory", "Очистить историю");
     m.insert("chat.delete", "Удалить чат");
+    m.insert("chat.deleteConfirmTitle", "Удалить чат?");
+    m.insert("chat.deleteConfirmDesc", "Переписка и все вложения будут удалены безвозвратно, в том числе у собеседника. Это действие нельзя отменить.");
     m.insert("chat.leave", "Покинуть группу");
     m.insert("chat.profile", "Профиль");
     m.insert("chat.search", "Поиск по чату");
@@ -382,6 +384,10 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.adminInvites.roleAdmin", "Администратор");
     m.insert("settings.adminInvites.roleUser", "Пользователь");
     m.insert("settings.adminInvites.status", "Статус");
+    m.insert("settings.adminInvites.statusActive", "Активен");
+    m.insert("settings.adminInvites.statusExpired", "Истёк");
+    m.insert("settings.adminInvites.statusRevoked", "Отозван");
+    m.insert("settings.adminInvites.statusExhausted", "Исчерпан");
     m.insert("settings.adminInvites.title", "Приглашения");
     m.insert("settings.adminInvites.token", "Токен");
     m.insert("settings.adminInvites.uses", "Использований");

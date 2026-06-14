@@ -92,6 +92,8 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("chat.archiveChat", "Archive");
     m.insert("chat.clearHistory", "Clear history");
     m.insert("chat.delete", "Delete chat");
+    m.insert("chat.deleteConfirmTitle", "Delete chat?");
+    m.insert("chat.deleteConfirmDesc", "The conversation and all attachments will be permanently deleted, including for the other person. This cannot be undone.");
     m.insert("chat.leave", "Leave group");
     m.insert("chat.profile", "Profile");
     m.insert("chat.search", "Search in chat");
@@ -382,6 +384,10 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("settings.adminInvites.roleAdmin", "Admin");
     m.insert("settings.adminInvites.roleUser", "User");
     m.insert("settings.adminInvites.status", "Status");
+    m.insert("settings.adminInvites.statusActive", "Active");
+    m.insert("settings.adminInvites.statusExpired", "Expired");
+    m.insert("settings.adminInvites.statusRevoked", "Revoked");
+    m.insert("settings.adminInvites.statusExhausted", "Exhausted");
     m.insert("settings.adminInvites.title", "Invitations");
     m.insert("settings.adminInvites.token", "Token");
     m.insert("settings.adminInvites.uses", "Uses");

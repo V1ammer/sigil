@@ -8,6 +8,10 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::chat::chat_header::ChatHeader;
+use crate::components::alert_dialog::{
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogDescription, AlertDialogFooter,
+    AlertDialogHeader, AlertDialogTitle,
+};
 use crate::chat::input_bar::{InputBar, InputPreview};
 use crate::chat::message_bridge::{display_to_mock, display_vec_to_mock};
 use crate::chat::message_list::MessageList;
@@ -351,34 +355,36 @@ pub fn ChatsScreen() -> impl IntoView {
                 // clear_conversation records a watermark — starting a chat with
                 // the same person again reopens it EMPTY instead of restoring
                 // the old history.
-                let make_delete = {
+                // Deletion is destructive (server-side: messages + attachments),
+                // so the header actions only OPEN a confirmation; the actual
+                // delete runs from the dialog's confirm button.
+                let show_delete_confirm = RwSignal::new(false);
+                let do_delete: StoredValue<Arc<dyn Fn() + Send + Sync + 'static>> = StoredValue::new({
                     let cs = chats_state.clone();
                     let svc = message_service.clone();
-                    move || {
-                        let cs = cs.clone();
-                        let svc = svc.clone();
-                        Box::new(move || {
-                            cs.delete_chat(group_id);
-                            svc.clear_conversation(group_id);
-                            // Server-side delete: drop the group, its messages
-                            // and attachments so nothing can be restored and a
-                            // re-created chat with the same person starts empty.
-                            spawn_local(async move {
-                                if let Some(api) = build_api_client() {
-                                    if let Err(e) = api.delete_group(group_id).await {
-                                        web_sys::console::warn_1(
-                                            &format!("[delete_group] {e}").into(),
-                                        );
-                                    }
+                    Arc::new(move || {
+                        cs.delete_chat(group_id);
+                        svc.clear_conversation(group_id);
+                        // Server-side delete: drop the group, its messages and
+                        // attachments so nothing can be restored and a re-created
+                        // chat with the same person starts empty.
+                        spawn_local(async move {
+                            if let Some(api) = build_api_client() {
+                                if let Err(e) = api.delete_group(group_id).await {
+                                    web_sys::console::warn_1(
+                                        &format!("[delete_group] {e}").into(),
+                                    );
                                 }
-                            });
-                            selected.set(None);
-                            crate::state::back_stack::pop();
-                        }) as Box<dyn Fn() + Send + Sync + 'static>
-                    }
-                };
-                let on_leave_cb = make_delete();
-                let on_delete_cb = make_delete();
+                            }
+                        });
+                        selected.set(None);
+                        crate::state::back_stack::pop();
+                    })
+                });
+                let on_leave_cb = Box::new(move || show_delete_confirm.set(true))
+                    as Box<dyn Fn() + Send + Sync + 'static>;
+                let on_delete_cb = Box::new(move || show_delete_confirm.set(true))
+                    as Box<dyn Fn() + Send + Sync + 'static>;
                 let on_back_cb = Box::new(|| crate::state::back_stack::pop())
                     as Box<dyn Fn() + Send + Sync + 'static>;
                 let chat_for_header = state_chat
@@ -408,6 +414,31 @@ pub fn ChatsScreen() -> impl IntoView {
                             on_leave_group=on_leave_cb
                             on_delete_chat=on_delete_cb
                         />
+
+                        // Confirmation before the (irreversible) chat deletion.
+                        <AlertDialog
+                            is_open=show_delete_confirm
+                            on_close=Box::new(move || show_delete_confirm.set(false))
+                        >
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>{t!("chat.deleteConfirmTitle")}</AlertDialogTitle>
+                                <AlertDialogDescription>{t!("chat.deleteConfirmDesc")}</AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel on_click=Box::new(move || show_delete_confirm.set(false))>
+                                    {t!("common.cancel")}
+                                </AlertDialogCancel>
+                                <AlertDialogAction
+                                    class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                    on_click=Box::new(move || {
+                                        show_delete_confirm.set(false);
+                                        do_delete.get_value()();
+                                    })
+                                >
+                                    {t!("common.delete")}
+                                </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialog>
 
                         {/* Messages */}
                         {move || {
