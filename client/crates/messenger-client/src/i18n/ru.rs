@@ -427,7 +427,7 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("about.version", "Версия");
     m.insert("about.server", "Адрес сервера");
     m.insert("about.license", "Лицензия");
-    m.insert("settings.about.copyright", "© 2024 Secure Messenger. Все права защищены.");
+    m.insert("settings.about.copyright", "© 2026 Secure Messenger. Все права защищены.");
     m.insert("settings.about.description", "Информация о приложении и сервере");
     m.insert("settings.about.license", "AGPL-3.0");
     m.insert("settings.about.serverAddress", "Адрес сервера");

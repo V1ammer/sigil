@@ -427,7 +427,7 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("about.version", "Version");
     m.insert("about.server", "Server address");
     m.insert("about.license", "License");
-    m.insert("settings.about.copyright", "© 2024 Secure Messenger. All rights reserved.");
+    m.insert("settings.about.copyright", "© 2026 Secure Messenger. All rights reserved.");
     m.insert("settings.about.description", "App and server information");
     m.insert("settings.about.license", "AGPL-3.0");
     m.insert("settings.about.serverAddress", "Server address");
