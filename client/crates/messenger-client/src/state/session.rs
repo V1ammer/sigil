@@ -213,6 +213,19 @@ fn load_auth_credentials() -> Option<AuthCredentials> {
     })
 }
 
+/// Raw stored `(device_id, device_signing_secret_b64)` for the native streaming
+/// proxy, which re-builds an authenticated `ApiClient` on the Rust side.
+#[must_use]
+pub fn stream_auth() -> Option<(String, String)> {
+    let storage = web_sys::window()?.local_storage().ok().flatten()?;
+    let device_id = storage.get_item("messenger_device_id").ok().flatten()?;
+    let secret_b64 = storage
+        .get_item("messenger_device_signing_secret")
+        .ok()
+        .flatten()?;
+    Some((device_id, secret_b64))
+}
+
 /// Load server URL from local storage.
 pub fn load_server_url() -> Option<String> {
     let window = web_sys::window()?;

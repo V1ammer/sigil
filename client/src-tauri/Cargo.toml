@@ -22,11 +22,12 @@ tauri-plugin-file-saver = { path = "tauri-plugin-file-saver" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 base64 = { workspace = true }
+uuid = { workspace = true }
 tracing = { workspace = true }
 messenger-core = { path = "../crates/messenger-core" }
 messenger-storage = { path = "../crates/messenger-storage" }
 messenger-transcription = { path = "../crates/messenger-transcription" }
-tokio = { workspace = true, features = ["rt-multi-thread"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "net", "time", "io-util"] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

@@ -149,6 +149,23 @@ async fn fallback_whole_blob(
     }
 }
 
+/// Arm the native range-decrypt proxy (Tauri only) and return a local URL the
+/// WebView can stream with HTTP Range — the native demuxer then handles
+/// progressive playback and seeking of any container. Returns `None` when the
+/// session isn't ready or the proxy can't be prepared (caller falls back to the
+/// MediaSource / whole-blob path).
+pub async fn native_stream_src(attachment_id: &str, key_b64: &str, mime: &str) -> Option<String> {
+    let server_url = crate::state::session::load_server_url()?;
+    let (device_id, secret_b64) = crate::state::session::stream_auth()?;
+    crate::tauri_bridge::stream_prepare(&server_url, &device_id, &secret_b64, attachment_id, key_b64, mime)
+        .await
+        .ok()?;
+    // Match the app's scheme (http/https) so the media URL isn't blocked as
+    // mixed content. The custom protocol is served at `<scheme>.localhost`.
+    let proto = web_sys::window()?.location().protocol().ok()?;
+    Some(format!("{proto}//stream.localhost/v/{attachment_id}"))
+}
+
 /// Play a media attachment into `el`: stream it chunk-by-chunk if possible,
 /// otherwise fall back to a whole-blob download. `autoplay` issues `el.play()`
 /// once setup begins (custom players that manage play/pause pass `false`).
