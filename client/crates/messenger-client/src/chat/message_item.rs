@@ -670,10 +670,6 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
             let video_ref: NodeRef<leptos::html::Video> = NodeRef::new();
             let container_ref: NodeRef<leptos::html::Div> = NodeRef::new();
             let kicked = RwSignal::new(false);
-            // True once we point the element at the native range-decrypt proxy;
-            // `fell_back` guards a one-shot fallback if that URL won't load.
-            let used_native = RwSignal::new(false);
-            let fell_back = RwSignal::new(false);
             // Only offer fullscreen where the platform supports it — some WebViews
             // report it unavailable, so we hide the button there instead of
             // leaving a dead control.
@@ -695,26 +691,12 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                         el.unchecked_ref::<web_sys::HtmlMediaElement>().clone();
                     match (aid.clone(), key.clone()) {
                         (Some(aid), Some(key)) => {
-                            if crate::tauri_bridge::is_tauri_context() {
-                                // Native range-decrypt proxy: the Tauri layer
-                                // serves HTTP Range, so the WebView streams and
-                                // seeks any container natively (no MSE, no
-                                // whole-blob download). Falls back via on:error.
-                                let m2 = m.clone();
-                                leptos::task::spawn_local(async move {
-                                    match crate::chat::media_stream::native_stream_src(&aid, &key, &m2).await {
-                                        Some(url) => {
-                                            used_native.set(true);
-                                            media.set_src(&url);
-                                        }
-                                        None => crate::chat::media_stream::play(media, aid, key, m2, false, err, l),
-                                    }
-                                });
-                            } else {
-                                // Web: MediaSource streaming where the container
-                                // allows, else a whole-blob download+decrypt.
-                                crate::chat::media_stream::play(media, aid, key, m.clone(), false, err, l);
-                            }
+                            // MediaSource streaming: senders remux video to
+                            // fragmented MP4 (the mime carries `codecs="…"`), so the
+                            // decrypted chunk stream feeds a SourceBuffer directly —
+                            // the same path voice/audio use. Anything not remuxable
+                            // falls back to a whole-blob download inside `play`.
+                            crate::chat::media_stream::play(media, aid, key, m.clone(), false, err, l);
                         }
                         _ => err.set(Some(t(l, "message.video").to_string())),
                     }
@@ -750,28 +732,6 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                     cb.forget();
                 });
             }
-
-            // If the native proxy URL won't load on this device, fall back once
-            // to the MediaSource / whole-blob path so video still plays. The
-            // fallback data lives in a StoredValue so this stays Copy (the render
-            // closure is FnMut and re-embeds the handler on every pass).
-            let fb_data = StoredValue::new((attachment_id.clone(), decryption_key.clone(), mime.clone()));
-            let on_error = move |_| {
-                if !used_native.get_untracked() || fell_back.get_untracked() {
-                    return;
-                }
-                fell_back.set(true);
-                let (aid_opt, key_opt, fb_mime) = fb_data.get_value();
-                let (Some(el), Some(aid), Some(key)) =
-                    (video_ref.get_untracked(), aid_opt, key_opt)
-                else {
-                    return;
-                };
-                let media: web_sys::HtmlMediaElement =
-                    el.unchecked_ref::<web_sys::HtmlMediaElement>().clone();
-                media.set_src("");
-                crate::chat::media_stream::play(media, aid, key, fb_mime, true, err, l);
-            };
 
             // Play/pause the underlying element; the play/pause events mirror the
             // real state back into `is_playing`.
@@ -915,7 +875,6 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                                             on:play=on_play
                                             on:pause=on_pause
                                             on:ended=on_ended
-                                            on:error=on_error
                                             on:timeupdate=on_time
                                             on:durationchange=on_duration
                                             on:loadedmetadata=on_duration

@@ -1,0 +1,122 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1781543884811,
+  "projectRoot": "/home/killua/code/diploma/messenger",
+  "techStack": {
+    "languages": [],
+    "frameworks": [],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": "cd /home/killua/code/diploma/messenger; GCC=/nix/store/xm08aqdd7pxcdhm0ak6aqb1v7hw5q6ri-gcc-14.3.0-lib/lib; touch client/crates/messenger-core/tests/gen_blob.rs; direnv exec . env LD_LIBRARY_PATH=\"$GCC\" cargo test -p messenger-core --test gen_blob -- --nocapture 2>&1 | tail -12",
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs"
+    ],
+    "gitBranches": null
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "client": {
+      "path": "client",
+      "purpose": null,
+      "fileCount": 8,
+      "lastAccessed": 1781543884805,
+      "keyFiles": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "README.md",
+        "dev.db",
+        "flake.lock"
+      ]
+    },
+    "deploy": {
+      "path": "deploy",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1781543884806,
+      "keyFiles": [
+        "Caddyfile",
+        "docker-compose.yml"
+      ]
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 4,
+      "lastAccessed": 1781543884808,
+      "keyFiles": [
+        "api_and_models.md",
+        "backend-description.md",
+        "scheme.md",
+        "web-design.md"
+      ]
+    },
+    "prompts": {
+      "path": "prompts",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1781543884809,
+      "keyFiles": [
+        "README.md",
+        "shared-context.md"
+      ]
+    },
+    "screenshots": {
+      "path": "screenshots",
+      "purpose": null,
+      "fileCount": 44,
+      "lastAccessed": 1781543884809,
+      "keyFiles": [
+        "android_08_privacy.png",
+        "android_09_about.png",
+        "android_10_devices.png",
+        "android_11_russian.png",
+        "aud_001.png"
+      ]
+    },
+    "server": {
+      "path": "server",
+      "purpose": null,
+      "fileCount": 12,
+      "lastAccessed": 1781543884809,
+      "keyFiles": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "Dockerfile",
+        "README.md",
+        "dev.db"
+      ]
+    },
+    "server/data": {
+      "path": "server/data",
+      "purpose": "Data files",
+      "fileCount": 0,
+      "lastAccessed": 1781543884810,
+      "keyFiles": []
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "client/crates/messenger-core/tests/gen_blob.rs",
+      "accessCount": 1,
+      "lastAccessed": 1781545552750,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

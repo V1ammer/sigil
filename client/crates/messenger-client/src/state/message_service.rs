@@ -1083,15 +1083,30 @@ impl MessageService {
         let mut key = [0u8; 32];
         rand::thread_rng().fill_bytes(&mut key);
 
+        // Remux video to fragmented MP4 so it streams via MediaSource — the only
+        // way the WebView can play our (encrypted, non-fragmented) video. The
+        // mime gains a `codecs="…"` parameter so `isTypeSupported` passes. Non-
+        // video, or anything we can't remux (e.g. HEVC), is left untouched and
+        // falls back to whole-blob playback.
+        let (media_bytes, media_mime): (std::borrow::Cow<[u8]>, String) =
+            if payload.mime.starts_with("video/") {
+                match messenger_core::video_remux::remux_to_fmp4(&payload.bytes) {
+                    Some((fmp4, mime)) => (std::borrow::Cow::Owned(fmp4), mime),
+                    None => (std::borrow::Cow::Borrowed(payload.bytes.as_slice()), payload.mime.clone()),
+                }
+            } else {
+                (std::borrow::Cow::Borrowed(payload.bytes.as_slice()), payload.mime.clone())
+            };
+
         // Stream-friendly (chunked) encryption for playable media — video and
         // audio — so the player can start on the first chunk. Images and other
         // files stay whole-blob (nothing to stream).
         let stream_friendly =
-            payload.mime.starts_with("video/") || payload.mime.starts_with("audio/");
+            media_mime.starts_with("video/") || media_mime.starts_with("audio/");
         let encrypted = if stream_friendly {
-            encrypt_attachment_chunked(&key, &payload.bytes, DEFAULT_CHUNK_SIZE)
+            encrypt_attachment_chunked(&key, &media_bytes, DEFAULT_CHUNK_SIZE)
         } else {
-            encrypt_attachment(&key, &payload.bytes)
+            encrypt_attachment(&key, &media_bytes)
         };
         let ciphertext = match encrypted {
             Ok(ct) => ct,
@@ -1143,7 +1158,7 @@ impl MessageService {
                 AppMessageBody::File {
                     attachment_id: upload.attachment_id,
                     decryption_key: key.to_vec(),
-                    mime: payload.mime.clone(),
+                    mime: media_mime.clone(),
                     filename: payload.name.clone(),
                     size: payload.size,
                     caption: caption.clone(),
@@ -1151,7 +1166,7 @@ impl MessageService {
                 MessageBody::File {
                     attachment_id: upload.attachment_id,
                     decryption_key: key.to_vec(),
-                    mime: payload.mime.clone(),
+                    mime: media_mime.clone(),
                     name: payload.name.clone(),
                     size: payload.size,
                     caption: caption.clone(),

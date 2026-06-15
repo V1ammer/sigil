@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cd /home/killua/code/diploma/messenger/server; pgrep -af 'release/messenger-server' | grep -v pgrep | head; echo \\\"=== health now ===\\\"; curl -s -o /dev/null -w \\\"%{http_code}\\\\n\\\" http://...",
+  "error": "Exit code 7\n=== health now ===\n000",
+  "timestamp": "2026-06-15T17:42:57.492Z",
+  "retry_count": 2
+}

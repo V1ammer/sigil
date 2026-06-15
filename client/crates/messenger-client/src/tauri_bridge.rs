@@ -185,39 +185,6 @@ pub async fn age_decrypt(
     serde_wasm_bindgen::from_value(result).map_err(|e| e.to_string())
 }
 
-/// Register a media key + session with the native streaming proxy so the
-/// `stream://` protocol can range-decrypt this attachment for a `<video>`.
-///
-/// # Errors
-///
-/// Returns an error string if not in Tauri context or the command fails.
-pub async fn stream_prepare(
-    server_url: &str,
-    device_id: &str,
-    secret_b64: &str,
-    attachment_id: &str,
-    key_b64: &str,
-    mime: &str,
-) -> Result<(), String> {
-    if !is_tauri_context() {
-        return Err("not tauri".to_string());
-    }
-    let args = js_sys::Object::new();
-    let set = |k: &str, v: &str| -> Result<(), String> {
-        js_sys::Reflect::set(&args, &JsValue::from(k), &JsValue::from(v))
-            .map(|_| ())
-            .map_err(|_| format!("set {k}"))
-    };
-    set("serverUrl", server_url)?;
-    set("deviceId", device_id)?;
-    set("secretB64", secret_b64)?;
-    set("attachmentId", attachment_id)?;
-    set("keyB64", key_b64)?;
-    set("mime", mime)?;
-    tauri_invoke("stream_prepare", &args).await?;
-    Ok(())
-}
-
 /// Save attachment bytes to the platform's Downloads folder via the file-saver plugin.
 ///
 /// Returns the saved path / URI string.
