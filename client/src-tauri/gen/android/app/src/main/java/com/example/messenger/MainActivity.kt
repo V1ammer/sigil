@@ -22,8 +22,6 @@ class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
-    // TEMP DIAGNOSTIC: remote debugging for chrome://inspect while we debug video send.
-    WebView.setWebContentsDebuggingEnabled(true)
     // Cold start via "Share": the intent is already on the activity.
     handleShareIntent(intent)
 
