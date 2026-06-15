@@ -6,7 +6,7 @@
 
 use leptos::prelude::*;
 
-use crate::chat::input_bar::AttachmentPayload;
+use crate::chat::input_bar::{AttachmentKind, AttachmentPayload};
 
 #[derive(Clone, Copy)]
 pub struct ShareState {
@@ -59,6 +59,13 @@ pub async fn poll_shared(share: ShareState) -> usize {
         };
         let size = bytes.len() as u64;
         let is_image = it.mime.starts_with("image/");
+        // Photos/videos shared via the OS sheet go through the compressed,
+        // streamable Media path; anything else stays an untouched File.
+        let kind = if is_image || it.mime.starts_with("video/") {
+            AttachmentKind::Media
+        } else {
+            AttachmentKind::File
+        };
         share.pending.update(|v| {
             v.push(AttachmentPayload {
                 bytes,
@@ -66,6 +73,7 @@ pub async fn poll_shared(share: ShareState) -> usize {
                 name: it.name.clone(),
                 size,
                 is_image,
+                kind,
                 caption: None,
             });
         });

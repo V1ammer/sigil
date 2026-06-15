@@ -28,6 +28,18 @@ pub struct VoicePayload {
     pub waveform: Vec<u8>,
 }
 
+/// How the user chose to send an attachment. `Media` (Telegram-style "Photo/
+/// Video") is normalized to a compressed, streamable form before upload; `File`
+/// is sent byte-for-byte as the original.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum AttachmentKind {
+    /// Compress/transcode for streaming (photos & videos sent as media).
+    Media,
+    /// Keep the original bytes untouched (sent as a file).
+    #[default]
+    File,
+}
+
 /// Raw attachment payload picked through the attach menu.
 #[derive(Clone, Debug)]
 pub struct AttachmentPayload {
@@ -37,6 +49,8 @@ pub struct AttachmentPayload {
     pub size: u64,
     /// Whether the user picked an image (kind hint for the envelope).
     pub is_image: bool,
+    /// Whether to compress/transcode (`Media`) or send the raw bytes (`File`).
+    pub kind: AttachmentKind,
     /// Caption typed in the composer alongside the attachment, sent as one
     /// message so the text renders under the media (not as a separate bubble).
     pub caption: Option<String>,
@@ -248,8 +262,10 @@ pub fn InputBar(
             as Box<dyn Fn() + Send + Sync + 'static>
     };
 
-    // Common file→bytes→stage bridge for both inputs.
-    let make_on_change = move |is_image: bool| {
+    // Common file→bytes→stage bridge for both inputs. `kind` decides whether the
+    // picked item is compressed/transcoded (Media) or sent raw (File); `is_image`
+    // is derived from the actual mime so previews work on either path.
+    let make_on_change = move |kind: AttachmentKind| {
         let stage = stage_attachment.clone();
         move |ev: leptos::ev::Event| {
             let stage = stage.clone();
@@ -279,20 +295,22 @@ pub fn InputBar(
                 };
                 let arr_buf: js_sys::ArrayBuffer = buf_js.unchecked_into();
                 let bytes = js_sys::Uint8Array::new(&arr_buf).to_vec();
+                let is_image = mime.starts_with("image/");
                 stage(AttachmentPayload {
                     bytes,
                     mime: if mime.is_empty() { "application/octet-stream".into() } else { mime },
                     name,
                     size,
                     is_image,
+                    kind,
                     caption: None,
                 });
             });
         }
     };
 
-    let on_photo_change = make_on_change(true);
-    let on_file_change = make_on_change(false);
+    let on_photo_change = make_on_change(AttachmentKind::Media);
+    let on_file_change = make_on_change(AttachmentKind::File);
 
     // Paste-to-attach: Ctrl+V an image straight into the composer. Handled
     // through the `Textarea`'s own `on:paste` so Leptos owns the listener
@@ -342,6 +360,7 @@ pub fn InputBar(
                             name,
                             size,
                             is_image: true,
+                            kind: AttachmentKind::Media,
                             caption: None,
                         });
                     }
@@ -728,7 +747,7 @@ pub fn InputBar(
             <input
                 node_ref=photo_input_ref
                 type="file"
-                accept="image/*"
+                accept="image/*,video/*"
                 style="display:none"
                 on:change=on_photo_change
             />

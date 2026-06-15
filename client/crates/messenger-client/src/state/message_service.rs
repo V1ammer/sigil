@@ -1083,26 +1083,69 @@ impl MessageService {
         let mut key = [0u8; 32];
         rand::thread_rng().fill_bytes(&mut key);
 
-        // Remux video to fragmented MP4 so it streams via MediaSource — the only
-        // way the WebView can play our (encrypted, non-fragmented) video. The
-        // mime gains a `codecs="…"` parameter so `isTypeSupported` passes. Non-
-        // video, or anything we can't remux (e.g. HEVC), is left untouched and
-        // falls back to whole-blob playback.
+        // Normalize the payload depending on how the user chose to send it.
         //
-        // The remux is synchronous and holds ~3× the file in WASM memory, so for
-        // large videos it would freeze the UI and can run the tab out of memory
-        // (→ the send fails). Until it moves to a Web Worker, cap it: big videos
-        // skip the remux and upload as-is (they play via the whole-blob path).
+        //  • `Media` (Telegram-style "Photo/Video"): compress/transcode into a
+        //    small, streamable form. Images → downscaled JPEG; videos → H.264/AAC
+        //    *fragmented* MP4 (mime gains `codecs="…"` so MediaSource plays it).
+        //    On web/desktop this runs in ffmpeg.wasm's worker — off the main
+        //    thread, so the composer never freezes. (Android native MediaCodec
+        //    transcode is a follow-up; until then a Tauri WebView falls back to
+        //    the in-process H.264 remux for already-H.264 clips, else raw.)
+        //  • `File`: upload the original bytes untouched.
+        //
+        // Any transcode failure degrades to the raw bytes so the send still goes.
+        use crate::chat::input_bar::AttachmentKind;
         const REMUX_MAX_BYTES: usize = 48 * 1024 * 1024;
+        let want_media = payload.kind == AttachmentKind::Media;
+        let is_native = crate::tauri_bridge::is_tauri_context();
+        let raw = || {
+            (
+                std::borrow::Cow::Borrowed(payload.bytes.as_slice()),
+                payload.mime.clone(),
+            )
+        };
         let (media_bytes, media_mime): (std::borrow::Cow<[u8]>, String) =
-            if payload.mime.starts_with("video/") && payload.bytes.len() <= REMUX_MAX_BYTES {
+            if want_media && payload.mime.starts_with("image/") {
+                match crate::media_transcode::compress_image(&payload.bytes, &payload.mime).await {
+                    // Keep whichever is smaller — re-encoding a small/optimized
+                    // image can grow it.
+                    Ok((b, m)) if b.len() < payload.bytes.len() => (std::borrow::Cow::Owned(b), m),
+                    Ok(_) => raw(),
+                    Err(e) => {
+                        tracing::warn!("image compress failed, sending original: {e}");
+                        raw()
+                    }
+                }
+            } else if want_media && payload.mime.starts_with("video/") && !is_native {
+                match crate::media_transcode::transcode_video(&payload.bytes, |p| {
+                    web_sys::console::log_1(
+                        &format!("[transcode] {:.0}%", p * 100.0).into(),
+                    );
+                })
+                .await
+                {
+                    Ok((b, m)) => (std::borrow::Cow::Owned(b), m),
+                    Err(e) => {
+                        tracing::warn!("video transcode failed, sending original: {e}");
+                        raw()
+                    }
+                }
+            } else if want_media
+                && payload.mime.starts_with("video/")
+                && payload.bytes.len() <= REMUX_MAX_BYTES
+            {
+                // Native (Tauri) interim: no MediaCodec yet — try the pure-Rust
+                // remux (H.264 only, stream-copy) so existing-codec clips still
+                // stream; HEVC/oversize falls through to raw whole-blob.
                 match messenger_core::video_remux::remux_to_fmp4(&payload.bytes) {
                     Some((fmp4, mime)) => (std::borrow::Cow::Owned(fmp4), mime),
-                    None => (std::borrow::Cow::Borrowed(payload.bytes.as_slice()), payload.mime.clone()),
+                    None => raw(),
                 }
             } else {
-                (std::borrow::Cow::Borrowed(payload.bytes.as_slice()), payload.mime.clone())
+                raw()
             };
+        let display_size = media_bytes.len() as u64;
 
         // Stream-friendly (chunked) encryption for playable media — video and
         // audio — so the player can start on the first chunk. Images and other
@@ -1140,7 +1183,9 @@ impl MessageService {
                 AppMessageBody::Image {
                     attachment_id: upload.attachment_id,
                     decryption_key: key.to_vec(),
-                    mime: payload.mime.clone(),
+                    // Stored mime tracks the actual uploaded bytes (e.g. a
+                    // compressed Media image becomes image/jpeg).
+                    mime: media_mime.clone(),
                     // Width/height detection not wired — server doesn't see them
                     // and the client falls back to natural sizing.
                     width: 0,
@@ -1151,7 +1196,7 @@ impl MessageService {
                 MessageBody::Image {
                     attachment_id: upload.attachment_id,
                     decryption_key: key.to_vec(),
-                    mime: payload.mime.clone(),
+                    mime: media_mime.clone(),
                     width: 0,
                     height: 0,
                     thumb: None,
@@ -1166,7 +1211,7 @@ impl MessageService {
                     decryption_key: key.to_vec(),
                     mime: media_mime.clone(),
                     filename: payload.name.clone(),
-                    size: payload.size,
+                    size: display_size,
                     caption: caption.clone(),
                 },
                 MessageBody::File {
@@ -1174,7 +1219,7 @@ impl MessageService {
                     decryption_key: key.to_vec(),
                     mime: media_mime.clone(),
                     name: payload.name.clone(),
-                    size: payload.size,
+                    size: display_size,
                     caption: caption.clone(),
                 },
             )
@@ -1289,6 +1334,9 @@ impl MessageService {
                         name: "image".to_string(),
                         size,
                         is_image: true,
+                        // Forwarding re-uploads already-stored bytes verbatim;
+                        // never re-compress.
+                        kind: crate::chat::input_bar::AttachmentKind::File,
                         caption,
                     },
                     None,
@@ -1300,7 +1348,15 @@ impl MessageService {
                 let size = bytes.len() as u64;
                 self.send_attachment(
                     target_group,
-                    crate::chat::input_bar::AttachmentPayload { bytes, mime, name, size, is_image: false, caption },
+                    crate::chat::input_bar::AttachmentPayload {
+                        bytes,
+                        mime,
+                        name,
+                        size,
+                        is_image: false,
+                        kind: crate::chat::input_bar::AttachmentKind::File,
+                        caption,
+                    },
                     None,
                 )
                 .await

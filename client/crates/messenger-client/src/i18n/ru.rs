@@ -134,7 +134,7 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("message.transcribe.unavailable", "Транскрибация недоступна в этом прототипе");
 
     // Attachments
-    m.insert("attach.photo", "Фото");
+    m.insert("attach.photo", "Фото/Видео");
     m.insert("attach.file", "Файл");
     m.insert("attach.voice", "Голосовое");
 

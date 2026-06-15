@@ -46,6 +46,7 @@ pub mod screens;
 pub mod state;
 pub mod session;
 pub mod sound;
+pub mod media_transcode;
 pub mod tauri_bridge;
 
 pub use app::App;

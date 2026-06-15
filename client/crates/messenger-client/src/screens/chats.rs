@@ -535,12 +535,18 @@ pub fn ChatsScreen() -> impl IntoView {
                         };
                         let arr_buf: js_sys::ArrayBuffer = buf.unchecked_into();
                         let bytes = js_sys::Uint8Array::new(&arr_buf).to_vec();
+                        let kind = if is_image || mime.starts_with("video/") {
+                            crate::chat::input_bar::AttachmentKind::Media
+                        } else {
+                            crate::chat::input_bar::AttachmentKind::File
+                        };
                         stage_into(staged, group_id, AttachmentPayload {
                             bytes,
                             mime: if mime.is_empty() { "application/octet-stream".into() } else { mime },
                             name,
                             size,
                             is_image,
+                            kind,
                             caption: None,
                         });
                     });

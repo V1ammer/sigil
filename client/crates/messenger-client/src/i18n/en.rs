@@ -134,7 +134,7 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("message.transcribe.unavailable", "Transcription unavailable in this prototype");
 
     // Attachments
-    m.insert("attach.photo", "Photo");
+    m.insert("attach.photo", "Photo/Video");
     m.insert("attach.file", "File");
     m.insert("attach.voice", "Voice");
 

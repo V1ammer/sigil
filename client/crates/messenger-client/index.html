@@ -7,6 +7,10 @@
     <link data-trunk rel="rust" data-target-name="messenger-client" data-wasm-opt="z"/>
     <link data-trunk rel="css" href="style/built.css"/>
     <link data-trunk rel="icon" href="public/favicon.png"/>
+    <!-- Vendored ffmpeg.wasm (esm build) for client-side media transcoding. The
+         FFmpeg class is imported lazily by the module script below; the 32MB
+         core wasm is only fetched the first time a video is compressed. -->
+    <link data-trunk rel="copy-dir" href="public/ffmpeg"/>
   </head>
   <body class="h-full">
     <script>
@@ -68,6 +72,126 @@
         window.__sigilStreamPush = push;
         window.__sigilStreamEnd = end;
       })();
+    </script>
+    <script>
+      // Client-side media normalization for the "send as Media" path (Telegram
+      // style). Everything runs locally so end-to-end encryption is preserved —
+      // the server never sees plaintext. Video → H.264 Main@4.0 + AAC in a
+      // FRAGMENTED mp4 so it streams through the __sigilStream MSE driver above;
+      // images → downscaled JPEG. Both cap the long side and re-encode.
+      (function () {
+        // Long side cap (px) and JPEG quality for the image compression path.
+        var IMAGE_MAX_LONG = 1920;
+        var IMAGE_QUALITY = 0.82;
+
+        // Video transcoding (ffmpeg.wasm) lives in the ES-module script below —
+        // it needs `import` to pull the FFmpeg class. This classic block only
+        // owns image compression, which needs no module loading.
+
+        // Downscale + re-encode an image to JPEG via a canvas. Returns
+        // { bytes: Uint8Array, mime: "image/jpeg" }. Strips EXIF as a side effect.
+        window.__sigilCompressImage = async function (input, mime) {
+          var blob = new Blob([input], { type: mime || "image/*" });
+          var url = URL.createObjectURL(blob);
+          try {
+            var bmp = await createImageBitmap(blob);
+            var w = bmp.width,
+              h = bmp.height;
+            var scale = Math.min(1, IMAGE_MAX_LONG / Math.max(w, h));
+            var ow = Math.max(1, Math.round(w * scale));
+            var oh = Math.max(1, Math.round(h * scale));
+            var canvas =
+              typeof OffscreenCanvas !== "undefined"
+                ? new OffscreenCanvas(ow, oh)
+                : Object.assign(document.createElement("canvas"), {
+                    width: ow,
+                    height: oh,
+                  });
+            var ctx = canvas.getContext("2d");
+            ctx.drawImage(bmp, 0, 0, ow, oh);
+            bmp.close && bmp.close();
+            var outBlob = canvas.convertToBlob
+              ? await canvas.convertToBlob({
+                  type: "image/jpeg",
+                  quality: IMAGE_QUALITY,
+                })
+              : await new Promise(function (res) {
+                  canvas.toBlob(res, "image/jpeg", IMAGE_QUALITY);
+                });
+            var buf = await outBlob.arrayBuffer();
+            return { bytes: new Uint8Array(buf), mime: "image/jpeg" };
+          } finally {
+            URL.revokeObjectURL(url);
+          }
+        };
+      })();
+    </script>
+    <script type="module">
+      // Video transcoding via the ffmpeg.wasm ESM build. Loaded as a module so
+      // the worker (./esm/worker.js) is itself a module and pulls the core via
+      // dynamic import(). The 32 MB core wasm is fetched lazily on first use.
+      import { FFmpeg } from "./ffmpeg/esm/index.js";
+
+      var VIDEO_MAX_LONG = 1280; // long-side cap (px); bump to 1920 for 1080p
+      var VIDEO_BITRATE_K = 2500;
+      var ff = null; // reused FFmpeg instance
+
+      // Forced codec/level (Main@4.0 + AAC-LC) so MediaSource.isTypeSupported
+      // passes on every platform.
+      window.__sigilVideoMime = 'video/mp4; codecs="avc1.4D4028, mp4a.40.2"';
+
+      // input: Uint8Array, onProgress: fn(0..1). Returns a Uint8Array (fragmented mp4).
+      window.__sigilTranscodeVideo = async function (input, onProgress) {
+        if (!ff) ff = new FFmpeg();
+        if (!ff.loaded) {
+          var abs = function (p) { return new URL(p, document.baseURI).href; };
+          await ff.load({
+            coreURL: abs("ffmpeg/core/ffmpeg-core.js"),
+            wasmURL: abs("ffmpeg/core/ffmpeg-core.wasm"),
+          });
+        }
+        var prog = null;
+        if (onProgress) {
+          prog = function (e) {
+            var p = e && typeof e.progress === "number" ? e.progress : 0;
+            if (p < 0) p = 0;
+            if (p > 1) p = 1;
+            onProgress(p);
+          };
+          ff.on("progress", prog);
+        }
+        try {
+          await ff.writeFile("in", input);
+          // Scale the LONG side to the cap, keep aspect, force even dims.
+          var vf =
+            "scale='if(gt(iw,ih),min(" + VIDEO_MAX_LONG +
+            ",iw),-2)':'if(gt(iw,ih),-2,min(" + VIDEO_MAX_LONG + ",ih))'";
+          await ff.exec([
+            "-i", "in",
+            "-vf", vf,
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-profile:v", "main",
+            "-level", "4.0",
+            "-pix_fmt", "yuv420p",
+            "-b:v", VIDEO_BITRATE_K + "k",
+            "-maxrate", VIDEO_BITRATE_K + "k",
+            "-bufsize", VIDEO_BITRATE_K * 2 + "k",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-ac", "2",
+            "-movflags", "+frag_keyframe+empty_moov+default_base_moof",
+            "-f", "mp4",
+            "out.mp4",
+          ]);
+          var data = await ff.readFile("out.mp4");
+          ff.deleteFile("in").catch(function () {});
+          ff.deleteFile("out.mp4").catch(function () {});
+          return data;
+        } finally {
+          if (prog) ff.off("progress", prog);
+        }
+      };
     </script>
   </body>
 </html>
