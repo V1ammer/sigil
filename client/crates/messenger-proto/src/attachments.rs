@@ -13,3 +13,16 @@ pub struct UploadAttachmentResponse {
 pub struct FinalizeAttachmentRequest {
     pub message_id: Uuid,
 }
+
+/// Response after uploading one part of a chunked upload.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UploadPartResponse {
+    pub received: u64,
+}
+
+/// Status of a streamed (chunked) upload — for resuming.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AttachmentStatusResponse {
+    pub received: u64,
+    pub padded_size: u64,
+}

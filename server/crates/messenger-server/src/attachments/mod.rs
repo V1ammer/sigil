@@ -91,6 +91,108 @@ impl StorageBackend {
         }
     }
 
+    /// Создаёт (или обнуляет) пустой on-disk blob для потоковой (chunked)
+    /// загрузки и возвращает относительный путь. Только для `FileSystem`.
+    ///
+    /// # Errors
+    ///
+    /// - `AppError::Internal` — InDatabase backend или ошибка ввода-вывода.
+    pub async fn create_stream(&self, id: Uuid) -> Result<PathBuf, AppError> {
+        match self {
+            Self::InDatabase => Err(AppError::Internal(anyhow::anyhow!(
+                "streamed upload requires filesystem storage"
+            ))),
+            Self::FileSystem { root, .. } => {
+                let relative_path = Self::disk_path(id);
+                let full_path = root.join(&relative_path);
+                if let Some(parent) = full_path.parent() {
+                    tokio::fs::create_dir_all(parent).await.map_err(|e| {
+                        AppError::Internal(anyhow::anyhow!(
+                            "cannot create attachment dir {}: {e}",
+                            parent.display()
+                        ))
+                    })?;
+                }
+                // create() truncates an existing file — a fresh init starts at 0.
+                tokio::fs::File::create(&full_path).await.map_err(|e| {
+                    AppError::Internal(anyhow::anyhow!(
+                        "cannot create attachment file {}: {e}",
+                        full_path.display()
+                    ))
+                })?;
+                Ok(relative_path)
+            }
+        }
+    }
+
+    /// Дописывает байты в конец потокового blob'а и возвращает новый размер.
+    ///
+    /// # Errors
+    ///
+    /// - `AppError::Internal` — InDatabase backend или ошибка ввода-вывода.
+    pub async fn append(&self, relative_path: &Path, data: &[u8]) -> Result<u64, AppError> {
+        match self {
+            Self::InDatabase => Err(AppError::Internal(anyhow::anyhow!(
+                "streamed upload requires filesystem storage"
+            ))),
+            Self::FileSystem { root, .. } => {
+                let full_path = root.join(relative_path);
+                let mut file = tokio::fs::OpenOptions::new()
+                    .append(true)
+                    .open(&full_path)
+                    .await
+                    .map_err(|e| {
+                        if e.kind() == std::io::ErrorKind::NotFound {
+                            AppError::NotFound
+                        } else {
+                            AppError::Internal(anyhow::anyhow!(
+                                "cannot open attachment for append {}: {e}",
+                                full_path.display()
+                            ))
+                        }
+                    })?;
+                file.write_all(data).await.map_err(|e| {
+                    AppError::Internal(anyhow::anyhow!(
+                        "cannot append attachment {}: {e}",
+                        full_path.display()
+                    ))
+                })?;
+                file.flush().await.map_err(|e| {
+                    AppError::Internal(anyhow::anyhow!("cannot flush attachment: {e}"))
+                })?;
+                let size = tokio::fs::metadata(&full_path)
+                    .await
+                    .map(|m| m.len())
+                    .map_err(|e| {
+                        AppError::Internal(anyhow::anyhow!("cannot stat attachment: {e}"))
+                    })?;
+                Ok(size)
+            }
+        }
+    }
+
+    /// Текущий размер потокового blob'а (0, если файла ещё нет).
+    ///
+    /// # Errors
+    ///
+    /// - `AppError::Internal` — ошибка ввода-вывода (кроме NotFound).
+    pub async fn size_on_disk(&self, relative_path: &Path) -> Result<u64, AppError> {
+        match self {
+            Self::InDatabase => Ok(0),
+            Self::FileSystem { root, .. } => {
+                let full_path = root.join(relative_path);
+                match tokio::fs::metadata(&full_path).await {
+                    Ok(m) => Ok(m.len()),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(0),
+                    Err(e) => Err(AppError::Internal(anyhow::anyhow!(
+                        "cannot stat attachment {}: {e}",
+                        full_path.display()
+                    ))),
+                }
+            }
+        }
+    }
+
     /// Читает весь blob.
     ///
     /// # Errors

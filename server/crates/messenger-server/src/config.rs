@@ -84,11 +84,12 @@ fn default_data_dir() -> PathBuf {
 }
 
 fn default_max_request_body_bytes() -> usize {
-    // Must be >= max_attachment_bytes: the auth middleware buffers the whole
-    // body to verify the signature, so a smaller cap here would reject large
-    // attachment uploads (the signature covers the encrypted blob) before the
-    // attachment handler runs.
-    101 * 1024 * 1024 // 101 MB (100 MB attachment cap + slack)
+    // Caps a SINGLE request body (the auth middleware buffers it to verify the
+    // signature). Large attachments now upload in small chunked parts, so this
+    // no longer needs to cover a whole attachment — it just has to fit one part
+    // (4 MiB) and the single-shot upload of small media. 101 MB leaves ample
+    // room for both.
+    101 * 1024 * 1024 // 101 MB
 }
 
 fn default_websocket_idle_timeout_secs() -> u64 {
@@ -116,7 +117,10 @@ fn default_attachment_inline_threshold_bytes() -> u64 {
 }
 
 fn default_max_attachment_bytes() -> u64 {
-    100 * 1024 * 1024 // 100 MB
+    // Logical per-attachment cap, enforced at init + per-part accumulation.
+    // Large files upload in small parts (chunked), so this is no longer bound
+    // by `max_request_body_bytes` (which only caps a single request/part).
+    2 * 1024 * 1024 * 1024 // 2 GB
 }
 
 fn default_attachment_max_unfinalized_per_device() -> u32 {

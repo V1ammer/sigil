@@ -44,6 +44,19 @@ pub struct FinalizeAttachmentRequest {
     pub message_id: Uuid,
 }
 
+/// Ответ на загрузку части (chunked upload) — сколько байт уже получено.
+#[derive(Serialize)]
+pub struct UploadPartResponse {
+    pub received: u64,
+}
+
+/// Статус потоковой загрузки — для возобновления (resume).
+#[derive(Serialize)]
+pub struct AttachmentStatusResponse {
+    pub received: u64,
+    pub padded_size: u64,
+}
+
 // ─── Constants ───
 
 const DEFAULT_UNFINALIZED_LIMIT: u32 = 10;
@@ -164,6 +177,187 @@ pub async fn upload_attachment(
     ))
 }
 
+/// Инициализация потоковой (chunked) загрузки большого attachment'а.
+///
+/// Тело пустое; метаданные в заголовках (как у `upload_attachment`, но без
+/// тела). Создаёт пустой on-disk blob и unfinalized-запись; клиент затем
+/// дозагружает части через `upload_part` и привязывает через `finalize`.
+///
+/// # Errors
+///
+/// - `400` — превышен лимит размера / много unfinalized.
+/// - `500` — ошибка БД или ввода-вывода.
+pub async fn init_attachment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    CurrentAuth(ctx): CurrentAuth,
+) -> Result<Response, AppError> {
+    let now = now_secs();
+
+    let padded_size = headers
+        .get("x-attachment-padded-size")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<i64>().ok())
+        .ok_or_else(|| AppError::BadRequest("X-Attachment-Padded-Size header required".into()))?;
+
+    #[allow(clippy::cast_sign_loss)]
+    if padded_size <= 0 || padded_size as u64 > state.config.max_attachment_bytes {
+        return Err(AppError::BadRequest(format!(
+            "attachment too large: {padded_size} > {}",
+            state.config.max_attachment_bytes
+        )));
+    }
+
+    let size_bucket = headers
+        .get("x-attachment-size-bucket")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<i32>().ok())
+        .ok_or_else(|| AppError::BadRequest("X-Attachment-Size-Bucket header required".into()))?;
+
+    let limit = if state.config.attachment_max_unfinalized_per_device > 0 {
+        state.config.attachment_max_unfinalized_per_device
+    } else {
+        DEFAULT_UNFINALIZED_LIMIT
+    };
+    let count = messenger_entity::attachments::Entity::find()
+        .filter(
+            Condition::all()
+                .add(messenger_entity::attachments::Column::UploaderDeviceId.eq(ctx.device.id))
+                .add(messenger_entity::attachments::Column::MessageId.is_null()),
+        )
+        .count(&state.db)
+        .await?;
+    if count >= u64::from(limit) {
+        return Err(AppError::BadRequest(
+            "too many unfinalized attachments".into(),
+        ));
+    }
+
+    let id = Uuid::now_v7();
+    let relative_path = state.storage.create_stream(id).await?;
+
+    #[allow(clippy::cast_possible_wrap)]
+    let expires_at = now + state.config.attachment_ttl_unfinalized_secs as i64;
+
+    messenger_entity::attachments::ActiveModel {
+        id: Set(id),
+        message_id: Set(None),
+        uploader_device_id: Set(ctx.device.id),
+        payload_ciphertext: Set(None),
+        storage_ref: Set(Some(relative_path.to_string_lossy().to_string())),
+        padded_size: Set(padded_size),
+        size_bucket: Set(size_bucket),
+        created_at: Set(now),
+        expires_at: Set(expires_at),
+    }
+    .insert(&state.db)
+    .await?;
+
+    Ok(typed_response(
+        &headers,
+        StatusCode::OK,
+        &UploadAttachmentResponse { attachment_id: id, expires_at },
+    ))
+}
+
+/// Дозагрузка одной части потокового attachment'а (append на диск).
+///
+/// Body — байты части. Заголовок `X-Attachment-Offset` должен совпадать с
+/// текущим размером на диске (упорядочивание + идемпотентность). Память не
+/// раздувается: буферизуется только размер части, не весь файл.
+///
+/// # Errors
+///
+/// - `404` — attachment не найден.
+/// - `403` — attachment принадлежит другому устройству.
+/// - `409` — уже финализирован, или offset не совпал (клиент пере-синхронится).
+/// - `400` — переполнение объявленного размера / не потоковый attachment.
+/// - `500` — ошибка БД или ввода-вывода.
+pub async fn upload_part(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    CurrentAuth(ctx): CurrentAuth,
+    Path(id): Path<Uuid>,
+    body: Bytes,
+) -> Result<Response, AppError> {
+    let offset = headers
+        .get("x-attachment-offset")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<u64>().ok())
+        .ok_or_else(|| AppError::BadRequest("X-Attachment-Offset header required".into()))?;
+
+    let attachment = messenger_entity::attachments::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    if attachment.message_id.is_some() {
+        // Already finalized — 409; the client treats this as terminal.
+        return Err(AppError::Conflict);
+    }
+    if attachment.uploader_device_id != ctx.device.id {
+        return Err(AppError::Forbidden);
+    }
+    let Some(rel) = attachment.storage_ref.as_deref() else {
+        return Err(AppError::BadRequest("attachment is not a streamed upload".into()));
+    };
+    let rel_path = PathBuf::from(rel);
+
+    let current = state.storage.size_on_disk(&rel_path).await?;
+    // Out-of-order / duplicate part → 409; the client re-syncs via /status.
+    if offset != current {
+        return Err(AppError::Conflict);
+    }
+    #[allow(clippy::cast_sign_loss)]
+    let declared = attachment.padded_size as u64;
+    if current + body.len() as u64 > declared {
+        return Err(AppError::BadRequest(format!(
+            "part overflows declared size: {current}+{} > {declared}",
+            body.len()
+        )));
+    }
+
+    let received = state.storage.append(&rel_path, &body).await?;
+
+    Ok(typed_response(
+        &headers,
+        StatusCode::OK,
+        &UploadPartResponse { received },
+    ))
+}
+
+/// Статус потоковой загрузки — сколько байт получено (для resume).
+///
+/// # Errors
+///
+/// - `404` — attachment не найден.
+/// - `403` — attachment принадлежит другому устройству.
+pub async fn attachment_status(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    CurrentAuth(ctx): CurrentAuth,
+    Path(id): Path<Uuid>,
+) -> Result<Response, AppError> {
+    let attachment = messenger_entity::attachments::Entity::find_by_id(id)
+        .one(&state.db)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if attachment.uploader_device_id != ctx.device.id {
+        return Err(AppError::Forbidden);
+    }
+    let received = match attachment.storage_ref.as_deref() {
+        Some(rel) => state.storage.size_on_disk(&PathBuf::from(rel)).await?,
+        None => 0,
+    };
+    #[allow(clippy::cast_sign_loss)]
+    let padded_size = attachment.padded_size as u64;
+    Ok(typed_response(
+        &headers,
+        StatusCode::OK,
+        &AttachmentStatusResponse { received, padded_size },
+    ))
+}
+
 /// Финализация attachment'а — привязка к сообщению.
 ///
 /// Транзакция: проверяет владение, членство в группе, обновляет attachment.
@@ -205,6 +399,20 @@ pub async fn finalize_attachment(
     // 2. Uploader == ctx.device.id
     if attachment.uploader_device_id != ctx.device.id {
         return Err(AppError::Forbidden);
+    }
+
+    // 2b. Для потоковой загрузки — все части должны быть на месте: размер на
+    //     диске обязан совпасть с объявленным `padded_size`, иначе мы привяжем
+    //     к сообщению неполный blob.
+    if let Some(rel) = attachment.storage_ref.as_deref() {
+        let on_disk = state.storage.size_on_disk(&PathBuf::from(rel)).await?;
+        #[allow(clippy::cast_sign_loss)]
+        let declared = attachment.padded_size as u64;
+        if on_disk != declared {
+            return Err(AppError::BadRequest(format!(
+                "incomplete upload: {on_disk} of {declared} bytes received"
+            )));
+        }
     }
 
     // 3. Message существует, sender == ctx

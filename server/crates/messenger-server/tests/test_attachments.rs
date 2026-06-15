@@ -367,6 +367,70 @@ struct FinalizeAttachmentRequest {
     message_id: Uuid,
 }
 
+#[derive(Deserialize)]
+struct UploadPartResp {
+    received: u64,
+}
+
+#[derive(Deserialize)]
+struct AttachmentStatusResp {
+    received: u64,
+    #[allow(dead_code)]
+    padded_size: u64,
+}
+
+async fn authed_init(ctx: &TestContext, padded_size: &str, size_bucket: &str) -> reqwest::Response {
+    let path = "/v1/attachments/init";
+    let auth = make_auth_header(ctx, "POST", path, &[]);
+    reqwest::Client::builder().no_proxy().build().unwrap()
+        .post(format!("http://{}{}", ctx.addr, path))
+        .header("x-auth-signature", &auth)
+        .header("x-attachment-padded-size", padded_size)
+        .header("x-attachment-size-bucket", size_bucket)
+        .send().await.unwrap()
+}
+
+async fn authed_part(ctx: &TestContext, id: Uuid, offset: u64, data: Vec<u8>) -> reqwest::Response {
+    let path = format!("/v1/attachments/{id}/parts");
+    let auth = make_auth_header(ctx, "POST", &path, &data);
+    reqwest::Client::builder().no_proxy().build().unwrap()
+        .post(format!("http://{}{}", ctx.addr, path))
+        .header("x-auth-signature", &auth)
+        .header("x-attachment-offset", offset.to_string())
+        .body(data).send().await.unwrap()
+}
+
+/// Build a FileSystem-backed context in a fresh temp dir (chunked upload needs
+/// on-disk storage).
+async fn setup_fs_context(db: DatabaseConnection, tmp: &std::path::Path) -> TestContext {
+    tokio::fs::create_dir_all(tmp).await.unwrap();
+    let config = AppConfig {
+        database_url: "sqlite::memory:".to_string(),
+        log_format: LogFormat::Pretty,
+        log_level: "off".to_string(),
+        bind_addr: SocketAddr::from_str("127.0.0.1:0").unwrap(),
+        data_dir: tmp.to_path_buf(),
+        max_attachment_bytes: 100 * 1024 * 1024,
+        max_request_body_bytes: 10 * 1024 * 1024,
+        ..AppConfig::default()
+    };
+    let storage = StorageBackend::FileSystem {
+        root: tmp.to_path_buf(),
+        inline_threshold: 1024 * 1024,
+    };
+    let state = AppState {
+        db: db.clone(),
+        config: Arc::new(config),
+        nonce_cache: Arc::new(NonceCache::new(100)),
+        server_identity: Arc::new(messenger_server::state::ServerIdentity::placeholder()),
+        storage,
+        ws_registry: messenger_server::ws_registry::WsRegistry::new(),
+    };
+    let (user_id, device_id, sk) = create_user_with_device(&db).await;
+    let addr = start_server(state.clone()).await;
+    TestContext { state, user_id, device_id, device_signing_key: sk, addr }
+}
+
 // ─── Tests ───
 
 #[tokio::test]
@@ -390,6 +454,101 @@ async fn test_upload_small_inline() {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = resp.bytes().await.unwrap().to_vec();
     assert_eq!(body, data);
+}
+
+#[tokio::test]
+#[allow(clippy::cast_possible_truncation)]
+async fn test_chunked_upload_resumable() {
+    let db = fresh_db().await;
+    let tmp = std::env::temp_dir().join(format!("att_chunk_{}", Uuid::now_v7()));
+    let ctx = setup_fs_context(db, &tmp).await;
+
+    // 10 MiB blob with a position-dependent pattern so range reads are checked.
+    let total = 10 * 1024 * 1024usize;
+    let data: Vec<u8> = (0..total).map(|i| (i % 251) as u8).collect();
+
+    // init
+    let resp = authed_init(&ctx, &total.to_string(), "3").await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let init: UploadAttachmentResponse =
+        rmp_serde::from_slice(&resp.bytes().await.unwrap()).unwrap();
+    let id = init.attachment_id;
+
+    // status before any part
+    let resp = authed_get(&ctx, &format!("/v1/attachments/{id}/status")).await;
+    let st: AttachmentStatusResp = rmp_serde::from_slice(&resp.bytes().await.unwrap()).unwrap();
+    assert_eq!(st.received, 0);
+
+    // part 0 [0, 4MiB)
+    let part = 4 * 1024 * 1024usize;
+    let resp = authed_part(&ctx, id, 0, data[0..part].to_vec()).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let pr: UploadPartResp = rmp_serde::from_slice(&resp.bytes().await.unwrap()).unwrap();
+    assert_eq!(pr.received, part as u64);
+
+    // wrong offset (still 0, server expects 4MiB) → 409, then re-sync via status
+    let resp = authed_part(&ctx, id, 0, data[part..part + 10].to_vec()).await;
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    let resp = authed_get(&ctx, &format!("/v1/attachments/{id}/status")).await;
+    let st: AttachmentStatusResp = rmp_serde::from_slice(&resp.bytes().await.unwrap()).unwrap();
+    assert_eq!(st.received, part as u64);
+
+    // part 1 [4MiB, 8MiB)
+    let resp = authed_part(&ctx, id, part as u64, data[part..2 * part].to_vec()).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    // part 2 [8MiB, 10MiB)
+    let resp = authed_part(&ctx, id, 2 * part as u64, data[2 * part..total].to_vec()).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let pr: UploadPartResp = rmp_serde::from_slice(&resp.bytes().await.unwrap()).unwrap();
+    assert_eq!(pr.received, total as u64);
+
+    // overflow guard: one more byte past the declared size → 400
+    let resp = authed_part(&ctx, id, total as u64, vec![0u8; 1]).await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    // full download (unfinalized, by uploader) matches the original
+    let resp = authed_get(&ctx, &format!("/v1/attachments/{id}")).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(resp.bytes().await.unwrap().to_vec(), data);
+
+    // range read of a slice that spans the part boundary
+    let auth = make_auth_header(&ctx, "GET", &format!("/v1/attachments/{id}"), &[]);
+    let resp = reqwest::Client::builder().no_proxy().build().unwrap()
+        .get(format!("http://{}/v1/attachments/{id}", ctx.addr))
+        .header("x-auth-signature", &auth)
+        .header("range", format!("bytes={}-{}", part - 5, part + 4))
+        .send().await.unwrap();
+    assert_eq!(resp.status(), StatusCode::PARTIAL_CONTENT);
+    assert_eq!(resp.bytes().await.unwrap().to_vec(), data[part - 5..=part + 4]);
+
+    let _ = tokio::fs::remove_dir_all(&tmp).await;
+}
+
+#[tokio::test]
+async fn test_finalize_rejects_incomplete_chunked_upload() {
+    let db = fresh_db().await;
+    let tmp = std::env::temp_dir().join(format!("att_incomplete_{}", Uuid::now_v7()));
+    let ctx = setup_fs_context(db, &tmp).await;
+
+    let total = 4 * 1024 * 1024usize;
+    let data: Vec<u8> = vec![7u8; total];
+
+    let resp = authed_init(&ctx, &total.to_string(), "2").await;
+    let init: UploadAttachmentResponse =
+        rmp_serde::from_slice(&resp.bytes().await.unwrap()).unwrap();
+    let id = init.attachment_id;
+
+    // upload only half
+    let resp = authed_part(&ctx, id, 0, data[0..total / 2].to_vec()).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // finalize must refuse an incomplete blob (completeness check runs before
+    // the message lookup, so any message_id reaches it).
+    let req = rmp_serde::to_vec_named(&FinalizeAttachmentRequest { message_id: Uuid::now_v7() }).unwrap();
+    let resp = authed_post_msgpack(&ctx, "POST", &format!("/v1/attachments/{id}/finalize"), req).await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+    let _ = tokio::fs::remove_dir_all(&tmp).await;
 }
 
 #[tokio::test]

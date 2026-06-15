@@ -145,6 +145,17 @@ pub fn build_router(state: AppState) -> Router {
                 attachment_body_limit(&state),
             )),
         )
+        // S11b — Chunked/resumable upload for large attachments (e.g. video).
+        // init declares the total; each part is a small signed request the
+        // server appends to disk (no whole-file RAM buffering), then finalize
+        // binds it. The part route lifts axum's 2 MiB default to fit one part.
+        .route("/v1/attachments/init", post(attachments::init_attachment))
+        .route(
+            "/v1/attachments/:id/parts",
+            post(attachments::upload_part)
+                .layer(DefaultBodyLimit::max(UPLOAD_PART_BODY_LIMIT)),
+        )
+        .route("/v1/attachments/:id/status", get(attachments::attachment_status))
         .route("/v1/attachments/:id/finalize", post(attachments::finalize_attachment))
         .route("/v1/attachments/:id", get(attachments::download_attachment))
         .route_layer(middleware::from_fn_with_state(
@@ -166,6 +177,11 @@ fn attachment_body_limit(state: &AppState) -> usize {
     let cap = state.config.max_attachment_bytes.saturating_add(1024 * 1024);
     usize::try_from(cap).unwrap_or(usize::MAX)
 }
+
+/// Max body for a single chunked-upload part: the client's part size (4 MiB)
+/// plus slack. The global `RequestBodyLimitLayer` (and the 30 s timeout) easily
+/// accommodate one part, so big files no longer hit either limit.
+const UPLOAD_PART_BODY_LIMIT: usize = 8 * 1024 * 1024;
 
 async fn health() -> &'static str {
     "ok"

@@ -913,7 +913,7 @@ impl MessageService {
         let size_bucket = size_bucket_for(padded_size);
 
         // 2. Upload the ciphertext blob.
-        let upload = match api.upload_attachment(ciphertext, padded_size, size_bucket).await {
+        let upload = match api.upload_attachment_smart(ciphertext, padded_size, size_bucket).await {
             Ok(r) => r,
             Err(e) => {
                 tracing::warn!("attachment upload failed: {e}");
@@ -1104,7 +1104,7 @@ impl MessageService {
         let padded_size = ciphertext.len() as u64;
         let size_bucket = size_bucket_for(padded_size);
 
-        let upload = match api.upload_attachment(ciphertext, padded_size, size_bucket).await {
+        let upload = match api.upload_attachment_smart(ciphertext, padded_size, size_bucket).await {
             Ok(r) => r,
             Err(e) => {
                 tracing::warn!("attachment upload failed: {e}");
@@ -1339,7 +1339,7 @@ impl MessageService {
                 };
                 let padded_size = ciphertext.len() as u64;
                 let size_bucket = size_bucket_for(padded_size);
-                let upload = match api.upload_attachment(ciphertext, padded_size, size_bucket).await {
+                let upload = match api.upload_attachment_smart(ciphertext, padded_size, size_bucket).await {
                     Ok(r) => r,
                     Err(e) => {
                         tracing::warn!(error = %e, "avatar upload failed");
