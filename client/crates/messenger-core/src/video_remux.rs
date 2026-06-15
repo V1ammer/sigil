@@ -92,6 +92,16 @@ pub fn remux_to_fmp4(input: &[u8]) -> Option<(Vec<u8>, String)> {
         return None;
     }
     let (profile_idc, constraint, level_idc) = (vcfg.sps[1], vcfg.sps[2], vcfg.sps[3]);
+    // `mse_fmp4` refuses to write a High-profile (100/110/122/144) avcC because it
+    // omits the High-profile extension bytes. Phones almost always use High, so we
+    // write the avcC with a baseline profile byte (which the crate accepts, no
+    // extension) and patch the real profile back into the output below. Decoders
+    // read the SPS — which carries the true profile — not this byte.
+    let avcc_profile = if matches!(profile_idc, 100 | 110 | 122 | 144) {
+        77
+    } else {
+        profile_idc
+    };
 
     // 2. Read all samples.
     let video = read_track_samples(&mut reader, vcfg.id, true)?;
@@ -133,7 +143,7 @@ pub fn remux_to_fmp4(input: &[u8]) -> Option<(Vec<u8>, String)> {
             height: vcfg.height,
             avcc_box: AvcConfigurationBox {
                 configuration: AvcDecoderConfigurationRecord {
-                    profile_idc,
+                    profile_idc: avcc_profile,
                     constraint_set_flag: constraint,
                     level_idc,
                     sequence_parameter_set: vcfg.sps.clone(),
@@ -168,6 +178,16 @@ pub fn remux_to_fmp4(input: &[u8]) -> Option<(Vec<u8>, String)> {
 
     let mut out = Vec::with_capacity(input.len() + 64 * 1024);
     init.write_to(&mut out).ok()?;
+    // Restore the true profile byte inside the avcC (we wrote a baseline stand-in
+    // so the crate wouldn't reject High profile). avcC payload is
+    // `[version, profile_idc, …]`, so profile sits 5 bytes past the `avcC` tag.
+    if avcc_profile != profile_idc {
+        if let Some(pos) = find_subslice(&out, b"avcC") {
+            if let Some(b) = out.get_mut(pos + 5) {
+                *b = profile_idc;
+            }
+        }
+    }
 
     // 4. Media segments, snapped to video keyframes (~FRAG_SECONDS each).
     let frag_ticks = (FRAG_SECONDS * f64::from(vcfg.timescale)) as u64;
@@ -176,28 +196,33 @@ pub fn remux_to_fmp4(input: &[u8]) -> Option<(Vec<u8>, String)> {
     let mut seq = 1u32;
     let mut v_off = 0usize; // sample index into video
     let mut a_off = 0usize; // sample index into audio
-    let mut v_time = 0u64; // accumulated video ticks emitted
+    let mut v_time = 0u64; // accumulated video ticks emitted (= this fragment's tfdt)
+    let mut a_time = 0u64; // accumulated audio ticks emitted
     for &v_end in &boundaries {
         let v_slice: Vec<Sample> = video.samples[v_off..v_end].to_vec();
         let v_data = video.data[data_offset(&video, v_off)..data_offset(&video, v_end)].to_vec();
         let v_dur: u64 = v_slice.iter().filter_map(|s| s.duration).map(u64::from).sum();
 
         // Audio samples whose timeline falls within the video fragment's span.
-        let (a_payload, a_consumed) = match (&acfg, &audio) {
+        let (a_payload, a_consumed, a_dur) = match (&acfg, &audio) {
             (Some(a), Some(au)) => {
                 let a_end = audio_cut(au, a_off, v_time + v_dur, vcfg.timescale, a.timescale);
                 let slice: Vec<Sample> = au.samples[a_off..a_end].to_vec();
                 let data = au.data[data_offset(au, a_off)..data_offset(au, a_end)].to_vec();
-                (Some((slice, data)), a_end - a_off)
+                let dur: u64 = slice.iter().filter_map(|s| s.duration).map(u64::from).sum();
+                (Some((slice, data)), a_end - a_off, dur)
             }
-            _ => (None, 0),
+            _ => (None, 0, 0),
         };
 
-        write_media_segment(&mut out, seq, v_slice, v_data, a_payload)?;
+        // Each fragment's tfdt = the decode time of its first sample, so the
+        // browser places fragments end-to-end instead of all at t=0.
+        write_media_segment(&mut out, seq, v_time, a_time, v_slice, v_data, a_payload)?;
 
         v_off = v_end;
         v_time += v_dur;
         a_off += a_consumed;
+        a_time += a_dur;
         seq += 1;
     }
 
@@ -288,14 +313,19 @@ fn data_offset(s: &Samples, i: usize) -> usize {
     s.samples[..i].iter().filter_map(|x| x.size).map(|v| v as usize).sum()
 }
 
-/// Append one media segment (moof + mdat(s)) to `out`.
+/// Append one media segment (moof + mdat(s)) to `out`. `v_dts`/`a_dts` are the
+/// base media decode times (in each track's timescale) patched into the `tfdt`
+/// boxes — mse_fmp4 hardcodes them to 0, which would stack every fragment at t=0.
 fn write_media_segment(
     out: &mut Vec<u8>,
     seq: u32,
+    v_dts: u64,
+    a_dts: u64,
     v_samples: Vec<Sample>,
     v_data: Vec<u8>,
     audio: Option<(Vec<Sample>, Vec<u8>)>,
 ) -> Option<()> {
+    let has_audio = audio.is_some();
     let mut seg = MediaSegment::default();
     seg.moof_box.mfhd_box.sequence_number = seq;
 
@@ -328,7 +358,42 @@ fn write_media_segment(
         seg.mdat_boxes.push(MediaDataBox { data: a_data });
     }
 
-    seg.write_to(out).ok()
+    // Write to a scratch buffer so the tfdt patch only touches this segment.
+    let mut seg_bytes = Vec::new();
+    seg.write_to(&mut seg_bytes).ok()?;
+    // The moof's tfdt boxes come before the mdat sample data, so the first one
+    // (or two) are the real per-track tfdts: video first, then audio.
+    patch_tfdt(&mut seg_bytes, 0, v_dts);
+    if has_audio {
+        patch_tfdt(&mut seg_bytes, 1, a_dts);
+    }
+    out.extend_from_slice(&seg_bytes);
+    Some(())
+}
+
+/// First index of `needle` in `hay`.
+fn find_subslice(hay: &[u8], needle: &[u8]) -> Option<usize> {
+    hay.windows(needle.len()).position(|w| w == needle)
+}
+
+/// Overwrite the `index`-th `tfdt` box's 32-bit `base_media_decode_time`.
+/// Layout: `[size:4][b"tfdt":4][version:1][flags:3][time:4]`.
+fn patch_tfdt(buf: &mut [u8], index: usize, dts: u64) {
+    let time = u32::try_from(dts).unwrap_or(u32::MAX).to_be_bytes();
+    let mut pos = 0;
+    let mut n = 0;
+    while pos + 12 <= buf.len() {
+        if &buf[pos..pos + 4] == b"tfdt" {
+            if n == index {
+                buf[pos + 8..pos + 12].copy_from_slice(&time);
+                return;
+            }
+            n += 1;
+            pos += 4;
+        } else {
+            pos += 1;
+        }
+    }
 }
 
 fn map_profile(object_type: u8) -> AacProfile {
