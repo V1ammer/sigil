@@ -112,6 +112,12 @@
   },
   "hotPaths": [
     {
+      "path": "client/src-tauri/gen/android/app/src/main/java/com/example/messenger/MainActivity.kt",
+      "accessCount": 2,
+      "lastAccessed": 1781553164686,
+      "type": "file"
+    },
+    {
       "path": "client/crates/messenger-core/tests/gen_blob.rs",
       "accessCount": 1,
       "lastAccessed": 1781545552750,

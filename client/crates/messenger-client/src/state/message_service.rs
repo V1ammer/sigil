@@ -1088,8 +1088,14 @@ impl MessageService {
         // mime gains a `codecs="…"` parameter so `isTypeSupported` passes. Non-
         // video, or anything we can't remux (e.g. HEVC), is left untouched and
         // falls back to whole-blob playback.
+        //
+        // The remux is synchronous and holds ~3× the file in WASM memory, so for
+        // large videos it would freeze the UI and can run the tab out of memory
+        // (→ the send fails). Until it moves to a Web Worker, cap it: big videos
+        // skip the remux and upload as-is (they play via the whole-blob path).
+        const REMUX_MAX_BYTES: usize = 48 * 1024 * 1024;
         let (media_bytes, media_mime): (std::borrow::Cow<[u8]>, String) =
-            if payload.mime.starts_with("video/") {
+            if payload.mime.starts_with("video/") && payload.bytes.len() <= REMUX_MAX_BYTES {
                 match messenger_core::video_remux::remux_to_fmp4(&payload.bytes) {
                     Some((fmp4, mime)) => (std::borrow::Cow::Owned(fmp4), mime),
                     None => (std::borrow::Cow::Borrowed(payload.bytes.as_slice()), payload.mime.clone()),
