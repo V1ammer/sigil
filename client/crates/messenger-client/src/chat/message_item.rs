@@ -658,10 +658,24 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
             let err: RwSignal<Option<String>> = RwSignal::new(None);
             // Click-to-load: don't download every video on render — only when the
             // user taps play. Streams chunk-by-chunk (MediaSource) when possible,
-            // else falls back to a whole-blob download.
+            // else falls back to a whole-blob download. Everything below the frame
+            // (play/pause, seek bar, time, fullscreen) is our own chrome styled to
+            // the app — the browser's <video controls> widget is never shown.
             let started: RwSignal<bool> = RwSignal::new(false);
+            let is_playing = RwSignal::new(false);
+            let current_ms = RwSignal::new(0u32);
+            let duration_ms = RwSignal::new(0u32); // 0 until known (still streaming)
+            let buffered_ms = RwSignal::new(0u32); // live buffer end; drives the bar while duration is unknown
+            let is_fullscreen = RwSignal::new(false);
             let video_ref: NodeRef<leptos::html::Video> = NodeRef::new();
+            let container_ref: NodeRef<leptos::html::Div> = NodeRef::new();
             let kicked = RwSignal::new(false);
+            // Only offer fullscreen where the platform supports it — some WebViews
+            // report it unavailable, so we hide the button there instead of
+            // leaving a dead control.
+            let fs_enabled = web_sys::window()
+                .and_then(|w| w.document())
+                .is_some_and(|d| d.fullscreen_enabled());
             {
                 let aid = attachment_id.clone();
                 let key = decryption_key.clone();
@@ -677,8 +691,9 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                         el.unchecked_ref::<web_sys::HtmlMediaElement>().clone();
                     match (aid.clone(), key.clone()) {
                         (Some(aid), Some(key)) => {
-                            // autoplay=false: the element's own `autoplay` attr
-                            // starts it as soon as the first chunk buffers.
+                            // autoplay=false here: the <video autoplay> attribute
+                            // starts playback as the first chunk buffers; passing
+                            // true would only call play() after the whole stream.
                             crate::chat::media_stream::play(media, aid, key, m.clone(), false, err, l);
                         }
                         _ => err.set(Some(t(l, "message.video").to_string())),
@@ -686,12 +701,141 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                 });
             }
 
+            // Keep the fullscreen flag in sync when the user leaves fullscreen via
+            // Escape / system back rather than our button. Each video listens and
+            // compares against its own container, so only the element that was
+            // actually fullscreen flips back.
+            if fs_enabled {
+                Effect::new(move |_| {
+                    let Some(doc) = web_sys::window().and_then(|w| w.document()) else {
+                        return;
+                    };
+                    let cb = Closure::<dyn FnMut()>::new(move || {
+                        let this_el = container_ref
+                            .get_untracked()
+                            .map(|el| el.unchecked_ref::<web_sys::Element>().clone());
+                        let active = web_sys::window()
+                            .and_then(|w| w.document())
+                            .and_then(|d| d.fullscreen_element())
+                            .zip(this_el)
+                            .is_some_and(|(fs, el)| fs == el);
+                        is_fullscreen.set(active);
+                    });
+                    let _ = doc.add_event_listener_with_callback(
+                        "fullscreenchange",
+                        cb.as_ref().unchecked_ref(),
+                    );
+                    // Leak the closure (same pattern as the long-press timer
+                    // above) — released on app teardown. One per video mount.
+                    cb.forget();
+                });
+            }
+
+            // Play/pause the underlying element; the play/pause events mirror the
+            // real state back into `is_playing`.
+            let toggle = move |_: leptos::ev::MouseEvent| {
+                if let Some(el) = video_ref.get_untracked() {
+                    let v = el.unchecked_ref::<web_sys::HtmlMediaElement>();
+                    if is_playing.get_untracked() {
+                        let _ = v.pause();
+                    } else {
+                        let _ = v.play();
+                    }
+                }
+            };
+            let on_play = move |_: leptos::ev::Event| is_playing.set(true);
+            let on_pause = move |_: leptos::ev::Event| is_playing.set(false);
+            let on_ended = move |_: leptos::ev::Event| {
+                is_playing.set(false);
+                current_ms.set(0);
+            };
+            let on_time = move |ev: leptos::ev::Event| {
+                if let Some(target) = ev.target() {
+                    let v: web_sys::HtmlMediaElement = target.unchecked_into();
+                    current_ms.set((v.current_time() * 1000.0) as u32);
+                    // Track the end of what's buffered so the bar has a sensible
+                    // denominator while the total duration is still unknown.
+                    let buf = v.buffered();
+                    if buf.length() > 0 {
+                        if let Ok(end) = buf.end(buf.length() - 1) {
+                            buffered_ms.set((end * 1000.0) as u32);
+                        }
+                    }
+                }
+            };
+            let on_duration = move |ev: leptos::ev::Event| {
+                if let Some(target) = ev.target() {
+                    let v: web_sys::HtmlMediaElement = target.unchecked_into();
+                    let d = v.duration();
+                    if d.is_finite() && d > 0.0 {
+                        duration_ms.set((d * 1000.0) as u32);
+                    }
+                }
+            };
+            // Click anywhere on the bar to seek (within whatever's buffered).
+            let seek = move |ev: leptos::ev::MouseEvent| {
+                ev.stop_propagation();
+                let Some(el) = video_ref.get_untracked() else { return };
+                let v = el.unchecked_ref::<web_sys::HtmlMediaElement>();
+                let dur = v.duration();
+                let max_s = if dur.is_finite() && dur > 0.0 {
+                    dur
+                } else {
+                    f64::from(buffered_ms.get_untracked()) / 1000.0
+                };
+                if max_s <= 0.0 {
+                    return;
+                }
+                if let Some(target) = ev.current_target() {
+                    let bar: web_sys::Element = target.unchecked_into();
+                    let rect = bar.get_bounding_client_rect();
+                    if rect.width() > 0.0 {
+                        let frac = ((f64::from(ev.client_x()) - rect.left()) / rect.width())
+                            .clamp(0.0, 1.0);
+                        v.set_current_time(frac * max_s);
+                        current_ms.set((frac * max_s * 1000.0) as u32);
+                    }
+                }
+            };
+            // Fullscreen the container so our chrome stays on top of the video.
+            let toggle_fullscreen = move |ev: leptos::ev::MouseEvent| {
+                ev.stop_propagation();
+                let doc = web_sys::window().and_then(|w| w.document());
+                let active = doc.as_ref().and_then(|d| d.fullscreen_element()).is_some();
+                if active {
+                    if let Some(d) = doc.as_ref() {
+                        d.exit_fullscreen();
+                    }
+                    is_fullscreen.set(false);
+                } else if let Some(el) = container_ref.get_untracked() {
+                    if el.unchecked_ref::<web_sys::Element>().request_fullscreen().is_ok() {
+                        is_fullscreen.set(true);
+                    }
+                }
+            };
+
+            let fmt = |ms: u32| {
+                let s = ms / 1000;
+                format!("{}:{:02}", s / 60, s % 60)
+            };
+
+            // In fullscreen the container fills the screen; otherwise it keeps an
+            // image-sized footprint (max-h-64 × 16:9 ≈ 455px) so the bubble
+            // doesn't collapse to the play icon, shrinking via max-w-full.
+            let box_class = move || {
+                if is_fullscreen.get() {
+                    "flex h-full w-full items-center justify-center"
+                } else {
+                    "aspect-video max-h-64 w-[455px] max-w-full flex items-center justify-center"
+                }
+            };
+
             view! {
-                <div class="block overflow-hidden rounded-lg -mx-1 -mt-1 mb-1">
-                    // Definite width so the bubble doesn't collapse to the play
-                    // icon: matches an image's max footprint (max-h-64 × 16:9 ≈
-                    // 455px), shrinking responsively via max-w-full.
-                    <div class="aspect-video max-h-64 w-[455px] max-w-full bg-black flex items-center justify-center">
+                <div
+                    node_ref=container_ref
+                    class="relative block overflow-hidden rounded-lg -mx-1 -mt-1 mb-1 bg-black"
+                >
+                    <div class=box_class>
                         {move || {
                             if !started.get() {
                                 view! {
@@ -719,13 +863,73 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                                 }.into_any()
                             } else {
                                 view! {
-                                    <video
-                                        node_ref=video_ref
-                                        controls=true
-                                        autoplay=true
-                                        playsinline=true
-                                        class="h-full w-full object-contain bg-black"
-                                    />
+                                    <div class="relative h-full w-full">
+                                        <video
+                                            node_ref=video_ref
+                                            autoplay=true
+                                            playsinline=true
+                                            class="h-full w-full object-contain bg-black"
+                                            on:click=toggle
+                                            on:play=on_play
+                                            on:pause=on_pause
+                                            on:ended=on_ended
+                                            on:timeupdate=on_time
+                                            on:durationchange=on_duration
+                                            on:loadedmetadata=on_duration
+                                        />
+                                        // Big center play affordance while paused.
+                                        {move || (!is_playing.get()).then(|| view! {
+                                            <button
+                                                class="absolute inset-0 flex items-center justify-center"
+                                                on:click=toggle
+                                            >
+                                                <div class="flex h-14 w-14 items-center justify-center rounded-full bg-black/50 text-white">
+                                                    <Icon name="play" class_name="h-7 w-7"/>
+                                                </div>
+                                            </button>
+                                        })}
+                                        // Bottom control bar — ours, not the browser's.
+                                        <div class="absolute inset-x-0 bottom-0 flex items-center gap-2 bg-gradient-to-t from-black/70 to-transparent px-2.5 pb-1.5 pt-5 text-white">
+                                            <button class="shrink-0" on:click=toggle>
+                                                {move || if is_playing.get() {
+                                                    view! { <Icon name="pause" class_name="h-5 w-5"/> }.into_any()
+                                                } else {
+                                                    view! { <Icon name="play" class_name="h-5 w-5"/> }.into_any()
+                                                }}
+                                            </button>
+                                            <span class="shrink-0 text-[10px] tabular-nums">{move || fmt(current_ms.get())}</span>
+                                            <div
+                                                class="h-1.5 flex-1 cursor-pointer rounded-full bg-white/25"
+                                                on:click=seek
+                                            >
+                                                <div
+                                                    class="h-full rounded-full bg-primary"
+                                                    style=move || {
+                                                        let d = duration_ms.get();
+                                                        let denom = if d > 0 { d } else { buffered_ms.get().max(1) };
+                                                        let pct = (current_ms.get() as f64 / denom as f64 * 100.0).clamp(0.0, 100.0);
+                                                        format!("width:{pct}%")
+                                                    }
+                                                />
+                                            </div>
+                                            <span class="shrink-0 text-[10px] tabular-nums">
+                                                {move || { let d = duration_ms.get(); if d > 0 { fmt(d) } else { "--:--".to_string() } }}
+                                            </span>
+                                            {if fs_enabled {
+                                                view! {
+                                                    <button class="shrink-0" on:click=toggle_fullscreen>
+                                                        {move || if is_fullscreen.get() {
+                                                            view! { <Icon name="minimize" class_name="h-4 w-4"/> }.into_any()
+                                                        } else {
+                                                            view! { <Icon name="maximize" class_name="h-4 w-4"/> }.into_any()
+                                                        }}
+                                                    </button>
+                                                }.into_any()
+                                            } else {
+                                                view! {}.into_any()
+                                            }}
+                                        </div>
+                                    </div>
                                 }.into_any()
                             }
                         }}
