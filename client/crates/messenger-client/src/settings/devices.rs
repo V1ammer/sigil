@@ -27,7 +27,6 @@ use messenger_core::mls::group::MlsRuntime;
 #[cfg(any(feature = "native", feature = "wasm-mls"))]
 use messenger_core::mls::keypackage::generate_keypackage_bundle;
 use messenger_core::prov::{decode_qr, QrPayload};
-use messenger_proto::keypackages::PublishKeyPackagesRequest;
 use messenger_proto::mls::{MemberChange, PostCommitRequest, WelcomePayload};
 use messenger_proto::provisioning::ApproveProvisioningRequest;
 use rand::RngCore;
@@ -301,9 +300,22 @@ pub fn DevicesSettings() -> impl IntoView {
                         }
                     };
                     let runtime = MlsRuntime::new(local_store.clone(), identity.device_id);
+                    // The bootstrap KeyPackage must carry the NEW device's keys (not
+                    // the approver's): its leaf signature key has to match the key the
+                    // new device will sign with, or it can't use the package to join.
+                    // (device_id is assigned by the server on approve and is not part
+                    // of the KeyPackage credential, so a placeholder is fine here.)
+                    let new_identity = messenger_core::identity::ClientIdentity::generate_new_device_from_seeds(
+                        identity.user_id,
+                        identity.username.clone(),
+                        uuid::Uuid::nil(),
+                        identity.identity_signing_key.secret_bytes(),
+                        new_device_signing_sk,
+                        new_device_hpke_seed,
+                    );
                     let (kp_bundle_bytes, gen_kp) = match generate_keypackage_bundle(
                         &messenger_core::mls::provider::OpenMlsRustCrypto::default(),
-                        &identity,
+                        &new_identity,
                         86400, // 24 hours
                         false,
                     ) {
@@ -380,19 +392,15 @@ pub fn DevicesSettings() -> impl IntoView {
                         }
                     };
 
-                    // ── Step E: Publish KeyPackage and add to all groups ──
+                    // ── Step E: Add the new device to existing groups ──
+                    // NOTE: we must NOT publish this KeyPackage — it would land in the
+                    // APPROVER's server pool (the request is signed by the approver),
+                    // and since its private bundle lives only on the new device, peers
+                    // claiming it from the approver could no longer join
+                    // (`NoMatchingKeyPackage`). The new device publishes its own
+                    // KeyPackages once it logs in. Here the bundle is used directly to
+                    // add the new device to the approver's existing groups.
                     let kp_bytes = gen_kp.key_package_bytes.clone();
-                    let pub_req = PublishKeyPackagesRequest {
-                        key_packages: vec![messenger_proto::keypackages::KeyPackageUpload {
-                            key_package: kp_bytes.clone(),
-                            init_key_hash: gen_kp.init_key_hash.clone(),
-                            expires_at: gen_kp.expires_at,
-                            is_last_resort: gen_kp.is_last_resort,
-                        }],
-                    };
-                    if let Err(e) = api.publish_keypackages(&pub_req).await {
-                        nf.push(ToastKind::Warning, format!("KeyPackage publish failed: {e}"));
-                    }
 
                     // List groups and add new device to each
                     if let Ok(groups) = api.list_groups(None).await {
