@@ -1117,17 +1117,20 @@ impl MessageService {
                         raw()
                     }
                 }
-            } else if want_media && payload.mime.starts_with("video/") && !is_native {
-                // Fast path: hardware WebCodecs transcode (handles 4K/HEVC in
-                // seconds). Falls back to the ffmpeg.wasm software transcode when
-                // the browser can't decode the input codec, then to raw bytes.
+            } else if want_media && payload.mime.starts_with("video/") {
+                // Fast path on every platform: hardware WebCodecs transcode. In
+                // the Android WebView (also Chromium) WebCodecs is backed by the
+                // platform MediaCodec, so this is the native hardware transcode —
+                // no separate Kotlin plugin needed when it's available.
                 let hw = crate::media_transcode::transcode_video_hw(&payload.bytes, |p| {
                     web_sys::console::log_1(&format!("[transcode hw] {:.0}%", p * 100.0).into());
                 })
                 .await;
                 match hw {
                     Ok((b, m)) => (std::borrow::Cow::Owned(b), m),
-                    Err(e) => {
+                    Err(e) if !is_native => {
+                        // Web/desktop: ffmpeg.wasm software transcode (slow but
+                        // decodes anything), then raw bytes.
                         web_sys::console::warn_1(
                             &format!("[transcode] hw path failed ({e}); trying ffmpeg").into(),
                         );
@@ -1143,17 +1146,22 @@ impl MessageService {
                             }
                         }
                     }
-                }
-            } else if want_media
-                && payload.mime.starts_with("video/")
-                && payload.bytes.len() <= REMUX_MAX_BYTES
-            {
-                // Native (Tauri) interim: no MediaCodec yet — try the pure-Rust
-                // remux (H.264 only, stream-copy) so existing-codec clips still
-                // stream; HEVC/oversize falls through to raw whole-blob.
-                match messenger_core::video_remux::remux_to_fmp4(&payload.bytes) {
-                    Some((fmp4, mime)) => (std::borrow::Cow::Owned(fmp4), mime),
-                    None => raw(),
+                    Err(e) => {
+                        // Native (Android) without WebCodecs: ffmpeg.wasm isn't
+                        // bundled there, so try the pure-Rust H.264 remux (stream-
+                        // copy) for already-H.264 clips, else send raw.
+                        web_sys::console::warn_1(
+                            &format!("[transcode] hw path failed ({e}); trying remux").into(),
+                        );
+                        if payload.bytes.len() <= REMUX_MAX_BYTES {
+                            match messenger_core::video_remux::remux_to_fmp4(&payload.bytes) {
+                                Some((fmp4, mime)) => (std::borrow::Cow::Owned(fmp4), mime),
+                                None => raw(),
+                            }
+                        } else {
+                            raw()
+                        }
+                    }
                 }
             } else {
                 raw()

@@ -7,7 +7,7 @@
     "frontendDist": "../crates/messenger-client/dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "cd ../crates/messenger-client && trunk serve --port 1420",
-    "beforeBuildCommand": "cd crates/messenger-client && trunk build --release"
+    "beforeBuildCommand": "cd crates/messenger-client && trunk build --release && rm -rf dist/ffmpeg"
   },
   "app": {
     "windows": [

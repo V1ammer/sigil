@@ -130,10 +130,11 @@
       })();
     </script>
     <script type="module">
-      // Video transcoding via the ffmpeg.wasm ESM build. Loaded as a module so
-      // the worker (./esm/worker.js) is itself a module and pulls the core via
-      // dynamic import(). The 32 MB core wasm is fetched lazily on first use.
-      import { FFmpeg } from "./ffmpeg/esm/index.js";
+      // Video transcoding. The hardware path (WebCodecs, below) needs no extra
+      // libraries. The ffmpeg.wasm software fallback is imported *dynamically*
+      // inside __sigilTranscodeVideo, so this module still loads (and the HW path
+      // still works) on builds where the ffmpeg assets are stripped — e.g. the
+      // Android APK, which always has WebCodecs and never needs ffmpeg.
 
       var VIDEO_MAX_LONG = 1280; // long-side cap (px); bump to 1920 for 1080p
       var VIDEO_BITRATE_K = 2500;
@@ -177,7 +178,10 @@
 
       // input: Uint8Array, onProgress: fn(0..1). Returns a Uint8Array (fragmented mp4).
       window.__sigilTranscodeVideo = async function (input, onProgress) {
-        if (!ff) ff = new FFmpeg();
+        if (!ff) {
+          const mod = await import("./ffmpeg/esm/index.js");
+          ff = new mod.FFmpeg();
+        }
         if (!ff.loaded) {
           var abs = function (p) { return new URL(p, document.baseURI).href; };
           await ff.load({
