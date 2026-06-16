@@ -296,6 +296,27 @@ fn own_msgs_record(id: Uuid, kind: crate::state::messages::MessageKind, body: Me
     own_msgs_store(&map);
 }
 
+/// Decrypted plaintext of a RECEIVED MLS message, cached per message id. MLS
+/// application messages can be decrypted only once (the secret is deleted for
+/// forward secrecy), but the app re-pulls and re-converts the whole history on
+/// every sync/reload — re-decryption fails with `SecretReuseError`. Caching the
+/// plaintext lets re-converts skip decryption. Same on-device trust as the MLS
+/// state itself.
+fn decrypted_get(id: Uuid) -> Option<Vec<u8>> {
+    use base64::Engine as _;
+    local_storage()
+        .and_then(|s| s.get_item(&format!("mdec:{id}")).ok().flatten())
+        .and_then(|b64| base64::engine::general_purpose::STANDARD.decode(b64).ok())
+}
+
+fn decrypted_put(id: Uuid, plaintext: &[u8]) {
+    use base64::Engine as _;
+    if let Some(s) = local_storage() {
+        let b64 = base64::engine::general_purpose::STANDARD.encode(plaintext);
+        let _ = s.set_item(&format!("mdec:{id}"), &b64);
+    }
+}
+
 fn own_deletes_load() -> std::collections::HashSet<Uuid> {
     local_storage()
         .and_then(|s| s.get_item(OWN_DELETES_KEY).ok().flatten())
@@ -2734,8 +2755,17 @@ impl MessageService {
         // Try MLS decryption first. If that fails (MLS state missing, etc.)
         // fall back to treating `mls_ciphertext` as a plaintext envelope —
         // the send path uses the same fallback when MLS isn't ready.
-        let decrypted = if !msg.mls_ciphertext.is_empty() {
-            self.decrypt_ciphertext(group_id, &msg.mls_ciphertext).await
+        // Use the cached plaintext if we've already decrypted this message —
+        // MLS forbids decrypting an application message twice (SecretReuseError),
+        // and the whole history is re-converted on every sync/reload.
+        let decrypted = if let Some(cached) = decrypted_get(msg.id) {
+            Some(cached)
+        } else if !msg.mls_ciphertext.is_empty() {
+            let d = self.decrypt_ciphertext(group_id, &msg.mls_ciphertext).await;
+            if let Some(ref pt) = d {
+                decrypted_put(msg.id, pt);
+            }
+            d
         } else {
             None
         };
@@ -2854,20 +2884,29 @@ impl MessageService {
                     )
                 }
                 Err(_) => {
-                    // Last resort: treat as plain UTF-8 text (legacy text fallback).
-                    let text = if payload.is_empty() {
-                        String::new()
+                    // Undecryptable MLS ciphertext (our own message — MLS can't
+                    // self-decrypt — or a secret already consumed): never render
+                    // raw ciphertext as text.
+                    if decrypted.is_none() && !msg.mls_ciphertext.is_empty() {
+                        let is_own = Some(msg.sender_user_id) == current_user_id();
+                        // Our own CONTENT message: emit an empty placeholder the
+                        // caller overrides from the own-messages cache. Anything
+                        // else (our own control message, or a received message
+                        // whose secret was already consumed) is dropped.
+                        if is_own && own_msgs_load().contains_key(&msg.id) {
+                            (MessageKind::Text, MessageBody::Text(String::new()), None, None, msg.created_at, None)
+                        } else {
+                            return Converted::Drop;
+                        }
                     } else {
-                        String::from_utf8_lossy(payload).to_string()
-                    };
-                    (
-                        MessageKind::Text,
-                        MessageBody::Text(text),
-                        None,
-                        None,
-                        msg.created_at,
-                        None,
-                    )
+                        // Last resort: treat as plain UTF-8 text (legacy plaintext).
+                        let text = if payload.is_empty() {
+                            String::new()
+                        } else {
+                            String::from_utf8_lossy(payload).to_string()
+                        };
+                        (MessageKind::Text, MessageBody::Text(text), None, None, msg.created_at, None)
+                    }
                 }
             };
 
