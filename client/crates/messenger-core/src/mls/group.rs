@@ -11,8 +11,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use openmls::prelude::{
-    GroupId, KeyPackage, KeyPackageBundle, LeafNodeIndex, MlsGroup, MlsGroupCreateConfig, MlsGroupJoinConfig,
-    MlsMessageBodyIn, MlsMessageIn, ProcessedMessageContent, SenderRatchetConfiguration, StagedWelcome,
+    GroupId, KeyPackage, KeyPackageBundle, LeafNodeIndex, LeafNodeParameters, MlsGroup,
+    MlsGroupCreateConfig, MlsGroupJoinConfig, MlsMessageBodyIn, MlsMessageIn,
+    ProcessedMessageContent, SenderRatchetConfiguration, StagedWelcome,
 };
 use openmls_rust_crypto::OpenMlsRustCrypto;
 use openmls_traits::storage::StorageProvider;
@@ -483,6 +484,59 @@ impl MlsRuntime {
             .merge_pending_commit(&provider)
             .map_err(|e| CryptoError::Mls(format!("merge_pending_commit: {e:?}")))?;
 
+        self.save_group(group_id, &provider).await?;
+        Ok(())
+    }
+
+    /// Rotate our own leaf key (MLS self-update) without changing membership.
+    ///
+    /// Advances the epoch and gives post-compromise security: a passively
+    /// compromised old key can't decrypt messages after this commit is merged.
+    /// Returns the commit to distribute (no welcomes). Don't merge until the
+    /// server accepts it — call [`MlsRuntime::merge_pending`] on success or
+    /// [`MlsRuntime::clear_pending_commit`] on rejection.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CryptoError::Mls` on failure.
+    pub async fn self_update(
+        &self,
+        group_id: Uuid,
+        identity: &ClientIdentity,
+    ) -> Result<PendingCommit, CryptoError> {
+        let (mut group, provider) = self.load_group(group_id).await?;
+        let epoch = group.epoch().as_u64();
+        let signer = IdentitySigner(identity);
+
+        let bundle = group
+            .self_update(&provider, &signer, LeafNodeParameters::default())
+            .map_err(|e| CryptoError::Mls(format!("self_update: {e:?}")))?;
+        let commit = bundle
+            .commit()
+            .tls_serialize_detached()
+            .map_err(|e| CryptoError::Mls(format!("serialize commit: {e:?}")))?;
+
+        self.save_group(group_id, &provider).await?;
+        Ok(PendingCommit {
+            commit,
+            welcomes: Vec::new(),
+            group_info: None,
+            epoch,
+        })
+    }
+
+    /// Discard a staged (proposed-but-not-merged) commit, e.g. after the server
+    /// rejected it on an epoch conflict, so the local group returns to the last
+    /// merged epoch and can re-sync.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CryptoError::Mls` on failure.
+    pub async fn clear_pending_commit(&self, group_id: Uuid) -> Result<(), CryptoError> {
+        let (mut group, provider) = self.load_group(group_id).await?;
+        group
+            .clear_pending_commit(provider.storage())
+            .map_err(|e| CryptoError::Mls(format!("clear_pending_commit: {e:?}")))?;
         self.save_group(group_id, &provider).await?;
         Ok(())
     }

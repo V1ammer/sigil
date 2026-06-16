@@ -816,6 +816,61 @@ pub async fn group_leave(api: &ApiClient, group_id: Uuid) -> Result<(), String> 
     result
 }
 
+/// Opportunistically rotate our leaf key in a group (MLS self-update) for
+/// post-compromise security. Rate-limited to once per 24h per group via
+/// localStorage; conflict-safe (on a server epoch conflict the staged commit is
+/// discarded and we re-sync on the next pull). No-op for groups without local
+/// MLS state. Fire-and-forget from the chat-load path.
+pub async fn maybe_rekey_group(api: &ApiClient, group_id: Uuid) {
+    use messenger_proto::mls::PostCommitRequest;
+    const DAY_MS: f64 = 24.0 * 3600.0 * 1000.0;
+
+    let key = format!("ms_rekey_{group_id}");
+    let now = js_sys::Date::now();
+    let storage = web_sys::window().and_then(|w| w.local_storage().ok().flatten());
+    if let Some(s) = &storage {
+        if let Ok(Some(v)) = s.get_item(&key) {
+            if v.parse::<f64>().is_ok_and(|last| now - last < DAY_MS) {
+                return;
+            }
+        }
+    }
+
+    let Ok(identity) = session_identity() else { return };
+    let Some(rt) = take_mls_runtime().await else { return };
+    let outcome = async {
+        let pc = rt
+            .self_update(group_id, &identity)
+            .await
+            .map_err(|e| format!("{e}"))?;
+        let req = PostCommitRequest {
+            expected_epoch: pc.epoch as i64,
+            commit: pc.commit,
+            welcomes: Vec::new(),
+            member_changes: Vec::new(),
+        };
+        match api.post_commit(group_id, &req).await {
+            Ok(_) => rt.merge_pending(group_id).await.map_err(|e| format!("{e}")),
+            Err(e) => {
+                // Epoch conflict / rejection — discard our staged commit so the
+                // local group falls back to the last merged epoch and re-syncs.
+                let _ = rt.clear_pending_commit(group_id).await;
+                Err(format!("rekey rejected: {e}"))
+            }
+        }
+    }
+    .await;
+    MLS_CACHE.with(|c| *c.borrow_mut() = Some(rt));
+
+    if outcome.is_ok() {
+        if let Some(s) = &storage {
+            let _ = s.set_item(&key, &now.to_string());
+        }
+    } else {
+        tracing::debug!(%group_id, "rekey skipped/failed");
+    }
+}
+
 /// Wire up session/users state for use from detached async tasks.
 ///
 /// Must be called once at app startup, after `provide_session()` and
@@ -935,6 +990,12 @@ impl MessageService {
                 let latest = display_messages.iter().max_by_key(|m| m.created_at).cloned();
                 self.messages.by_group.update(|map| {
                     map.insert(group_id, display_messages);
+                });
+                // Opportunistic post-compromise rekey (rate-limited 24h/group).
+                spawn_local(async move {
+                    if let Some(api) = build_api_client() {
+                        maybe_rekey_group(&api, group_id).await;
+                    }
                 });
                 if let Some(m) = latest {
                     set_chat_last_message(
