@@ -2,14 +2,13 @@
 
 use openmls::prelude::{KeyPackageBuilder, Lifetime};
 use openmls_rust_crypto::OpenMlsRustCrypto;
-use openmls_traits::{signatures::Signer as OmlsSigner, types::SignatureScheme};
 use uuid::Uuid;
 
 use crate::error::CryptoError;
 use crate::identity::ClientIdentity;
 
 use super::ciphersuite::CIPHERSUITE;
-use super::credentials::build_credential;
+use super::credentials::{build_credential, DeviceSigner};
 
 /// A generated key package with all metadata needed for local tracking.
 #[derive(Debug, Clone)]
@@ -40,7 +39,7 @@ pub fn generate_keypackage(
     is_last_resort: bool,
 ) -> Result<GeneratedKeyPackage, CryptoError> {
     let credential_with_key = build_credential(identity);
-    let signer = IdentitySigner(identity);
+    let signer = DeviceSigner(identity);
 
     let kp = KeyPackageBuilder::new()
         .key_package_lifetime(Lifetime::new(lifetime_secs))
@@ -85,7 +84,7 @@ pub fn generate_keypackage_bundle(
     is_last_resort: bool,
 ) -> Result<(Vec<u8>, GeneratedKeyPackage), CryptoError> {
     let credential_with_key = build_credential(identity);
-    let signer = IdentitySigner(identity);
+    let signer = DeviceSigner(identity);
 
     let bundle = KeyPackageBuilder::new()
         .key_package_lifetime(Lifetime::new(lifetime_secs))
@@ -113,19 +112,6 @@ pub fn generate_keypackage_bundle(
     };
 
     Ok((bundle_bytes, gen))
-}
-
-/// Wrapper to implement openmls `Signer` trait for `ClientIdentity`.
-struct IdentitySigner<'a>(&'a ClientIdentity);
-
-impl OmlsSigner for IdentitySigner<'_> {
-    fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, openmls_traits::signatures::SignerError> {
-        Ok(self.0.identity_signing_key.sign(payload).to_vec())
-    }
-
-    fn signature_scheme(&self) -> SignatureScheme {
-        SignatureScheme::ED25519
-    }
 }
 
 /// Current Unix timestamp in seconds.

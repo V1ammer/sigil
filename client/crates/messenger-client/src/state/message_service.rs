@@ -519,32 +519,53 @@ pub async fn establish_group(
         if active.is_empty() {
             return Err("у участника нет доступных устройств".into());
         }
-        // ONE device per user: the MLS leaf signature key is the user's identity
-        // key (shared across their devices), so two leaves of the same user would
-        // collide with `DuplicateSignatureKey`. Pick the first active device.
-        // (Multi-device delivery needs per-device signature keys — separate work.)
-        let d = active.into_iter().next().expect("non-empty checked above");
-        let resp = api
-            .claim_keypackage(uid, d.id)
-            .await
-            .map_err(|e| format!("не удалось получить ключ участника: {e}"))?;
-        keypackages.push(resp.key_package);
-        recipient_devices.push(d.id);
-        member_devices.push(MemberDeviceInit {
-            user_id: uid,
-            device_id: d.id,
-            leaf_index: leaf,
-            role_in_chat: "member".into(),
-        });
-        leaf += 1;
+        // Add EVERY active device of the member — each device has its own MLS
+        // leaf (per-device signature key), so the chat is readable on all of a
+        // user's devices. A device whose KeyPackage can't be claimed is skipped,
+        // not fatal; but a member with zero usable devices is an error.
+        let mut added_for_user = 0;
+        for d in active {
+            let Ok(resp) = api.claim_keypackage(uid, d.id).await else {
+                continue;
+            };
+            keypackages.push(resp.key_package);
+            recipient_devices.push(d.id);
+            member_devices.push(MemberDeviceInit {
+                user_id: uid,
+                device_id: d.id,
+                leaf_index: leaf,
+                role_in_chat: "member".into(),
+            });
+            leaf += 1;
+            added_for_user += 1;
+        }
+        if added_for_user == 0 {
+            return Err("у участника нет доступных ключей устройства".into());
+        }
     }
 
     if keypackages.is_empty() {
         return Err("нужен хотя бы один участник".into());
     }
-    // NOTE: the creator's other devices are intentionally NOT added — same
-    // shared-identity-key constraint. The creator reads the group on the founder
-    // device (leaf 0) only.
+
+    // Add the creator's OTHER active devices (besides this founder device) so the
+    // chat is readable on all of the creator's devices too. Best-effort per
+    // device — a device whose KeyPackage can't be claimed is simply left out.
+    if let Ok(my_devices) = api.list_user_devices(creator_uid).await {
+        for d in my_devices.into_iter().filter(|d| d.id != creator_did) {
+            if let Ok(resp) = api.claim_keypackage(creator_uid, d.id).await {
+                keypackages.push(resp.key_package);
+                recipient_devices.push(d.id);
+                member_devices.push(MemberDeviceInit {
+                    user_id: creator_uid,
+                    device_id: d.id,
+                    leaf_index: leaf,
+                    role_in_chat: "owner".into(),
+                });
+                leaf += 1;
+            }
+        }
+    }
 
     // Build the MLS group locally (creator = founder; members added).
     let Some(rt) = take_mls_runtime().await else {
@@ -615,18 +636,20 @@ pub async fn group_add_member(api: &ApiClient, group_id: Uuid, username: &str) -
         return Err("у участника нет доступных устройств".into());
     }
 
-    // ONE device per user (shared identity signature key → DuplicateSignatureKey
-    // if two of a user's leaves are in the same group). Pick the first active.
+    // Add every active device of the user (each gets its own per-device MLS
+    // leaf). A device whose KeyPackage can't be claimed is skipped; zero usable
+    // devices is an error.
     let mut keypackages: Vec<Vec<u8>> = Vec::new();
     let mut devices: Vec<Uuid> = Vec::new();
-    {
-        let d = &active[0];
-        let resp = api
-            .claim_keypackage(uid, d.id)
-            .await
-            .map_err(|e| format!("не удалось получить ключ участника: {e}"))?;
+    for d in &active {
+        let Ok(resp) = api.claim_keypackage(uid, d.id).await else {
+            continue;
+        };
         keypackages.push(resp.key_package);
         devices.push(d.id);
+    }
+    if keypackages.is_empty() {
+        return Err("у участника нет доступных ключей устройства".into());
     }
 
     let Some(rt) = take_mls_runtime().await else {

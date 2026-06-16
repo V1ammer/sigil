@@ -17,7 +17,7 @@ use openmls::prelude::{
 };
 use openmls_rust_crypto::OpenMlsRustCrypto;
 use openmls_traits::storage::StorageProvider;
-use openmls_traits::{signatures::Signer as OmlsSigner, types::SignatureScheme, OpenMlsProvider};
+use openmls_traits::OpenMlsProvider;
 use tls_codec::{Deserialize, Serialize as TlsSerializeTrait};
 use uuid::Uuid;
 
@@ -25,7 +25,7 @@ use crate::error::CryptoError;
 use crate::identity::ClientIdentity;
 
 use super::ciphersuite::CIPHERSUITE;
-use super::credentials::build_credential;
+use super::credentials::{build_credential, DeviceSigner};
 
 /// Output of creating a new MLS group.
 #[derive(Debug)]
@@ -136,7 +136,7 @@ impl MlsRuntime {
         initial_members_keypackages: &[Vec<u8>],
     ) -> Result<CreateGroupOutput, CryptoError> {
         let provider = OpenMlsRustCrypto::default();
-        let signer = IdentitySigner(creator);
+        let signer = DeviceSigner(creator);
         let credential = build_credential(creator);
 
         let sender_ratchet = SenderRatchetConfiguration::new(1_000, 1_000);
@@ -285,7 +285,7 @@ impl MlsRuntime {
     ) -> Result<Vec<u8>, CryptoError> {
         let (mut group, provider) = self.load_group(group_id).await?;
         let _epoch = group.epoch().as_u64(); // current epoch
-        let signer = IdentitySigner(identity);
+        let signer = DeviceSigner(identity);
 
         let msg_out = group
             .create_message(&provider, &signer, plaintext_payload)
@@ -392,7 +392,7 @@ impl MlsRuntime {
     ) -> Result<PendingCommit, CryptoError> {
         let (mut group, provider) = self.load_group(group_id).await?;
         let epoch = group.epoch().as_u64(); // current epoch before add
-        let signer = IdentitySigner(identity);
+        let signer = DeviceSigner(identity);
 
         let mut kps = Vec::with_capacity(keypackages.len());
         for kp_bytes in keypackages {
@@ -440,7 +440,7 @@ impl MlsRuntime {
     ) -> Result<PendingCommit, CryptoError> {
         let (mut group, provider) = self.load_group(group_id).await?;
         let epoch = group.epoch().as_u64(); // current epoch before removal
-        let signer = IdentitySigner(identity);
+        let signer = DeviceSigner(identity);
 
         let indices: Vec<LeafNodeIndex> = leaf_indices
             .iter()
@@ -506,7 +506,7 @@ impl MlsRuntime {
     ) -> Result<PendingCommit, CryptoError> {
         let (mut group, provider) = self.load_group(group_id).await?;
         let epoch = group.epoch().as_u64();
-        let signer = IdentitySigner(identity);
+        let signer = DeviceSigner(identity);
 
         let bundle = group
             .self_update(&provider, &signer, LeafNodeParameters::default())
@@ -611,20 +611,6 @@ impl MlsRuntime {
 fn serialize_provider_storage(provider: &OpenMlsRustCrypto) -> Result<Vec<u8>, CryptoError> {
     let values = provider.storage().values.read().unwrap();
     rmp_serde::to_vec_named(&*values).map_err(|e| CryptoError::Serialization(e.to_string()))
-}
-
-/// Wrapper to implement openmls `Signer` trait for `ClientIdentity`.
-struct IdentitySigner<'a>(&'a ClientIdentity);
-
-impl OmlsSigner for IdentitySigner<'_> {
-    fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, openmls_traits::signatures::SignerError> {
-        // Must match the signature key in `build_credential` (identity key).
-        Ok(self.0.identity_signing_key.sign(payload).to_vec())
-    }
-
-    fn signature_scheme(&self) -> SignatureScheme {
-        SignatureScheme::ED25519
-    }
 }
 
 #[cfg(test)]
