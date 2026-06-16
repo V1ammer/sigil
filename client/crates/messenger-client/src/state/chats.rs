@@ -311,6 +311,59 @@ impl ChatsState {
         Ok(group_id)
     }
 
+    /// Create a group chat: resolve member usernames, build a real MLS group,
+    /// and broadcast the group name (end-to-end). Returns the new group id.
+    ///
+    /// # Errors
+    ///
+    /// Returns a user-facing (Russian) message on any failure.
+    pub async fn create_group(
+        &self,
+        api: &ApiClient,
+        name: &str,
+        usernames: &[String],
+    ) -> Result<Uuid, String> {
+        let me = crate::state::message_service::current_user_id();
+        let mut ids: Vec<Uuid> = Vec::new();
+        for u in usernames {
+            let u = u.trim();
+            if u.is_empty() {
+                continue;
+            }
+            let uid = api
+                .lookup_user_by_username(u)
+                .await
+                .map_err(|_| format!("пользователь {u} не найден"))?
+                .user_id;
+            if Some(uid) == me || ids.contains(&uid) {
+                continue;
+            }
+            ids.push(uid);
+        }
+        if ids.is_empty() {
+            return Err("добавьте хотя бы одного участника".into());
+        }
+
+        let group_id =
+            crate::state::message_service::establish_group(api, "group", &ids).await?;
+
+        // Cache + broadcast the group name end-to-end so every member converges.
+        self.display_name_cache.update(|c| {
+            c.insert(group_id, name.to_string());
+        });
+        self.persist_cache();
+        if let Some(svc) = crate::state::message_service::service_handle() {
+            let _ = svc
+                .send_group_update(group_id, Some(name.to_string()), None)
+                .await;
+        }
+        self.update_prefs(group_id, |p| p.archived = false);
+        self.load_from_server(api)
+            .await
+            .map_err(|e| format!("не удалось обновить список чатов: {e}"))?;
+        Ok(group_id)
+    }
+
     /// Set (and persist) a chat's display name, updating the loaded list too.
     /// Used to backfill names learned from message envelopes — the welcome
     /// recipient of a direct chat never typed the peer's username.

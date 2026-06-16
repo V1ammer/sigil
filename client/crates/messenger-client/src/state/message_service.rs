@@ -1640,6 +1640,63 @@ impl MessageService {
         true
     }
 
+    /// Broadcast a group-metadata update (name and/or avatar) to a group.
+    ///
+    /// End-to-end via MLS, mirroring [`MessageService::broadcast_avatar`]. The
+    /// `avatar` tuple is `(blob_id, key, mime)`; pass `None` to leave the avatar
+    /// untouched. Recipients apply it through the `GroupUpdate` side-channel.
+    pub async fn send_group_update(
+        &self,
+        group_id: Uuid,
+        name: Option<String>,
+        avatar: Option<(Option<Uuid>, Vec<u8>, String)>,
+    ) -> bool {
+        let Some(api) = build_api_client() else { return false };
+        let (avatar_blob_id, decryption_key, mime) = avatar
+            .unwrap_or((None, Vec::new(), String::new()));
+
+        let client_message_id = Uuid::now_v7();
+        let envelope = ApplicationEnvelope {
+            client_message_id,
+            kind: AppMessageKind::GroupUpdate,
+            body: AppMessageBody::GroupUpdate {
+                name,
+                avatar_blob_id,
+                decryption_key,
+                mime,
+            },
+            reply_to_message_id: None,
+            thread_root_id: None,
+            created_at: js_sys::Date::now() as i64 / 1000,
+            sender_display_name_override: current_display_name(),
+        };
+        let envelope_ct = match self.encrypt_envelope(group_id, &envelope).await {
+            Some(ct) => ct,
+            None => match rmp_serde::to_vec_named(&envelope) {
+                Ok(plain) => plain,
+                Err(e) => {
+                    tracing::warn!("group update serialize failed: {e}");
+                    return false;
+                }
+            },
+        };
+        let req = PostMessageRequest {
+            expected_epoch: 0,
+            mls_ciphertext: envelope_ct,
+            parent_message_id: None,
+            reply_to_message_id: None,
+            thread_root_id: None,
+            client_message_id,
+        };
+        match api.post_message(group_id, &req).await {
+            Ok(_) => true,
+            Err(e) => {
+                tracing::warn!(%group_id, error = %e, "group update broadcast failed");
+                false
+            }
+        }
+    }
+
     /// Make sure every group has received the current avatar — the safety net
     /// behind the event-driven broadcasts (settings change, chat creation,
     /// welcome join), which all miss chats created after the avatar was set
@@ -2233,6 +2290,14 @@ impl MessageService {
                         );
                         return Converted::Drop;
                     }
+                    // Group metadata side-channel: apply the name (and later the
+                    // avatar) to the chat, then drop from the timeline.
+                    if let AppMessageBody::GroupUpdate { ref name, .. } = envelope.body {
+                        if let Some(name) = name {
+                            Self::apply_group_name(group_id, name);
+                        }
+                        return Converted::Drop;
+                    }
                     // Read-receipt side-channel: remember how far the peer
                     // has read so our own bubbles turn blue; never shown.
                     if let AppMessageBody::ReadReceipt { up_to_message_id, .. } = envelope.body {
@@ -2331,6 +2396,26 @@ impl MessageService {
             delivery_status: DeliveryStatus::SentToServer,
             reactions: Vec::new(),
         })
+    }
+
+    /// Apply an incoming group-name update. Guarded so a GroupUpdate can never
+    /// rename a direct chat (those names are the peer's username); applies to
+    /// group chats and not-yet-loaded groups.
+    fn apply_group_name(group_id: Uuid, name: &str) {
+        let name = name.trim();
+        if name.is_empty() {
+            return;
+        }
+        let Some(cs) = CHATS_STATE.with(|c| c.borrow().clone()) else {
+            return;
+        };
+        let is_direct = cs.chats.get_untracked().iter().any(|ch| {
+            ch.group_id == group_id
+                && ch.chat_type == crate::state::chats::ChatType::Direct
+        });
+        if !is_direct {
+            cs.set_display_name(group_id, name);
+        }
     }
 
     /// Record the sender as the direct-chat peer of `group_id` (no-op for
@@ -2507,6 +2592,7 @@ impl MessageService {
             AppMessageBody::ReadReceipt { .. }
             | AppMessageBody::Reaction { .. }
             | AppMessageBody::AvatarUpdate { .. }
+            | AppMessageBody::GroupUpdate { .. }
             | AppMessageBody::UsernameUpdate { .. } => {
                 (MessageKind::System, MessageBody::System {
                     action: "event".to_string(),

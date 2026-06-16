@@ -170,6 +170,9 @@ pub fn ru_dict() -> HashMap<&'static str, &'static str> {
     m.insert("chat.create_direct.self", "Нельзя создать чат с самим собой");
     m.insert("chat.create_direct.noDevices", "У пользователя нет доступных устройств — попросите его зайти в мессенджер");
     m.insert("chat.create_direct.failed", "Не удалось создать чат, попробуйте ещё раз");
+    m.insert("chat.create_group.title", "Новая группа");
+    m.insert("chat.create_group.namePlaceholder", "Название группы");
+    m.insert("chat.create_group.memberPlaceholder", "Имя пользователя участника");
 
     // Security
     m.insert("security.title", "Безопасность");

@@ -45,6 +45,8 @@ pub enum AppMessageKind {
     DeleteNotice,
     /// Avatar update.
     AvatarUpdate,
+    /// Group metadata update (name / avatar).
+    GroupUpdate,
     /// Username update.
     UsernameUpdate,
     /// Reaction.
@@ -145,6 +147,21 @@ pub enum AppMessageBody {
     /// attachment store, only the reference + key travel inside MLS.
     AvatarUpdate {
         /// Encrypted blob in /v1/attachments; `None` = avatar removed.
+        avatar_blob_id: Option<Uuid>,
+        /// Symmetric key for the blob (empty when `avatar_blob_id` is None).
+        decryption_key: Vec<u8>,
+        /// MIME type of the decrypted image.
+        mime: String,
+    },
+    /// Group metadata update — name and/or avatar, end-to-end like
+    /// `AvatarUpdate`. Sent by the owner; the picture lives in the encrypted
+    /// attachment store, only the reference + key travel inside MLS. A `None`
+    /// field means "unchanged" except `avatar_blob_id: None` with a non-empty
+    /// update is an explicit avatar removal.
+    GroupUpdate {
+        /// New group name, `None` if this update only touches the avatar.
+        name: Option<String>,
+        /// Encrypted avatar blob id; `None` = no avatar / removed.
         avatar_blob_id: Option<Uuid>,
         /// Symmetric key for the blob (empty when `avatar_blob_id` is None).
         decryption_key: Vec<u8>,

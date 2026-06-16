@@ -170,6 +170,9 @@ pub fn en_dict() -> HashMap<&'static str, &'static str> {
     m.insert("chat.create_direct.self", "You can't start a chat with yourself");
     m.insert("chat.create_direct.noDevices", "This user has no available devices — ask them to open the messenger first");
     m.insert("chat.create_direct.failed", "Couldn't create the chat, please try again");
+    m.insert("chat.create_group.title", "New group");
+    m.insert("chat.create_group.namePlaceholder", "Group name");
+    m.insert("chat.create_group.memberPlaceholder", "Member username");
 
     // Security
     m.insert("security.title", "Security");

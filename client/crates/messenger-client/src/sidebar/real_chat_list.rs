@@ -37,12 +37,19 @@ pub fn RealChatList(
     // Hold a separate clone of chats_state for the action sheet — the existing
     // create_chat closure moves the original.
     let chats_state_for_sheet = chats_state.clone();
+    // And one for the group-create closure (create_chat moves the original).
+    let chats_state_for_group = chats_state.clone();
 
     // Dialog state
     let show_dialog = RwSignal::new(false);
     let username_input = RwSignal::new(String::new());
     let error_msg = RwSignal::new(String::new());
     let loading = RwSignal::new(false);
+    // Group-creation state (direct vs group is a mode toggle in the dialog).
+    let is_group_mode = RwSignal::new(false);
+    let group_name = RwSignal::new(String::new());
+    let group_members: RwSignal<Vec<String>> = RwSignal::new(Vec::new());
+    let member_input = RwSignal::new(String::new());
 
     // Chat action sheet — opened by long-press on a row.
     let action_sheet_chat: RwSignal<Option<Chat>> = RwSignal::new(None);
@@ -129,6 +136,78 @@ pub fn RealChatList(
         username_input.set(String::new());
         error_msg.set(String::new());
         loading.set(false);
+        is_group_mode.set(false);
+        group_name.set(String::new());
+        group_members.set(Vec::new());
+        member_input.set(String::new());
+    };
+
+    // Add the typed username to the group member chips (deduped, non-empty).
+    let add_member = move |_| {
+        let u = member_input.get().trim().to_string();
+        if u.is_empty() {
+            return;
+        }
+        group_members.update(|v| {
+            if !v.iter().any(|m| m.eq_ignore_ascii_case(&u)) {
+                v.push(u.clone());
+            }
+        });
+        member_input.set(String::new());
+    };
+    let remove_member = move |name: String| {
+        group_members.update(|v| v.retain(|m| m != &name));
+    };
+
+    // Create the group from the dialog's name + member chips.
+    let create_group = {
+        let chats_state = chats_state_for_group;
+        move |_| {
+            let name = group_name.get().trim().to_string();
+            let members = group_members.get();
+            if name.is_empty() {
+                error_msg.set("введите название группы".to_string());
+                return;
+            }
+            if members.is_empty() {
+                error_msg.set("добавьте хотя бы одного участника".to_string());
+                return;
+            }
+            loading.set(true);
+            error_msg.set(String::new());
+            let cs = chats_state.clone();
+            spawn_local(async move {
+                if let Some(api) = build_api_client() {
+                    match cs.create_group(&api, &name, &members).await {
+                        Ok(group_id) => {
+                            show_dialog.set(false);
+                            is_group_mode.set(false);
+                            group_name.set(String::new());
+                            group_members.set(Vec::new());
+                            member_input.set(String::new());
+                            cs.selected.set(Some(group_id));
+                        }
+                        Err(e) => error_msg.set(e),
+                    }
+                } else {
+                    error_msg.set(t!("chat.create_direct.no_api").to_string());
+                }
+                loading.set(false);
+            });
+        }
+    };
+
+    // Single submit handler — dispatches to direct or group create by mode.
+    let submit = {
+        let create_chat = create_chat.clone();
+        let create_group = create_group.clone();
+        move |ev: leptos::ev::MouseEvent| {
+            if is_group_mode.get_untracked() {
+                create_group(ev);
+            } else {
+                create_chat(ev);
+            }
+        }
     };
 
     view! {
@@ -409,25 +488,111 @@ pub fn RealChatList(
                 return view! {}.into_any();
             }
             // Clone closures for inner use
-            let cc = create_chat.clone();
             let cd = close_dialog.clone();
             let oui = on_username_input.clone();
+            let submit = submit.clone();
+            let am = add_member.clone();
+            let rm = remove_member.clone();
             view! {
                 // Backdrop
-                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 animate-overlay-in">
                     // Inner dialog
-                    <div class="bg-card rounded-lg shadow-xl border border-border w-full max-w-sm mx-4 p-6">
+                    <div class="bg-card rounded-lg shadow-xl border border-border w-full max-w-sm mx-4 p-6 animate-dialog-in">
                         <h2 class="text-lg font-semibold text-foreground mb-4">
-                            {t!("chat.create_direct.title")}
+                            {move || if is_group_mode.get() {
+                                t!("chat.create_group.title").to_string()
+                            } else {
+                                t!("chat.create_direct.title").to_string()
+                            }}
                         </h2>
-                        <input
-                            type="text"
-                            class="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                            placeholder={t!("chat.create_direct.placeholder")}
-                            prop:value=username_input
-                            on:input=move |ev| oui(ev)
-                            disabled=move || loading.get()
-                        />
+                        // Mode toggle: direct vs group.
+                        <div class="flex gap-1 mb-4 p-1 rounded-md bg-muted">
+                            <button
+                                class=move || format!(
+                                    "flex-1 h-8 rounded text-sm font-medium transition-colors {}",
+                                    if is_group_mode.get() { "text-muted-foreground" } else { "bg-background text-foreground shadow-sm" }
+                                )
+                                on:click=move |_| { is_group_mode.set(false); error_msg.set(String::new()); }
+                                disabled=move || loading.get()
+                            >{t!("chats.new.direct")}</button>
+                            <button
+                                class=move || format!(
+                                    "flex-1 h-8 rounded text-sm font-medium transition-colors {}",
+                                    if is_group_mode.get() { "bg-background text-foreground shadow-sm" } else { "text-muted-foreground" }
+                                )
+                                on:click=move |_| { is_group_mode.set(true); error_msg.set(String::new()); }
+                                disabled=move || loading.get()
+                            >{t!("chats.new.group")}</button>
+                        </div>
+                        // Fields by mode.
+                        {move || {
+                            if is_group_mode.get() {
+                                let am = am.clone();
+                                let rm = rm.clone();
+                                view! {
+                                    <input
+                                        type="text"
+                                        class="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                                        placeholder={t!("chat.create_group.namePlaceholder")}
+                                        prop:value=group_name
+                                        on:input=move |ev| group_name.set(event_target_value(&ev))
+                                        disabled=move || loading.get()
+                                    />
+                                    <div class="flex gap-2 mt-3">
+                                        <input
+                                            type="text"
+                                            class="flex-1 px-3 py-2 rounded-md border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                                            placeholder={t!("chat.create_group.memberPlaceholder")}
+                                            prop:value=member_input
+                                            on:input=move |ev| member_input.set(event_target_value(&ev))
+                                            on:keydown={
+                                                let am = am.clone();
+                                                move |ev: leptos::ev::KeyboardEvent| {
+                                                    if ev.key() == "Enter" { ev.prevent_default(); am(()); }
+                                                }
+                                            }
+                                            disabled=move || loading.get()
+                                        />
+                                        <button
+                                            class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors disabled:opacity-50"
+                                            on:click=move |_| am(())
+                                            disabled=move || loading.get()
+                                        >"+"</button>
+                                    </div>
+                                    <div class="flex flex-wrap gap-2 mt-2">
+                                        <For
+                                            each=move || group_members.get()
+                                            key=|m| m.clone()
+                                            children=move |m: String| {
+                                                let rm = rm.clone();
+                                                let m_for_btn = m.clone();
+                                                view! {
+                                                    <span class="inline-flex items-center gap-1 rounded-full bg-accent px-3 py-1 text-xs text-accent-foreground">
+                                                        {m.clone()}
+                                                        <button
+                                                            class="text-muted-foreground hover:text-foreground"
+                                                            on:click=move |_| rm(m_for_btn.clone())
+                                                        >"×"</button>
+                                                    </span>
+                                                }
+                                            }
+                                        />
+                                    </div>
+                                }.into_any()
+                            } else {
+                                let oui = oui.clone();
+                                view! {
+                                    <input
+                                        type="text"
+                                        class="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                                        placeholder={t!("chat.create_direct.placeholder")}
+                                        prop:value=username_input
+                                        on:input=move |ev| oui(ev)
+                                        disabled=move || loading.get()
+                                    />
+                                }.into_any()
+                            }
+                        }}
                         {move || {
                             let err = error_msg.get();
                             if err.is_empty() {
@@ -447,10 +612,10 @@ pub fn RealChatList(
                             </button>
                             <button
                                 class="inline-flex h-9 items-center justify-center rounded-md px-4 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-                                on:click=move |ev| cc(ev)
+                                on:click=move |ev| submit(ev)
                                 disabled=move || loading.get()
                             >
-                                {if loading.get() {
+                                {move || if loading.get() {
                                     t!("chat.create_direct.creating").to_string()
                                 } else {
                                     t!("chat.create_direct.create").to_string()
