@@ -528,6 +528,250 @@ pub async fn establish_group(
     Ok(group_id)
 }
 
+/// Read the authenticated identity from the session (works from detached tasks).
+fn session_identity() -> Result<Arc<messenger_core::identity::ClientIdentity>, String> {
+    let state = SESSION_STATE
+        .with(|c| c.borrow().as_ref().copied())
+        .ok_or("сессия не инициализирована")?;
+    match state.get_untracked() {
+        SessionState::Authenticated { identity, .. } => Ok(identity),
+        _ => Err("не авторизован".into()),
+    }
+}
+
+/// Add a user (all active devices) to an existing group via an MLS commit.
+///
+/// Claims the new devices' KeyPackages, proposes an Add, posts the commit +
+/// per-device welcomes, then merges locally. Server enforces owner/admin-only.
+///
+/// # Errors
+///
+/// Returns a user-facing (Russian) message on any failure.
+pub async fn group_add_member(api: &ApiClient, group_id: Uuid, username: &str) -> Result<(), String> {
+    use messenger_proto::mls::{MemberChange, PostCommitRequest, WelcomePayload};
+
+    let identity = session_identity()?;
+    let uid = api
+        .lookup_user_by_username(username)
+        .await
+        .map_err(|_| format!("пользователь {username} не найден"))?
+        .user_id;
+    let active: Vec<_> = api
+        .list_user_devices(uid)
+        .await
+        .map_err(|e| format!("не удалось получить устройства: {e}"))?
+        .devices
+        .into_iter()
+        .filter(|d| d.revoked_at.is_none())
+        .collect();
+    if active.is_empty() {
+        return Err("у участника нет доступных устройств".into());
+    }
+
+    let mut keypackages: Vec<Vec<u8>> = Vec::new();
+    let mut devices: Vec<Uuid> = Vec::new();
+    for d in &active {
+        let resp = api
+            .claim_keypackage(uid, d.id)
+            .await
+            .map_err(|e| format!("не удалось получить ключ участника: {e}"))?;
+        keypackages.push(resp.key_package);
+        devices.push(d.id);
+    }
+
+    let Some(rt) = take_mls_runtime().await else {
+        return Err("MLS не инициализирован".into());
+    };
+    let result = async {
+        let pc = rt
+            .propose_add(group_id, &identity, &keypackages)
+            .await
+            .map_err(|e| format!("propose_add: {e}"))?;
+        let welcome = pc.welcomes.into_iter().next().unwrap_or_default();
+        let welcomes: Vec<WelcomePayload> = devices
+            .iter()
+            .map(|&d| WelcomePayload {
+                recipient_device_id: d,
+                welcome_ciphertext: welcome.clone(),
+            })
+            .collect();
+        let member_changes: Vec<MemberChange> = devices
+            .iter()
+            .map(|&d| MemberChange {
+                kind: "add".into(),
+                user_id: uid,
+                device_id: d,
+                leaf_index: None,
+                role_in_chat: Some("member".into()),
+            })
+            .collect();
+        let req = PostCommitRequest {
+            expected_epoch: pc.epoch as i64,
+            commit: pc.commit,
+            welcomes,
+            member_changes,
+        };
+        api.post_commit(group_id, &req)
+            .await
+            .map_err(|e| format!("commit отклонён: {e}"))?;
+        rt.merge_pending(group_id)
+            .await
+            .map_err(|e| format!("merge: {e}"))?;
+        Ok::<(), String>(())
+    }
+    .await;
+    MLS_CACHE.with(|c| *c.borrow_mut() = Some(rt));
+    result
+}
+
+/// Remove a user (all their devices) from a group via an MLS commit.
+///
+/// Targets the user's real tree leaves (looked up via `member_leaves`, never the
+/// advisory server `leaf_index`). Server enforces owner/admin-only.
+///
+/// # Errors
+///
+/// Returns a user-facing (Russian) message on any failure.
+pub async fn group_remove_member(
+    api: &ApiClient,
+    group_id: Uuid,
+    target_uid: Uuid,
+) -> Result<(), String> {
+    use messenger_proto::mls::{MemberChange, PostCommitRequest};
+
+    let identity = session_identity()?;
+    let members = api
+        .list_group_members(group_id)
+        .await
+        .map_err(|e| format!("не удалось получить участников: {e}"))?;
+    let target_devices: Vec<Uuid> = members
+        .devices
+        .iter()
+        .filter(|d| d.user_id == target_uid && d.removed_at_epoch.is_none())
+        .map(|d| d.device_id)
+        .collect();
+
+    let Some(rt) = take_mls_runtime().await else {
+        return Err("MLS не инициализирован".into());
+    };
+    let result = async {
+        let leaves = rt
+            .member_leaves(group_id)
+            .await
+            .map_err(|e| format!("leaves: {e}"))?;
+        let target_leaves: Vec<u32> = leaves
+            .iter()
+            .filter(|(_, uid)| *uid == target_uid)
+            .map(|(l, _)| *l)
+            .collect();
+        if target_leaves.is_empty() {
+            return Err("участник не найден в группе".into());
+        }
+        let pc = rt
+            .propose_remove(group_id, &identity, &target_leaves)
+            .await
+            .map_err(|e| format!("propose_remove: {e}"))?;
+        let member_changes: Vec<MemberChange> = target_devices
+            .iter()
+            .map(|&d| MemberChange {
+                kind: "remove".into(),
+                user_id: target_uid,
+                device_id: d,
+                leaf_index: None,
+                role_in_chat: None,
+            })
+            .collect();
+        let req = PostCommitRequest {
+            expected_epoch: pc.epoch as i64,
+            commit: pc.commit,
+            welcomes: Vec::new(),
+            member_changes,
+        };
+        api.post_commit(group_id, &req)
+            .await
+            .map_err(|e| format!("commit отклонён: {e}"))?;
+        rt.merge_pending(group_id)
+            .await
+            .map_err(|e| format!("merge: {e}"))?;
+        Ok::<(), String>(())
+    }
+    .await;
+    MLS_CACHE.with(|c| *c.borrow_mut() = Some(rt));
+    result
+}
+
+/// Leave a group: remove your own devices via an MLS commit.
+///
+/// Does NOT merge the pending commit (you're leaving — the local group state is
+/// discarded by the caller, which reloads the chat list). If you're the owner,
+/// transfer ownership first (`ApiClient::transfer_owner`).
+///
+/// # Errors
+///
+/// Returns a user-facing (Russian) message on any failure.
+pub async fn group_leave(api: &ApiClient, group_id: Uuid) -> Result<(), String> {
+    use messenger_proto::mls::{MemberChange, PostCommitRequest};
+
+    let identity = session_identity()?;
+    let me = identity.user_id;
+    let members = api
+        .list_group_members(group_id)
+        .await
+        .map_err(|e| format!("не удалось получить участников: {e}"))?;
+    let my_devices: Vec<Uuid> = members
+        .devices
+        .iter()
+        .filter(|d| d.user_id == me && d.removed_at_epoch.is_none())
+        .map(|d| d.device_id)
+        .collect();
+
+    let Some(rt) = take_mls_runtime().await else {
+        return Err("MLS не инициализирован".into());
+    };
+    let result = async {
+        let leaves = rt
+            .member_leaves(group_id)
+            .await
+            .map_err(|e| format!("leaves: {e}"))?;
+        let my_leaves: Vec<u32> = leaves
+            .iter()
+            .filter(|(_, uid)| *uid == me)
+            .map(|(l, _)| *l)
+            .collect();
+        if my_leaves.is_empty() {
+            return Err("вы не участник этой группы".into());
+        }
+        let pc = rt
+            .propose_remove(group_id, &identity, &my_leaves)
+            .await
+            .map_err(|e| format!("propose_remove: {e}"))?;
+        let member_changes: Vec<MemberChange> = my_devices
+            .iter()
+            .map(|&d| MemberChange {
+                kind: "remove".into(),
+                user_id: me,
+                device_id: d,
+                leaf_index: None,
+                role_in_chat: None,
+            })
+            .collect();
+        let req = PostCommitRequest {
+            expected_epoch: pc.epoch as i64,
+            commit: pc.commit,
+            welcomes: Vec::new(),
+            member_changes,
+        };
+        api.post_commit(group_id, &req)
+            .await
+            .map_err(|e| format!("commit отклонён: {e}"))?;
+        // No merge — we're out; the caller forgets the group locally.
+        Ok::<(), String>(())
+    }
+    .await;
+    MLS_CACHE.with(|c| *c.borrow_mut() = Some(rt));
+    result
+}
+
 /// Wire up session/users state for use from detached async tasks.
 ///
 /// Must be called once at app startup, after `provide_session()` and

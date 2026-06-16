@@ -141,21 +141,31 @@ pub struct ListMessagesResponse {
     pub messages: Vec<StoredMessage>,
 }
 
-/// A group member with epoch metadata.
+/// A group member with epoch metadata. Mirrors the server `GroupMember`.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GroupMember {
     pub user_id: Uuid,
-    pub device_id: Uuid,
     pub role_in_chat: String,
     pub joined_at_epoch: i64,
     pub left_at_epoch: Option<i64>,
-    pub joined_at: i64,
 }
 
-/// Response listing group members.
+/// One device of a group member. Mirrors the server `GroupDevice`.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct GroupDevice {
+    pub device_id: Uuid,
+    pub user_id: Uuid,
+    pub leaf_index: Option<i32>,
+    pub added_at_epoch: i64,
+    pub removed_at_epoch: Option<i64>,
+}
+
+/// Response listing group members and their devices. Mirrors the server
+/// `GroupMembersResponse`.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ListGroupMembersResponse {
     pub members: Vec<GroupMember>,
+    pub devices: Vec<GroupDevice>,
 }
 
 /// Summary of a group for the "my groups" list.

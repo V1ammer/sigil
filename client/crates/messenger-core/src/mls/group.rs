@@ -487,6 +487,33 @@ impl MlsRuntime {
         Ok(())
     }
 
+    /// List `(leaf_index, user_id)` for every current member leaf.
+    ///
+    /// The MLS leaf credential carries the member's user id — a user with
+    /// several devices occupies several leaves, all with the same id. Used to
+    /// map a target user to the real tree leaves for removal (the server-side
+    /// `leaf_index` is only an advisory hint and must not be trusted for this).
+    ///
+    /// # Errors
+    ///
+    /// Returns `CryptoError` if the group can't be loaded.
+    pub async fn member_leaves(&self, group_id: Uuid) -> Result<Vec<(u32, Uuid)>, CryptoError> {
+        use openmls::prelude::BasicCredential;
+        let (group, _provider) = self.load_group(group_id).await?;
+        let mut out = Vec::new();
+        for member in group.members() {
+            let leaf = member.index.u32();
+            if let Some(uid) = BasicCredential::try_from(member.credential)
+                .ok()
+                .and_then(|bc| <[u8; 16]>::try_from(bc.identity()).ok())
+                .map(Uuid::from_bytes)
+            {
+                out.push((leaf, uid));
+            }
+        }
+        Ok(out)
+    }
+
     /// Load a group from local storage, returning the group and its provider.
     async fn load_group(
         &self,

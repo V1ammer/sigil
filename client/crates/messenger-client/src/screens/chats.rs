@@ -8,6 +8,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::chat::chat_header::ChatHeader;
+use crate::chat::group_sheet::GroupSheet;
 use crate::components::alert_dialog::{
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogDescription, AlertDialogFooter,
     AlertDialogHeader, AlertDialogTitle,
@@ -461,6 +462,8 @@ pub fn ChatsScreen() -> impl IntoView {
                 // so the header actions only OPEN a confirmation; the actual
                 // delete runs from the dialog's confirm button.
                 let show_delete_confirm = RwSignal::new(false);
+                // Group management sheet (members, add/remove, rename, leave).
+                let show_group_sheet = RwSignal::new(false);
                 let do_delete: StoredValue<Arc<dyn Fn() + Send + Sync + 'static>> = StoredValue::new({
                     let cs = chats_state.clone();
                     let svc = message_service.clone();
@@ -483,7 +486,9 @@ pub fn ChatsScreen() -> impl IntoView {
                         crate::state::back_stack::pop();
                     })
                 });
-                let on_leave_cb = Box::new(move || show_delete_confirm.set(true))
+                // For groups, "leave" opens the management sheet (which performs a
+                // proper MLS leave) instead of deleting the whole group for everyone.
+                let on_leave_cb = Box::new(move || show_group_sheet.set(true))
                     as Box<dyn Fn() + Send + Sync + 'static>;
                 let on_delete_cb = Box::new(move || show_delete_confirm.set(true))
                     as Box<dyn Fn() + Send + Sync + 'static>;
@@ -613,6 +618,13 @@ pub fn ChatsScreen() -> impl IntoView {
                                 </AlertDialogAction>
                             </AlertDialogFooter>
                         </AlertDialog>
+
+                        // Group management sheet (members, add/remove, rename, leave).
+                        <GroupSheet
+                            group_id=group_id
+                            is_open=Signal::derive(move || show_group_sheet.get())
+                            on_close=Box::new(move || show_group_sheet.set(false))
+                        />
 
                         {/* Messages */}
                         {
