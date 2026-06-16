@@ -858,6 +858,89 @@ pub async fn maybe_rekey_group(api: &ApiClient, group_id: Uuid) {
     }
 }
 
+thread_local! {
+    /// `Date.now()` of the last KeyPackage pool check, to rate-limit it.
+    static LAST_KP_CHECK: std::cell::Cell<f64> = const { std::cell::Cell::new(0.0) };
+}
+
+/// Keep our KeyPackage pool healthy so peers can always start a chat with us.
+///
+/// Publishes a single reusable **last-resort** KeyPackage once per device (the
+/// server reuses it forever, so claims can never exhaust → no
+/// `ERR_KEYPACKAGE_EXHAUSTED`) and tops up regular KeyPackages to a target.
+/// Generated through the device MLS runtime so the private init keys persist
+/// (needed to later join via the welcome that consumed the package). Rate-limited
+/// to once per 5 min; safe to call every sync tick. No-op until MLS is ready.
+pub async fn ensure_keypackages(api: &ApiClient) {
+    use messenger_proto::keypackages::{KeyPackageUpload, PublishKeyPackagesRequest};
+    const TARGET: i32 = 6;
+    const CHECK_INTERVAL_MS: f64 = 300_000.0;
+
+    let now = js_sys::Date::now();
+    if now - LAST_KP_CHECK.with(std::cell::Cell::get) < CHECK_INTERVAL_MS {
+        return;
+    }
+    LAST_KP_CHECK.with(|c| c.set(now));
+
+    let Ok(identity) = session_identity() else { return };
+    let storage = web_sys::window().and_then(|w| w.local_storage().ok().flatten());
+    let need_lr = storage
+        .as_ref()
+        .and_then(|s| s.get_item("ms_lastresort_published_v1").ok().flatten())
+        .is_none();
+    let remaining = api.keypackage_count().await.map(|s| s.remaining).unwrap_or(0);
+    if !need_lr && remaining >= TARGET {
+        return;
+    }
+
+    let Some(rt) = take_mls_runtime().await else {
+        // MLS not initialized yet — retry on the next tick.
+        LAST_KP_CHECK.with(|c| c.set(0.0));
+        return;
+    };
+    let to_upload = |kp: messenger_core::mls::keypackage::GeneratedKeyPackage| KeyPackageUpload {
+        key_package: kp.key_package_bytes,
+        init_key_hash: kp.init_key_hash,
+        expires_at: kp.expires_at,
+        is_last_resort: kp.is_last_resort,
+    };
+    let published_lr = async {
+        let mut uploads = Vec::new();
+        if need_lr {
+            if let Ok(kp) = rt.generate_keypackage(&identity, 2_592_000, true).await {
+                uploads.push(to_upload(kp));
+            }
+        }
+        for _ in 0..(TARGET - remaining).max(0) {
+            if let Ok(kp) = rt.generate_keypackage(&identity, 604_800, false).await {
+                uploads.push(to_upload(kp));
+            }
+        }
+        if uploads.is_empty() {
+            return false;
+        }
+        let lr = uploads.iter().any(|u| u.is_last_resort);
+        match api
+            .publish_keypackages(&PublishKeyPackagesRequest { key_packages: uploads })
+            .await
+        {
+            Ok(_) => lr,
+            Err(e) => {
+                tracing::warn!(error = %e, "publish_keypackages failed");
+                false
+            }
+        }
+    }
+    .await;
+    MLS_CACHE.with(|c| *c.borrow_mut() = Some(rt));
+
+    if published_lr {
+        if let Some(s) = &storage {
+            let _ = s.set_item("ms_lastresort_published_v1", "1");
+        }
+    }
+}
+
 /// Wire up session/users state for use from detached async tasks.
 ///
 /// Must be called once at app startup, after `provide_session()` and

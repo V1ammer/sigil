@@ -46,6 +46,12 @@ impl SyncService {
                 // 1. Sync welcomes
                 Self::sync_welcomes().await;
 
+                // 1b. Keep the KeyPackage pool topped up (and ensure a
+                // last-resort exists) so peers can always start a chat with us.
+                if let Some(api) = crate::state::session::build_api_client() {
+                    crate::state::message_service::ensure_keypackages(&api).await;
+                }
+
                 // 2. Refresh chat list
                 Self::sync_chats().await;
 
