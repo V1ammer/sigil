@@ -148,6 +148,17 @@ fn notify_send_error(err: &messenger_core::api::ApiError) {
     }
 }
 
+/// Surface a toast when a message can't be MLS-encrypted. We NEVER fall back to
+/// sending a plaintext envelope, so the user is told the send was dropped.
+fn notify_encrypt_failure() {
+    if let Some(nf) = notifications_handle() {
+        nf.push(
+            crate::state::notifications::ToastKind::Error,
+            "Сообщение не отправлено: сквозное шифрование недоступно".to_string(),
+        );
+    }
+}
+
 /// The globally registered `MessageService`, for code paths that run outside
 /// the leptos owner (background sync loop) where `use_context` returns None.
 #[must_use]
@@ -1124,12 +1135,8 @@ impl MessageService {
                 created_at: js_sys::Date::now() as i64 / 1000,
                 sender_display_name_override: current_display_name(),
             };
-            let envelope_ct = match svc.encrypt_envelope(group_id, &envelope).await {
-                Some(ct) => ct,
-                None => match rmp_serde::to_vec_named(&envelope) {
-                    Ok(plain) => plain,
-                    Err(_) => return,
-                },
+            let Some(envelope_ct) = svc.encrypt_envelope(group_id, &envelope).await else {
+                return; // never send a read receipt in plaintext
             };
             let req = PostMessageRequest {
                 expected_epoch: 0,
@@ -1188,14 +1195,12 @@ impl MessageService {
             sender_display_name_override: me.clone(),
         };
 
-        let ciphertext = self
-            .encrypt_envelope(group_id, &envelope)
-            .await
-            .unwrap_or_else(|| {
-                // Fallback: send plaintext if MLS isn't ready or encryption fails
-                tracing::warn!("MLS not ready, sending plaintext");
-                text.as_bytes().to_vec()
-            });
+        let Some(ciphertext) = self.encrypt_envelope(group_id, &envelope).await else {
+            // Never fall back to plaintext — abort the send and tell the user.
+            tracing::warn!(%group_id, "send_text: MLS encryption unavailable, send aborted");
+            notify_encrypt_failure();
+            return None;
+        };
 
         let req = PostMessageRequest {
             expected_epoch: 0,
@@ -1310,21 +1315,14 @@ impl MessageService {
             created_at: now,
             sender_display_name_override: me.clone(),
         };
-        // Encrypt or fall back to a plaintext envelope so the message still
-        // delivers when MLS group state isn't set up locally (parity with the
-        // text path's `MLS not ready, sending plaintext`).
-        let envelope_ct = match self.encrypt_envelope(group_id, &envelope).await {
-            Some(ct) => ct,
-            None => match rmp_serde::to_vec_named(&envelope) {
-                Ok(plain) => {
-                    web_sys::console::warn_1(&"[send_voice] MLS not ready, sending plaintext envelope".into());
-                    plain
-                }
-                Err(e) => {
-                    web_sys::console::error_1(&format!("[send_voice] envelope serialize: {e}").into());
-                    return None;
-                }
-            },
+        // MLS-encrypt; if the group state isn't set up the send is aborted —
+        // we never put a plaintext envelope on the wire.
+        let Some(envelope_ct) = self.encrypt_envelope(group_id, &envelope).await else {
+            // Never fall back to plaintext — abort the send.
+            web_sys::console::warn_1(&"[send_voice] MLS encryption unavailable, send aborted".into());
+            notify_encrypt_failure();
+            self.mark_attachment_failed(group_id, client_message_id);
+            return None;
         };
 
         let req = PostMessageRequest {
@@ -1640,22 +1638,14 @@ impl MessageService {
             created_at: now,
             sender_display_name_override: me.clone(),
         };
-        // Encrypt or fall back to a plaintext envelope so the message still
-        // delivers when MLS group state isn't set up locally (parity with the
-        // text path's `MLS not ready, sending plaintext`).
-        let envelope_ct = match self.encrypt_envelope(group_id, &envelope).await {
-            Some(ct) => ct,
-            None => match rmp_serde::to_vec_named(&envelope) {
-                Ok(plain) => {
-                    web_sys::console::warn_1(&"[send_attachment] MLS not ready, sending plaintext envelope".into());
-                    plain
-                }
-                Err(e) => {
-                    web_sys::console::error_1(&format!("[send_attachment] envelope serialize: {e}").into());
-                    self.mark_attachment_failed(group_id, client_message_id);
-                    return None;
-                }
-            },
+        // MLS-encrypt; if the group state isn't set up the send is aborted —
+        // we never put a plaintext envelope on the wire.
+        let Some(envelope_ct) = self.encrypt_envelope(group_id, &envelope).await else {
+            // Never fall back to plaintext — abort the send.
+            web_sys::console::warn_1(&"[send_attachment] MLS encryption unavailable, send aborted".into());
+            notify_encrypt_failure();
+            self.mark_attachment_failed(group_id, client_message_id);
+            return None;
         };
 
         let req = PostMessageRequest {
@@ -1859,15 +1849,8 @@ impl MessageService {
             created_at: js_sys::Date::now() as i64 / 1000,
             sender_display_name_override: current_display_name(),
         };
-        let envelope_ct = match self.encrypt_envelope(group_id, &envelope).await {
-            Some(ct) => ct,
-            None => match rmp_serde::to_vec_named(&envelope) {
-                Ok(plain) => plain,
-                Err(e) => {
-                    tracing::warn!("avatar envelope serialize failed: {e}");
-                    return false;
-                }
-            },
+        let Some(envelope_ct) = self.encrypt_envelope(group_id, &envelope).await else {
+            return false; // never broadcast an avatar update in plaintext
         };
         let req = PostMessageRequest {
             expected_epoch: 0,
@@ -1924,15 +1907,8 @@ impl MessageService {
             created_at: js_sys::Date::now() as i64 / 1000,
             sender_display_name_override: current_display_name(),
         };
-        let envelope_ct = match self.encrypt_envelope(group_id, &envelope).await {
-            Some(ct) => ct,
-            None => match rmp_serde::to_vec_named(&envelope) {
-                Ok(plain) => plain,
-                Err(e) => {
-                    tracing::warn!("group update serialize failed: {e}");
-                    return None;
-                }
-            },
+        let Some(envelope_ct) = self.encrypt_envelope(group_id, &envelope).await else {
+            return None; // never broadcast group metadata in plaintext
         };
         let req = PostMessageRequest {
             expected_epoch: 0,
@@ -2144,15 +2120,9 @@ impl MessageService {
         // On the MLS-not-ready fallback, send the SERIALIZED envelope (not the
         // raw text) — otherwise the EditNotice structure is lost and the edit
         // arrives as a plain new message instead of replacing the original.
-        let ciphertext = match self.encrypt_envelope(group_id, &envelope).await {
-            Some(ct) => ct,
-            None => match rmp_serde::to_vec_named(&envelope) {
-                Ok(plain) => plain,
-                Err(e) => {
-                    tracing::warn!(error = %e, "edit envelope serialize failed");
-                    return None;
-                }
-            },
+        let Some(ciphertext) = self.encrypt_envelope(group_id, &envelope).await else {
+            notify_encrypt_failure();
+            return None; // never send an edit in plaintext
         };
 
         // 1. Post the replacement message
@@ -2228,17 +2198,9 @@ impl MessageService {
             sender_display_name_override: current_display_name(),
         };
 
-        // Fallback (MLS not ready): send the serialized envelope so the
-        // DeleteNotice survives instead of becoming an empty/plain message.
-        let ciphertext = match self.encrypt_envelope(group_id, &envelope).await {
-            Some(ct) => ct,
-            None => match rmp_serde::to_vec_named(&envelope) {
-                Ok(plain) => plain,
-                Err(e) => {
-                    tracing::warn!(error = %e, "delete envelope serialize failed");
-                    return false;
-                }
-            },
+        // MLS-encrypt the DeleteNotice; abort if unavailable — never plaintext.
+        let Some(ciphertext) = self.encrypt_envelope(group_id, &envelope).await else {
+            return false; // never send a delete notice in plaintext
         };
 
         // 1. Post the delete notice as an MLS message
@@ -2360,12 +2322,8 @@ impl MessageService {
             created_at: now,
             sender_display_name_override: current_display_name(),
         };
-        let envelope_ct = match self.encrypt_envelope(group_id, &envelope).await {
-            Some(ct) => ct,
-            None => match rmp_serde::to_vec_named(&envelope) {
-                Ok(plain) => plain,
-                Err(_) => return false,
-            },
+        let Some(envelope_ct) = self.encrypt_envelope(group_id, &envelope).await else {
+            return false; // never send a reaction in plaintext
         };
         let req = PostMessageRequest {
             expected_epoch: 0,
