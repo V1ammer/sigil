@@ -496,3 +496,47 @@ pub async fn take_shared_attachments() -> Vec<SharedAttachment> {
         Err(_) => Vec::new(),
     }
 }
+
+// ---------- OS notifications ----------
+
+/// Show a native OS notification via `tauri-plugin-notification`.
+///
+/// On Android this posts to the system notification shade; on desktop it's a
+/// native toast. No-op (Err) outside a Tauri context — the web client uses the
+/// browser `Notification` API instead.
+///
+/// # Errors
+///
+/// Returns an error string if not in Tauri context or the invoke fails.
+pub async fn show_native_notification(title: &str, body: &str) -> Result<(), String> {
+    if !is_tauri_context() {
+        return Err("not in Tauri context".into());
+    }
+    // The plugin's `notify` command takes a single `options` object.
+    let options = js_sys::Object::new();
+    js_sys::Reflect::set(&options, &JsValue::from("title"), &JsValue::from(title))
+        .map_err(|_| "set title".to_string())?;
+    js_sys::Reflect::set(&options, &JsValue::from("body"), &JsValue::from(body))
+        .map_err(|_| "set body".to_string())?;
+    let args = js_sys::Object::new();
+    js_sys::Reflect::set(&args, &JsValue::from("options"), &options)
+        .map_err(|_| "set options".to_string())?;
+    tauri_invoke("plugin:notification|notify", &args).await?;
+    Ok(())
+}
+
+/// Request the OS notification permission (Android 13+ POST_NOTIFICATIONS).
+///
+/// Safe to call once at startup; a no-op outside Tauri.
+///
+/// # Errors
+///
+/// Returns an error string if the invoke fails.
+pub async fn request_notification_permission() -> Result<(), String> {
+    if !is_tauri_context() {
+        return Ok(());
+    }
+    let args = js_sys::Object::new();
+    tauri_invoke("plugin:notification|request_permission", &args).await?;
+    Ok(())
+}

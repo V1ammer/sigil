@@ -6,7 +6,7 @@
 use std::cell::RefCell;
 
 /// A settings bool from localStorage, defaulting to `true` (on).
-fn setting_on(key: &str) -> bool {
+pub(crate) fn setting_on(key: &str) -> bool {
     web_sys::window()
         .and_then(|w| w.local_storage().ok().flatten())
         .and_then(|s| s.get_item(key).ok().flatten())
@@ -14,7 +14,7 @@ fn setting_on(key: &str) -> bool {
 }
 
 /// Raw settings string from localStorage.
-fn setting_str(key: &str) -> Option<String> {
+pub(crate) fn setting_str(key: &str) -> Option<String> {
     web_sys::window()
         .and_then(|w| w.local_storage().ok().flatten())
         .and_then(|s| s.get_item(key).ok().flatten())
@@ -22,7 +22,7 @@ fn setting_str(key: &str) -> Option<String> {
 
 /// Whether "Do Not Disturb" is on. It's an immediate toggle: while enabled,
 /// notifications are suppressed (the `quiet_hours_enabled` key is reused).
-fn in_do_not_disturb() -> bool {
+pub(crate) fn in_do_not_disturb() -> bool {
     setting_str("ms_settings_quiet_hours_enabled").as_deref() == Some("true")
 }
 
@@ -58,7 +58,7 @@ thread_local! {
 const STARTUP_GRACE_MS: f64 = 4000.0;
 
 /// Whether we're still inside the post-load grace window.
-fn within_startup_grace() -> bool {
+pub(crate) fn within_startup_grace() -> bool {
     let start = START_MS.with(std::cell::Cell::get);
     // start == 0.0 means `arm_audio_unlock` hasn't run (no app) → don't suppress.
     start > 0.0 && (js_sys::Date::now() - start) < STARTUP_GRACE_MS

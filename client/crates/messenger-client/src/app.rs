@@ -99,6 +99,10 @@ pub fn App() -> impl IntoView {
     // isn't blocked by the browser autoplay policy.
     crate::sound::arm_audio_unlock();
 
+    // Prime OS / browser notification permission (Android POST_NOTIFICATIONS,
+    // or the web Notification API on the first user gesture).
+    crate::notify::arm_notifications();
+
     // Expose window.__androidBack() so the native back button closes overlays
     // (chat → chat list) instead of exiting the app.
     crate::state::back_stack::install_android_back_bridge();

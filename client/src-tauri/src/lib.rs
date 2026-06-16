@@ -5,6 +5,7 @@ pub mod transcription;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_android_keystore::init())
         .plugin(tauri_plugin_file_saver::init())
         .invoke_handler(tauri::generate_handler![

@@ -184,6 +184,49 @@ impl WsManager {
                             if is_incoming_content {
                                 crate::sound::play_message_sound();
                                 crate::sound::vibrate_message();
+
+                                // OS / browser notification — only when the
+                                // user isn't actively looking at this chat
+                                // (different chat open, or the app/tab is in the
+                                // background) and the chat isn't muted.
+                                let doc_hidden = web_sys::window()
+                                    .and_then(|w| w.document())
+                                    .is_some_and(|d| d.hidden());
+                                let muted = chats.as_ref().is_some_and(|c| {
+                                    c.chats.with_untracked(|list| {
+                                        list.iter()
+                                            .find(|ch| ch.group_id == group_id)
+                                            .is_some_and(|ch| ch.muted)
+                                    })
+                                });
+                                if (!is_open || doc_hidden) && !muted {
+                                    let body = svc.messages.by_group.with_untracked(|map| {
+                                        map.get(&group_id)
+                                            .and_then(|list| {
+                                                list.iter().find(|m| m.id == message_id)
+                                            })
+                                            .and_then(|m| crate::notify::preview_text(&m.body))
+                                    });
+                                    if let Some(body) = body {
+                                        let title = chats
+                                            .as_ref()
+                                            .and_then(|c| {
+                                                c.chats.with_untracked(|list| {
+                                                    list.iter()
+                                                        .find(|ch| ch.group_id == group_id)
+                                                        .map(|ch| ch.display_name.clone())
+                                                })
+                                            })
+                                            // Unresolved direct chats fall back to
+                                            // the bare group UUID — don't surface
+                                            // that; use a generic title instead.
+                                            .filter(|n| {
+                                                !n.is_empty() && n.parse::<Uuid>().is_err()
+                                            })
+                                            .unwrap_or_else(|| "Новое сообщение".to_string());
+                                        crate::notify::notify_incoming(&title, &body);
+                                    }
+                                }
                             }
                         });
                     }

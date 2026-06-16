@@ -8,6 +8,7 @@
     "core:window:default",
     "shell:default",
     "android-keystore:default",
-    "file-saver:default"
+    "file-saver:default",
+    "notification:default"
   ]
 }

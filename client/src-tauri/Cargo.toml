@@ -17,6 +17,7 @@ tauri-build = { workspace = true, features = [] }
 [dependencies]
 tauri = { workspace = true, features = [] }
 tauri-plugin-shell = { workspace = true }
+tauri-plugin-notification = { workspace = true }
 tauri-plugin-android-keystore = { path = "tauri-plugin-android-keystore" }
 tauri-plugin-file-saver = { path = "tauri-plugin-file-saver" }
 serde = { workspace = true }
