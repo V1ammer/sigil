@@ -516,6 +516,29 @@ pub async fn establish_group(
         return Err("нужен хотя бы один участник".into());
     }
 
+    // Add the creator's OTHER active devices (besides this one, the founder) so
+    // every device of the creator can read the group. Best-effort per device:
+    // a device whose KeyPackage can't be claimed is simply left out, not fatal.
+    if let Ok(my_devices) = api.list_user_devices(creator_uid).await {
+        for d in my_devices
+            .devices
+            .into_iter()
+            .filter(|d| d.revoked_at.is_none() && d.id != creator_did)
+        {
+            if let Ok(resp) = api.claim_keypackage(creator_uid, d.id).await {
+                keypackages.push(resp.key_package);
+                recipient_devices.push(d.id);
+                member_devices.push(MemberDeviceInit {
+                    user_id: creator_uid,
+                    device_id: d.id,
+                    leaf_index: leaf,
+                    role_in_chat: "owner".into(),
+                });
+                leaf += 1;
+            }
+        }
+    }
+
     // Build the MLS group locally (creator = founder; members added).
     let Some(rt) = take_mls_runtime().await else {
         return Err("MLS не инициализирован".into());
