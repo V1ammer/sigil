@@ -107,6 +107,14 @@ pub fn GroupSheet(
                     .await
                 {
                     Ok(()) => {
+                        if let Some(svc) = crate::state::message_service::service_handle() {
+                            let _ = svc
+                                .send_system_note(
+                                    group_id,
+                                    &format!("{} добавлен(а) в группу", username.trim()),
+                                )
+                                .await;
+                        }
                         add_input.set(String::new());
                         reload();
                     }
@@ -118,18 +126,34 @@ pub fn GroupSheet(
     };
 
     // Remove a member by user id (owner only).
-    let do_remove = move |uid: Uuid| {
-        busy.set(true);
-        err.set(String::new());
-        spawn_local(async move {
-            if let Some(api) = build_api_client() {
-                match crate::state::message_service::group_remove_member(&api, group_id, uid).await {
-                    Ok(()) => reload(),
-                    Err(e) => err.set(e),
+    let do_remove = {
+        let label = label.clone();
+        move |uid: Uuid| {
+            let name = label(uid);
+            busy.set(true);
+            err.set(String::new());
+            spawn_local(async move {
+                if let Some(api) = build_api_client() {
+                    match crate::state::message_service::group_remove_member(&api, group_id, uid)
+                        .await
+                    {
+                        Ok(()) => {
+                            if let Some(svc) = crate::state::message_service::service_handle() {
+                                let _ = svc
+                                    .send_system_note(
+                                        group_id,
+                                        &format!("{name} удалён(а) из группы"),
+                                    )
+                                    .await;
+                            }
+                            reload();
+                        }
+                        Err(e) => err.set(e),
+                    }
                 }
-            }
-            busy.set(false);
-        });
+                busy.set(false);
+            });
+        }
     };
 
     // Rename the group (owner only) — broadcast end-to-end.
@@ -147,6 +171,7 @@ pub fn GroupSheet(
                     if svc
                         .send_group_update(group_id, Some(name.clone()), None)
                         .await
+                        .is_some()
                     {
                         chats.set_display_name(group_id, &name);
                     }
@@ -157,11 +182,37 @@ pub fn GroupSheet(
         }
     };
 
+    // Pick + set the group avatar (owner). Reads the chosen image and hands it
+    // to set_group_avatar (compress + encrypt + upload + broadcast).
+    let do_avatar = move |ev: leptos::ev::Event| {
+        use wasm_bindgen::JsCast;
+        let input = event_target::<web_sys::HtmlInputElement>(&ev);
+        let Some(files) = input.files() else { return };
+        let Some(file) = files.get(0) else { return };
+        let mime = file.type_();
+        busy.set(true);
+        err.set(String::new());
+        spawn_local(async move {
+            match wasm_bindgen_futures::JsFuture::from(file.array_buffer()).await {
+                Ok(buf) => {
+                    let arr: js_sys::ArrayBuffer = buf.unchecked_into();
+                    let bytes = js_sys::Uint8Array::new(&arr).to_vec();
+                    if let Some(svc) = crate::state::message_service::service_handle() {
+                        let _ = svc.set_group_avatar(group_id, bytes, mime).await;
+                    }
+                }
+                Err(_) => err.set("не удалось прочитать файл".into()),
+            }
+            busy.set(false);
+        });
+    };
+
     // Leave the group. Owner must transfer ownership to the chosen successor
     // first; everyone else just leaves.
     let do_leave = {
         let chats = chats.clone();
         let on_close = on_close.clone();
+        let label = label.clone();
         move || {
             let owner = is_owner();
             let succ = successor.get();
@@ -173,6 +224,7 @@ pub fn GroupSheet(
             err.set(String::new());
             let chats = chats.clone();
             let on_close = on_close.clone();
+            let my_name = own_uid.map(|u| label(u)).unwrap_or_default();
             spawn_local(async move {
                 if let Some(api) = build_api_client() {
                     if owner {
@@ -183,6 +235,13 @@ pub fn GroupSheet(
                                 return;
                             }
                         }
+                    }
+                    // Announce the departure while still a member (can't post
+                    // after leaving).
+                    if let Some(svc) = crate::state::message_service::service_handle() {
+                        let _ = svc
+                            .send_system_note(group_id, &format!("{my_name} покинул(а) группу"))
+                            .await;
                     }
                     match crate::state::message_service::group_leave(&api, group_id).await {
                         Ok(()) => {
@@ -262,9 +321,11 @@ pub fn GroupSheet(
                         {move || is_owner().then({
                             let do_add = do_add.clone();
                             let do_rename = do_rename.clone();
+                            let do_avatar = do_avatar.clone();
                             move || {
                                 let do_add = do_add.clone();
                                 let do_rename = do_rename.clone();
+                                let do_avatar = do_avatar.clone();
                                 view! {
                                     <div class="mt-4 border-t border-border pt-4 space-y-3">
                                         <div class="flex gap-2">
@@ -297,6 +358,16 @@ pub fn GroupSheet(
                                                 disabled=move || busy.get()
                                             >"Переименовать"</button>
                                         </div>
+                                        <label class="inline-flex h-10 px-3 items-center justify-center rounded-md bg-secondary text-secondary-foreground text-sm hover:bg-secondary/80 cursor-pointer w-fit">
+                                            "Сменить аватар"
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                class="hidden"
+                                                on:change=do_avatar
+                                                disabled=move || busy.get()
+                                            />
+                                        </label>
                                     </div>
                                 }
                             }

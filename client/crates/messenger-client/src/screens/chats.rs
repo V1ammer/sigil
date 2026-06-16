@@ -100,8 +100,13 @@ pub fn ChatsScreen() -> impl IntoView {
     let header_avatar: Signal<Option<String>> = Signal::derive(move || {
         let gid = selected.get()?;
         let us = users_for_header_avatar.as_ref()?;
-        let peer = us.peer_by_group.with(|m| m.get(&gid).copied())?;
-        us.avatar_by_id.with(|m| m.get(&peer).cloned())
+        // Direct chats resolve via the peer; groups cache the avatar under the
+        // group id (no peer mapping).
+        if let Some(peer) = us.peer_by_group.with(|m| m.get(&gid).copied()) {
+            us.avatar_by_id.with(|m| m.get(&peer).cloned())
+        } else {
+            us.avatar_by_id.with(|m| m.get(&gid).cloned())
+        }
     });
 
     // Blocking: the open direct chat's peer user id, and whether they're blocked.

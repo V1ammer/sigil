@@ -268,12 +268,15 @@ pub fn RealChatList(
                                         let group_id = chat.group_id;
                                         let is_direct = chat.chat_type == crate::state::chats::ChatType::Direct;
                                         Signal::derive(move || {
-                                            if !is_direct {
-                                                return None;
-                                            }
                                             let users = users.as_ref()?;
-                                            let peer = users.peer_by_group.get().get(&group_id).copied()?;
-                                            users.avatar_by_id.get().get(&peer).cloned()
+                                            if is_direct {
+                                                // Direct: the peer's avatar.
+                                                let peer = users.peer_by_group.get().get(&group_id).copied()?;
+                                                users.avatar_by_id.get().get(&peer).cloned()
+                                            } else {
+                                                // Group: avatar cached under the group id.
+                                                users.avatar_by_id.get().get(&group_id).cloned()
+                                            }
                                         })
                                     };
 

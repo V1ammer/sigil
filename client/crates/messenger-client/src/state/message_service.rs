@@ -1904,8 +1904,8 @@ impl MessageService {
         group_id: Uuid,
         name: Option<String>,
         avatar: Option<(Option<Uuid>, Vec<u8>, String)>,
-    ) -> bool {
-        let Some(api) = build_api_client() else { return false };
+    ) -> Option<Uuid> {
+        let Some(api) = build_api_client() else { return None };
         let (avatar_blob_id, decryption_key, mime) = avatar
             .unwrap_or((None, Vec::new(), String::new()));
 
@@ -1930,7 +1930,7 @@ impl MessageService {
                 Ok(plain) => plain,
                 Err(e) => {
                     tracing::warn!("group update serialize failed: {e}");
-                    return false;
+                    return None;
                 }
             },
         };
@@ -1943,11 +1943,98 @@ impl MessageService {
             client_message_id,
         };
         match api.post_message(group_id, &req).await {
-            Ok(_) => true,
+            Ok(r) => Some(r.message_id),
             Err(e) => {
                 tracing::warn!(%group_id, error = %e, "group update broadcast failed");
-                false
+                None
             }
+        }
+    }
+
+    /// Post a system note ("X добавлен(а)", etc.) to a group as an MLS
+    /// application message. Other members render it as a centered system pill;
+    /// the sender doesn't see their own (own MLS messages aren't self-decryptable).
+    pub async fn send_system_note(&self, group_id: Uuid, text: &str) -> bool {
+        let Some(api) = build_api_client() else { return false };
+        let client_message_id = Uuid::now_v7();
+        let envelope = ApplicationEnvelope {
+            client_message_id,
+            kind: AppMessageKind::SystemNote,
+            body: AppMessageBody::SystemNote {
+                code: text.to_string(),
+                params: std::collections::HashMap::new(),
+            },
+            reply_to_message_id: None,
+            thread_root_id: None,
+            created_at: js_sys::Date::now() as i64 / 1000,
+            sender_display_name_override: current_display_name(),
+        };
+        // System notes are control content — only send when MLS can encrypt
+        // (don't leak a plaintext note).
+        let Some(ct) = self.encrypt_envelope(group_id, &envelope).await else {
+            return false;
+        };
+        let req = PostMessageRequest {
+            expected_epoch: 0,
+            mls_ciphertext: ct,
+            parent_message_id: None,
+            reply_to_message_id: None,
+            thread_root_id: None,
+            client_message_id,
+        };
+        api.post_message(group_id, &req).await.is_ok()
+    }
+
+    /// Set a group's avatar (owner): compress, encrypt, upload, broadcast the
+    /// `GroupUpdate`, finalize the blob, and apply locally (we can't decrypt our
+    /// own MLS message to recover it). Returns `true` on success.
+    pub async fn set_group_avatar(&self, group_id: Uuid, bytes: Vec<u8>, mime: String) -> bool {
+        use messenger_core::attachment_crypto::encrypt_attachment;
+        use rand::RngCore;
+
+        let Some(api) = build_api_client() else { return false };
+        let (img_bytes, img_mime) = crate::media_transcode::compress_image(&bytes, &mime)
+            .await
+            .unwrap_or((bytes, mime));
+
+        let mut key = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut key);
+        let Ok(ciphertext) = encrypt_attachment(&key, &img_bytes) else {
+            return false;
+        };
+        let padded_size = ciphertext.len() as u64;
+        let size_bucket = size_bucket_for(padded_size);
+        let upload = match api
+            .upload_attachment_smart(ciphertext, padded_size, size_bucket)
+            .await
+        {
+            Ok(u) => u,
+            Err(e) => {
+                tracing::warn!(error = %e, "group avatar upload failed");
+                return false;
+            }
+        };
+
+        // Optimistic local apply.
+        if let Some(users) = USERS_STATE.with(|c| c.borrow().clone()) {
+            let data_url = crate::state::avatar_store::bytes_to_data_url(&img_mime, &img_bytes);
+            users.remember_avatar(group_id, &data_url);
+        }
+
+        match self
+            .send_group_update(
+                group_id,
+                None,
+                Some((Some(upload.attachment_id), key.to_vec(), img_mime)),
+            )
+            .await
+        {
+            Some(msg_id) => {
+                // Bind the blob to its message so recipients may download it.
+                finalize_attachment_retrying(&api, upload.attachment_id, msg_id).await;
+                true
+            }
+            None => false,
         }
     }
 
@@ -2567,11 +2654,26 @@ impl MessageService {
                         );
                         return Converted::Drop;
                     }
-                    // Group metadata side-channel: apply the name (and later the
-                    // avatar) to the chat, then drop from the timeline.
-                    if let AppMessageBody::GroupUpdate { ref name, .. } = envelope.body {
+                    // Group metadata side-channel: apply the name and/or avatar to
+                    // the chat, then drop from the timeline.
+                    if let AppMessageBody::GroupUpdate {
+                        ref name,
+                        avatar_blob_id,
+                        ref decryption_key,
+                        ref mime,
+                    } = envelope.body
+                    {
                         if let Some(name) = name {
                             Self::apply_group_name(group_id, name);
+                        }
+                        if let Some(blob) = avatar_blob_id {
+                            Self::apply_group_avatar(
+                                group_id,
+                                msg.id,
+                                blob,
+                                decryption_key.clone(),
+                                mime.clone(),
+                            );
                         }
                         return Converted::Drop;
                     }
@@ -2693,6 +2795,44 @@ impl MessageService {
         if !is_direct {
             cs.set_display_name(group_id, name);
         }
+    }
+
+    /// Fetch + decrypt a group avatar blob and cache it (keyed by group_id in
+    /// the same avatar map used for direct peers). Only ever moves forward in
+    /// time (UUIDv7 msg ids), so re-processing history is a no-op.
+    fn apply_group_avatar(group_id: Uuid, msg_id: Uuid, blob_id: Uuid, key: Vec<u8>, mime: String) {
+        let already = AVATAR_APPLIED.with(|c| c.borrow().get(&group_id).copied());
+        if already.is_some_and(|cur| msg_id <= cur) {
+            return;
+        }
+        AVATAR_APPLIED.with(|c| {
+            c.borrow_mut().insert(group_id, msg_id);
+        });
+        let Some(users) = USERS_STATE.with(|c| c.borrow().clone()) else {
+            return;
+        };
+        spawn_local(async move {
+            let Some(api) = build_api_client() else { return };
+            let ciphertext = match api.download_attachment(blob_id, None).await {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::warn!(%blob_id, error = %e, "group avatar download failed");
+                    return;
+                }
+            };
+            let Ok(key_arr) = <[u8; 32]>::try_from(key.as_slice()) else {
+                return;
+            };
+            let Ok(plain) =
+                messenger_core::attachment_crypto::decrypt_attachment(&key_arr, &ciphertext)
+            else {
+                tracing::warn!(%blob_id, "group avatar decrypt failed");
+                return;
+            };
+            let mime = if mime.is_empty() { "image/jpeg".to_string() } else { mime };
+            let data_url = crate::state::avatar_store::bytes_to_data_url(&mime, &plain);
+            users.remember_avatar(group_id, &data_url);
+        });
     }
 
     /// Record the sender as the direct-chat peer of `group_id` (no-op for
