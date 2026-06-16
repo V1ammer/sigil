@@ -104,11 +104,15 @@ impl SyncService {
                 });
 
                 for welcome in &resp.welcomes {
-                    // If MLS is available, try to join via welcome
+                    // Only ack (drop) a welcome once we've ACTUALLY joined. If MLS
+                    // isn't ready yet, or the join fails, leave it on the server so
+                    // the next sync retries — acking a failed join silently loses
+                    // the group with no way to recover.
+                    let mut joined = false;
                     if mls_ready {
                         if let Some(ref svc) = msg_svc {
                             // The MlsRuntime is thread-local — we join via the cached runtime
-                            let joined = crate::state::message_service::join_welcome(
+                            joined = crate::state::message_service::join_welcome(
                                 welcome.id,
                                 &welcome.welcome_ciphertext,
                             )
@@ -124,8 +128,9 @@ impl SyncService {
                         }
                     }
 
-                    // Ack the welcome so the server stops delivering it
-                    let _ = api.ack_welcome(welcome.id).await;
+                    if joined {
+                        let _ = api.ack_welcome(welcome.id).await;
+                    }
                 }
 
                 // Refresh chat list after processing welcomes

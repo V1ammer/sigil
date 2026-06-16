@@ -4,16 +4,17 @@ use openmls::prelude::{BasicCredential, CredentialWithKey, SignaturePublicKey};
 
 use crate::identity::ClientIdentity;
 
-/// Build an MLS `CredentialWithKey` for this device.
+/// Build an MLS `CredentialWithKey` from the client's identity signing key.
 ///
-/// The credential identity is the user id (shared across the user's devices),
-/// but the MLS leaf signature key MUST be unique per leaf — so it's the
-/// per-device signing key. Using the shared identity key made two of a user's
-/// devices in one group collide with `DuplicateSignatureKey`. The signer
-/// (`IdentitySigner`) signs with this same per-device key.
+/// NOTE: the signature key is the user's identity key, shared across the user's
+/// devices. So at most ONE device per user may be in a group — adding two
+/// collides with `DuplicateSignatureKey`. Callers add a single device per user.
+/// (Per-device signature keys require provider-stored SignatureKeyPairs and are
+/// a separate change; switching `IdentitySigner` to the device key alone breaks
+/// leaf-signature verification on join.)
 pub fn build_credential(identity: &ClientIdentity) -> CredentialWithKey {
     let credential = BasicCredential::new(identity.user_id.as_bytes().to_vec()).into();
-    let signature_key: SignaturePublicKey = identity.device_signing_key.public_bytes().as_slice().into();
+    let signature_key: SignaturePublicKey = identity.identity_signing_key.public_bytes().as_slice().into();
     CredentialWithKey {
         credential,
         signature_key,

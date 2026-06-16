@@ -519,45 +519,32 @@ pub async fn establish_group(
         if active.is_empty() {
             return Err("у участника нет доступных устройств".into());
         }
-        for d in active {
-            let resp = api
-                .claim_keypackage(uid, d.id)
-                .await
-                .map_err(|e| format!("не удалось получить ключ участника: {e}"))?;
-            keypackages.push(resp.key_package);
-            recipient_devices.push(d.id);
-            member_devices.push(MemberDeviceInit {
-                user_id: uid,
-                device_id: d.id,
-                leaf_index: leaf,
-                role_in_chat: "member".into(),
-            });
-            leaf += 1;
-        }
+        // ONE device per user: the MLS leaf signature key is the user's identity
+        // key (shared across their devices), so two leaves of the same user would
+        // collide with `DuplicateSignatureKey`. Pick the first active device.
+        // (Multi-device delivery needs per-device signature keys — separate work.)
+        let d = active.into_iter().next().expect("non-empty checked above");
+        let resp = api
+            .claim_keypackage(uid, d.id)
+            .await
+            .map_err(|e| format!("не удалось получить ключ участника: {e}"))?;
+        keypackages.push(resp.key_package);
+        recipient_devices.push(d.id);
+        member_devices.push(MemberDeviceInit {
+            user_id: uid,
+            device_id: d.id,
+            leaf_index: leaf,
+            role_in_chat: "member".into(),
+        });
+        leaf += 1;
     }
 
     if keypackages.is_empty() {
         return Err("нужен хотя бы один участник".into());
     }
-
-    // Add the creator's OTHER active devices (besides this one, the founder) so
-    // every device of the creator can read the group. Best-effort per device:
-    // a device whose KeyPackage can't be claimed is simply left out, not fatal.
-    if let Ok(my_devices) = api.list_user_devices(creator_uid).await {
-        for d in my_devices.into_iter().filter(|d| d.id != creator_did) {
-            if let Ok(resp) = api.claim_keypackage(creator_uid, d.id).await {
-                keypackages.push(resp.key_package);
-                recipient_devices.push(d.id);
-                member_devices.push(MemberDeviceInit {
-                    user_id: creator_uid,
-                    device_id: d.id,
-                    leaf_index: leaf,
-                    role_in_chat: "owner".into(),
-                });
-                leaf += 1;
-            }
-        }
-    }
+    // NOTE: the creator's other devices are intentionally NOT added — same
+    // shared-identity-key constraint. The creator reads the group on the founder
+    // device (leaf 0) only.
 
     // Build the MLS group locally (creator = founder; members added).
     let Some(rt) = take_mls_runtime().await else {
@@ -628,9 +615,12 @@ pub async fn group_add_member(api: &ApiClient, group_id: Uuid, username: &str) -
         return Err("у участника нет доступных устройств".into());
     }
 
+    // ONE device per user (shared identity signature key → DuplicateSignatureKey
+    // if two of a user's leaves are in the same group). Pick the first active.
     let mut keypackages: Vec<Vec<u8>> = Vec::new();
     let mut devices: Vec<Uuid> = Vec::new();
-    for d in &active {
+    {
+        let d = &active[0];
         let resp = api
             .claim_keypackage(uid, d.id)
             .await

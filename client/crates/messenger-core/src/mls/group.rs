@@ -618,8 +618,8 @@ struct IdentitySigner<'a>(&'a ClientIdentity);
 
 impl OmlsSigner for IdentitySigner<'_> {
     fn sign(&self, payload: &[u8]) -> Result<Vec<u8>, openmls_traits::signatures::SignerError> {
-        // Must match the per-device signature key in `build_credential`.
-        Ok(self.0.device_signing_key.sign(payload).to_vec())
+        // Must match the signature key in `build_credential` (identity key).
+        Ok(self.0.identity_signing_key.sign(payload).to_vec())
     }
 
     fn signature_scheme(&self) -> SignatureScheme {
