@@ -148,14 +148,22 @@ fn notify_send_error(err: &messenger_core::api::ApiError) {
     }
 }
 
+thread_local! {
+    /// Reason for the most recent encrypt failure, surfaced in the toast.
+    static LAST_ENCRYPT_ERR: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
+}
+
 /// Surface a toast when a message can't be MLS-encrypted. We NEVER fall back to
 /// sending a plaintext envelope, so the user is told the send was dropped.
 fn notify_encrypt_failure() {
+    let detail = LAST_ENCRYPT_ERR.with(|c| c.borrow().clone());
+    let msg = if detail.is_empty() {
+        "Сообщение не отправлено: сквозное шифрование недоступно".to_string()
+    } else {
+        format!("Не отправлено (шифрование): {detail}")
+    };
     if let Some(nf) = notifications_handle() {
-        nf.push(
-            crate::state::notifications::ToastKind::Error,
-            "Сообщение не отправлено: сквозное шифрование недоступно".to_string(),
-        );
+        nf.push(crate::state::notifications::ToastKind::Error, msg);
     }
 }
 
@@ -1060,12 +1068,6 @@ impl MessageService {
                 let latest = display_messages.iter().max_by_key(|m| m.created_at).cloned();
                 self.messages.by_group.update(|map| {
                     map.insert(group_id, display_messages);
-                });
-                // Opportunistic post-compromise rekey (rate-limited 24h/group).
-                spawn_local(async move {
-                    if let Some(api) = build_api_client() {
-                        maybe_rekey_group(&api, group_id).await;
-                    }
                 });
                 if let Some(m) = latest {
                     set_chat_last_message(
@@ -2535,6 +2537,7 @@ impl MessageService {
         // future borrows it.
         let Some(rt) = take_mls_runtime().await else {
             web_sys::console::error_1(&"[encrypt_envelope] MLS_CACHE empty (runtime not initialized)".into());
+            LAST_ENCRYPT_ERR.with(|c| *c.borrow_mut() = "MLS не инициализирован".to_string());
             return None;
         };
         let result = rt
@@ -2543,9 +2546,13 @@ impl MessageService {
         MLS_CACHE.with(|c| *c.borrow_mut() = Some(rt));
 
         match result {
-            Ok(ct) => Some(ct),
+            Ok(ct) => {
+                LAST_ENCRYPT_ERR.with(|c| c.borrow_mut().clear());
+                Some(ct)
+            }
             Err(e) => {
                 web_sys::console::error_1(&format!("[encrypt_envelope] MLS encrypt failed for {group_id}: {e}").into());
+                LAST_ENCRYPT_ERR.with(|c| *c.borrow_mut() = format!("{e}"));
                 None
             }
         }
