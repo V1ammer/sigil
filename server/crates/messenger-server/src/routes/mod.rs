@@ -109,6 +109,10 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/v1/keypackages", post(keypackages::publish_keypackages))
         .route(
+            "/v1/keypackages/me",
+            delete(keypackages::delete_my_keypackages),
+        )
+        .route(
             "/v1/keypackages/me/count",
             get(keypackages::get_pool_stats),
         )

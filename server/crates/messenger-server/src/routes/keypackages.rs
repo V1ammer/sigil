@@ -74,6 +74,12 @@ pub struct ClaimKeyPackageResponse {
     pub key_package: Vec<u8>,
 }
 
+/// Ответ на удаление собственного пула `KeyPackages`.
+#[derive(Serialize)]
+pub struct DeleteKeyPackagesResponse {
+    pub deleted: u64,
+}
+
 // ─── Constants ───
 
 /// Максимум `KeyPackages` в одном запросе.
@@ -302,6 +308,41 @@ pub async fn get_pool_stats(
     ))
 }
 
+/// `DELETE /v1/keypackages/me` — удаляет все неconsumed `KeyPackages` (включая
+/// last-resort) текущего устройства.
+///
+/// Нужно для согласования: старые билды оставляли на сервере `KeyPackages`,
+/// чьи приватные бандлы устройство уже потеряло локально (после сброса
+/// хранилища/сессии). Peer тогда claim'ит непригодный пакет и не может войти
+/// (`NoMatchingKeyPackage`). Клиент один раз чистит свой пул и публикует новый,
+/// локально-обеспеченный.
+///
+/// # Errors
+///
+/// - `500 ERR_INTERNAL` — ошибка БД.
+pub async fn delete_my_keypackages(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    CurrentAuth(ctx): CurrentAuth,
+) -> Result<Response, AppError> {
+    let res = KeyPackages::delete_many()
+        .filter(
+            Condition::all()
+                .add(key_packages::Column::DeviceId.eq(ctx.device.id))
+                .add(key_packages::Column::ConsumedAt.is_null()),
+        )
+        .exec(&state.db)
+        .await?;
+
+    Ok(typed_response(
+        &headers,
+        StatusCode::OK,
+        &DeleteKeyPackagesResponse {
+            deleted: res.rows_affected,
+        },
+    ))
+}
+
 /// Атомарно забирает один `KeyPackage` из пула target device.
 ///
 /// Логика:
@@ -370,7 +411,12 @@ pub async fn claim_keypackage(
                 .add(key_packages::Column::IsLastResort.eq(false))
                 .add(key_packages::Column::ExpiresAt.gt(now)),
         )
-        .order_by_asc(key_packages::Column::CreatedAt)
+        // Newest first: a device's most recently published KeyPackages are the
+        // ones whose private bundles it still holds locally. Claiming the oldest
+        // could hand out a stale package whose bundle the device lost (after a
+        // storage/session reset) -> the recipient fails to join with
+        // `NoMatchingKeyPackage`.
+        .order_by_desc(key_packages::Column::CreatedAt)
         .one(&txn)
         .await?;
 

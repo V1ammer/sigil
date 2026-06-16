@@ -24,6 +24,18 @@ impl ApiClient {
         self.send::<(), _>("GET", "/v1/keypackages/me/count", None).await
     }
 
+    /// Delete the device's own unconsumed KeyPackages (incl. last-resort).
+    ///
+    /// Used to reconcile a stale server pool whose private bundles are no longer
+    /// held locally, before republishing a fresh, locally-backed batch.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ApiError` on network failure.
+    pub async fn delete_my_keypackages(&self) -> Result<DeleteKeyPackagesResponse, ApiError> {
+        self.send::<(), _>("DELETE", "/v1/keypackages/me", None).await
+    }
+
     /// Claim a KeyPackage for a specific device.
     ///
     /// # Errors

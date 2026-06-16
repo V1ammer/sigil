@@ -926,11 +926,34 @@ pub async fn ensure_keypackages(api: &ApiClient) {
 
     let Ok(identity) = session_identity() else { return };
     let storage = web_sys::window().and_then(|w| w.local_storage().ok().flatten());
+
+    // One-time reconcile: older builds (and storage/session resets) left
+    // KeyPackages on the server whose private bundles this device no longer
+    // holds locally. A peer then claims an un-joinable package and fails with
+    // `NoMatchingKeyPackage`, so messages never arrive. Purge the server pool
+    // once and fall through to republish a fresh, locally-backed batch
+    // (clearing the last-resort flag so a fresh last-resort is published too).
+    let need_reconcile = storage
+        .as_ref()
+        .and_then(|s| s.get_item("ms_kp_reconciled_v1").ok().flatten())
+        .is_none();
+    if need_reconcile {
+        let _ = api.delete_my_keypackages().await;
+        if let Some(s) = &storage {
+            let _ = s.remove_item("ms_lastresort_published_v1");
+            let _ = s.set_item("ms_kp_reconciled_v1", "1");
+        }
+    }
+
     let need_lr = storage
         .as_ref()
         .and_then(|s| s.get_item("ms_lastresort_published_v1").ok().flatten())
         .is_none();
-    let remaining = api.keypackage_count().await.map(|s| s.remaining).unwrap_or(0);
+    let remaining = if need_reconcile {
+        0
+    } else {
+        api.keypackage_count().await.map(|s| s.remaining).unwrap_or(0)
+    };
     if !need_lr && remaining >= TARGET {
         return;
     }

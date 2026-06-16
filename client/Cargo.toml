@@ -1,6 +1,9 @@
 [workspace]
 resolver = "2"
 members = ["crates/*", "src-tauri", "src-tauri/tauri-plugin-android-keystore", "src-tauri/tauri-plugin-file-saver"]
+# `.omc` is tooling state that lands under crates/ and is not a cargo crate;
+# without this the `crates/*` glob tries to load it as a workspace member.
+exclude = ["crates/.omc"]
 
 [workspace.package]
 version = "0.1.0"

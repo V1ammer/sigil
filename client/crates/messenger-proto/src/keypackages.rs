@@ -38,3 +38,10 @@ pub struct ClaimKeyPackageResponse {
     #[serde(with = "serde_bytes")]
     pub key_package: Vec<u8>,
 }
+
+/// Response when deleting the device's own `KeyPackage` pool.
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct DeleteKeyPackagesResponse {
+    #[serde(default)]
+    pub deleted: i64,
+}

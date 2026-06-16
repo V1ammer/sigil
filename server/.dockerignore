@@ -6,3 +6,5 @@ dev.db*
 .envrc
 flake.nix
 flake.lock
+.omc
+**/.omc
