@@ -18,15 +18,16 @@ pub fn Sheet(
         <Show when=move || show.get()>
             <div class="fixed inset-0 z-50">
                 <div
-                    class="fixed inset-0 bg-black/50"
+                    class="fixed inset-0 bg-black/50 animate-overlay-in"
                     on:click={
                         let cf = close_fn.clone();
                         move |_| { if let Some(ref f) = *cf { f(); } }
                     }
                 />
                 <div class=format!(
-                    "fixed {} z-50 gap-4 bg-background p-6 shadow-lg transition ease-in-out {} {}",
+                    "fixed {} z-50 gap-4 bg-background p-6 shadow-lg ease-in-out {} {} {}",
                     if side == "bottom" { "bottom-0 left-0 right-0 rounded-t-xl max-h-[80vh]" } else { "right-0 top-0 h-full w-full sm:w-96 border-l" },
+                    if side == "bottom" { "animate-sheet-bottom-in" } else { "animate-sheet-right-in" },
                     if side == "bottom" { "" } else { width_class },
                     class
                 )>

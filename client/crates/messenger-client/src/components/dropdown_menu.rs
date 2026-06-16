@@ -104,7 +104,7 @@ pub fn DropdownMenuContent(
     });
 
     let content_class = format!(
-        "z-50 min-w-[8rem] max-w-[calc(100vw-1rem)] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md {class}",
+        "z-50 min-w-[8rem] max-w-[calc(100vw-1rem)] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md origin-top animate-dropdown-in {class}",
     );
     let style_fn = move || match pos.get() {
         Some((top, left)) => format!("position: fixed; top: {top}px; left: {left}px;"),

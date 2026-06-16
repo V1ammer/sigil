@@ -46,6 +46,48 @@ module.exports = {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      keyframes: {
+        "fade-in": { from: { opacity: "0" }, to: { opacity: "1" } },
+        "dialog-in": {
+          from: { opacity: "0", transform: "scale(.96) translateY(4px)" },
+          to: { opacity: "1", transform: "none" },
+        },
+        "dropdown-in": {
+          from: { opacity: "0", transform: "scale(.96) translateY(-4px)" },
+          to: { opacity: "1", transform: "none" },
+        },
+        "sheet-right-in": {
+          from: { transform: "translateX(100%)" },
+          to: { transform: "translateX(0)" },
+        },
+        "sheet-bottom-in": {
+          from: { transform: "translateY(100%)" },
+          to: { transform: "translateY(0)" },
+        },
+        "toast-in": {
+          from: { opacity: "0", transform: "translateX(16px)" },
+          to: { opacity: "1", transform: "none" },
+        },
+        "message-in": {
+          from: { opacity: "0", transform: "translateY(6px)" },
+          to: { opacity: "1", transform: "none" },
+        },
+        "screen-in": {
+          from: { opacity: "0", transform: "translateX(12px)" },
+          to: { opacity: "1", transform: "none" },
+        },
+      },
+      animation: {
+        "fade-in": "fade-in .15s ease-out",
+        "overlay-in": "fade-in .2s ease-out",
+        "dialog-in": "dialog-in .18s cubic-bezier(.16,1,.3,1)",
+        "dropdown-in": "dropdown-in .14s ease-out",
+        "sheet-right-in": "sheet-right-in .25s cubic-bezier(.16,1,.3,1)",
+        "sheet-bottom-in": "sheet-bottom-in .28s cubic-bezier(.16,1,.3,1)",
+        "toast-in": "toast-in .2s ease-out",
+        "message-in": "message-in .18s ease-out",
+        "screen-in": "screen-in .2s cubic-bezier(.16,1,.3,1)",
+      },
     },
   },
 };

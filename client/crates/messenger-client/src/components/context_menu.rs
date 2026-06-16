@@ -30,7 +30,7 @@ pub fn ContextMenuContent(
     children: Children,
 ) -> impl IntoView {
     view! {
-        <div class=format!("min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md {}", class)>
+        <div class=format!("min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md origin-top animate-dropdown-in {}", class)>
             {children()}
         </div>
     }

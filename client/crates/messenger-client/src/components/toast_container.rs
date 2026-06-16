@@ -29,7 +29,7 @@ pub fn ToastContainer() -> impl IntoView {
                             <div
                                 class=format!(
                                     "{} text-white px-4 py-3 rounded-lg shadow-lg \
-                                     max-w-sm pointer-events-auto animate-in fade-in slide-in-from-right",
+                                     max-w-sm pointer-events-auto animate-toast-in",
                                     bg,
                                 )
                                 role="alert"

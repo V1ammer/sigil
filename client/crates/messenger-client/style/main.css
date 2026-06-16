@@ -151,3 +151,16 @@
   width: 100%;
   height: 100%;
 }
+
+/* Respect users who ask the OS to minimize motion: collapse all animations and
+   transitions to ~instant so the UI is still functional without movement. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

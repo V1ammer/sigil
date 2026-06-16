@@ -556,7 +556,7 @@ pub fn ChatsScreen() -> impl IntoView {
                     <div
                         class=move || {
                             if selected.get().is_some() {
-                                "relative flex flex-1 flex-col w-full min-w-0 min-h-0"
+                                "relative flex flex-1 flex-col w-full min-w-0 min-h-0 animate-screen-in"
                             } else {
                                 "relative hidden md:flex flex-1 flex-col"
                             }

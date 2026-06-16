@@ -14,13 +14,13 @@ pub fn AlertDialog(
         <Show when=move || show.get()>
             <div class="fixed inset-0 z-50 flex items-center justify-center">
                 <div
-                    class="fixed inset-0 bg-black/50"
+                    class="fixed inset-0 bg-black/50 animate-overlay-in"
                     on:click={
                         let cf = close_fn.clone();
                         move |_| { if let Some(ref f) = *cf { f(); } }
                     }
                 />
-                <div class="relative z-50 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg">
+                <div class="relative z-50 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg animate-dialog-in">
                     {children()}
                 </div>
             </div>

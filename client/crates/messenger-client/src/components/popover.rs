@@ -15,7 +15,7 @@ pub fn Popover(
                 let cf = close_fn.clone();
                 move |_| { if let Some(ref f) = *cf { f(); } }
             }>
-                <div class="absolute z-50 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-none">
+                <div class="absolute z-50 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-none origin-top animate-dropdown-in">
                     {children()}
                 </div>
             </div>
