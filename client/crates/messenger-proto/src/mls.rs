@@ -9,15 +9,37 @@ pub struct WelcomePayload {
     pub welcome_ciphertext: Vec<u8>,
 }
 
+/// One member device included at group creation.
+///
+/// Field names and types mirror the server's `MemberDeviceInit` exactly so the
+/// rmp_serde-named payload decodes correctly.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MemberDeviceInit {
+    pub user_id: Uuid,
+    pub device_id: Uuid,
+    pub leaf_index: i32,
+    pub role_in_chat: String, // "owner" | "member"
+}
+
 /// Request to create a new MLS group.
+///
+/// Mirrors the server `CreateGroupRequest`: the creator must be among
+/// `member_devices`, and `welcomes` carries one entry per recipient device (the
+/// single batched MLS welcome replicated per device). The ratchet tree travels
+/// inside the welcome via the ratchet-tree extension, so it isn't sent here.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CreateGroupRequest {
     pub group_type: String, // "direct" | "group"
     #[serde(with = "serde_bytes")]
     pub initial_commit: Vec<u8>,
     pub welcomes: Vec<WelcomePayload>,
-    #[serde(with = "serde_bytes")]
-    pub ratchet_tree: Vec<u8>,
+    pub member_devices: Vec<MemberDeviceInit>,
+}
+
+/// Request to transfer group ownership to another active member.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TransferOwnerRequest {
+    pub new_owner_user_id: Uuid,
 }
 
 /// Request to create a direct chat on the server side (without MLS).
@@ -35,11 +57,16 @@ pub struct CreateGroupResponse {
 }
 
 /// Member change hint sent alongside a commit.
+///
+/// Mirrors the server `MemberChange`. `leaf_index`/`role_in_chat` are optional
+/// metadata (used when adding a device); they're `None` for removes.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MemberChange {
     pub kind: String, // "add" | "remove"
     pub user_id: Uuid,
     pub device_id: Uuid,
+    pub leaf_index: Option<i32>,
+    pub role_in_chat: Option<String>,
 }
 
 /// Request to post a commit to a group.

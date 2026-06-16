@@ -122,6 +122,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/v1/groups/me", get(mls::list_my_groups))
         .route("/v1/groups/:id", delete(mls::delete_group))
         .route("/v1/groups/:id/members", get(mls::get_group_members))
+        .route("/v1/groups/:id/owner", post(mls::transfer_owner))
         .route("/v1/groups/:id/commit", post(mls::post_commit))
         .route("/v1/groups/:id/messages", get(mls::pull_messages))
         .route("/v1/groups/:id/messages", post(mls::post_message))

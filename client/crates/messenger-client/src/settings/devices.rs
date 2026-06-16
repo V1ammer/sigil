@@ -410,6 +410,8 @@ pub fn DevicesSettings() -> impl IntoView {
                                             kind: "add".into(),
                                             user_id: identity.user_id,
                                             device_id: new_device_id,
+                                            leaf_index: None,
+                                            role_in_chat: Some("member".into()),
                                         }],
                                     };
                                     if let Err(e) = api.post_commit(g.id, &commit_req).await {

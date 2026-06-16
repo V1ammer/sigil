@@ -37,6 +37,22 @@ impl ApiClient {
         self.send::<(), _>("GET", &path, None).await
     }
 
+    /// Transfer group ownership to another active member (owner only).
+    ///
+    /// # Errors
+    ///
+    /// Returns `ApiError` on network failure, 403 if the caller isn't the owner,
+    /// or 400 if the successor isn't an active member.
+    pub async fn transfer_owner(
+        &self,
+        group_id: Uuid,
+        new_owner_user_id: Uuid,
+    ) -> Result<(), ApiError> {
+        let path = format!("/v1/groups/{group_id}/owner");
+        let req = TransferOwnerRequest { new_owner_user_id };
+        self.send::<_, ()>("POST", &path, Some(&req)).await
+    }
+
     /// Delete a group (chat) and all its messages and attachments server-side.
     ///
     /// # Errors

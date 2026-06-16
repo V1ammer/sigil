@@ -574,6 +574,81 @@ pub async fn delete_group(
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
+/// Запрос передачи прав владельца группы.
+#[derive(Deserialize)]
+pub struct TransferOwnerRequest {
+    pub new_owner_user_id: Uuid,
+}
+
+/// Передать роль `owner` другому активному участнику.
+///
+/// Вызвать может только текущий владелец. Преемник должен быть активным
+/// участником. Старый владелец становится `member`. Роли — это app-level
+/// метаданные (не MLS-операция), поэтому это отдельный эндпоинт, а не commit.
+///
+/// # Errors
+///
+/// - `403` — вызывающий не владелец.
+/// - `400` — преемник не активный участник.
+pub async fn transfer_owner(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    CurrentAuth(ctx): CurrentAuth,
+    Path(group_id): Path<Uuid>,
+    body: Bytes,
+) -> Result<Response, AppError> {
+    let req: TransferOwnerRequest = decode_body(&headers, &body)?;
+
+    let txn = state
+        .db
+        .begin_with_config(Some(IsolationLevel::Serializable), Some(AccessMode::ReadWrite))
+        .await?;
+
+    // Вызывающий — активный владелец?
+    let me = mls_group_members::Entity::find()
+        .filter(
+            Condition::all()
+                .add(mls_group_members::Column::GroupId.eq(group_id))
+                .add(mls_group_members::Column::UserId.eq(ctx.user.id))
+                .add(mls_group_members::Column::LeftAtEpoch.is_null()),
+        )
+        .one(&txn)
+        .await?
+        .ok_or(AppError::GroupMembershipRequired)?;
+    if me.role_in_chat != "owner" {
+        return Err(AppError::Forbidden);
+    }
+
+    // Передача самому себе — no-op.
+    if req.new_owner_user_id == ctx.user.id {
+        txn.commit().await?;
+        return Ok(StatusCode::NO_CONTENT.into_response());
+    }
+
+    // Преемник — активный участник?
+    let successor = mls_group_members::Entity::find()
+        .filter(
+            Condition::all()
+                .add(mls_group_members::Column::GroupId.eq(group_id))
+                .add(mls_group_members::Column::UserId.eq(req.new_owner_user_id))
+                .add(mls_group_members::Column::LeftAtEpoch.is_null()),
+        )
+        .one(&txn)
+        .await?
+        .ok_or_else(|| AppError::BadRequest("new owner is not an active member".into()))?;
+
+    let mut succ: mls_group_members::ActiveModel = successor.into();
+    succ.role_in_chat = Set("owner".into());
+    succ.update(&txn).await?;
+
+    let mut old: mls_group_members::ActiveModel = me.into();
+    old.role_in_chat = Set("member".into());
+    old.update(&txn).await?;
+
+    txn.commit().await?;
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
 pub async fn create_direct_chat(
     State(state): State<AppState>,
     headers: HeaderMap,
