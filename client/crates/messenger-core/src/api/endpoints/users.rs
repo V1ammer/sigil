@@ -64,7 +64,9 @@ impl ApiClient {
     /// # Errors
     ///
     /// Returns `ApiError` on network or if user not found.
-    pub async fn list_user_devices(&self, user_id: Uuid) -> Result<ListDevicesResponse, ApiError> {
+    pub async fn list_user_devices(&self, user_id: Uuid) -> Result<Vec<PublicDeviceInfo>, ApiError> {
+        // The server returns a BARE array of PublicDeviceInfo (active devices
+        // only), not a `{ devices: [...] }` wrapper.
         let path = format!("/v1/users/{}/devices", user_id);
         self.send::<(), _>("GET", &path, None).await
     }

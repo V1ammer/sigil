@@ -37,6 +37,19 @@ pub struct ListDevicesResponse {
     pub devices: Vec<DeviceInfo>,
 }
 
+/// Public info for one of another user's active devices. Mirrors the server
+/// `PublicDeviceInfo` — the `GET /v1/users/{id}/devices` endpoint returns a
+/// BARE array of these (only active devices; no `revoked_at`).
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PublicDeviceInfo {
+    pub id: Uuid,
+    #[serde(with = "serde_bytes")]
+    pub hpke_init_public_key: Vec<u8>,
+    #[serde(with = "serde_bytes")]
+    pub device_signing_public_key: Vec<u8>,
+    pub created_at: i64,
+}
+
 /// Request to revoke a device.
 ///
 /// `revocation_signature = Ed25519(identity_sk, "revoke:" || device_id_bytes

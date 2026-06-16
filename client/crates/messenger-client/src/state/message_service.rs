@@ -483,15 +483,10 @@ pub async fn establish_group(
         if uid == creator_uid {
             continue;
         }
-        let devices = api
+        let active = api
             .list_user_devices(uid)
             .await
             .map_err(|e| format!("не удалось получить устройства участника: {e}"))?;
-        let active: Vec<_> = devices
-            .devices
-            .into_iter()
-            .filter(|d| d.revoked_at.is_none())
-            .collect();
         if active.is_empty() {
             return Err("у участника нет доступных устройств".into());
         }
@@ -520,11 +515,7 @@ pub async fn establish_group(
     // every device of the creator can read the group. Best-effort per device:
     // a device whose KeyPackage can't be claimed is simply left out, not fatal.
     if let Ok(my_devices) = api.list_user_devices(creator_uid).await {
-        for d in my_devices
-            .devices
-            .into_iter()
-            .filter(|d| d.revoked_at.is_none() && d.id != creator_did)
-        {
+        for d in my_devices.into_iter().filter(|d| d.id != creator_did) {
             if let Ok(resp) = api.claim_keypackage(creator_uid, d.id).await {
                 keypackages.push(resp.key_package);
                 recipient_devices.push(d.id);
@@ -600,14 +591,10 @@ pub async fn group_add_member(api: &ApiClient, group_id: Uuid, username: &str) -
         .await
         .map_err(|_| format!("пользователь {username} не найден"))?
         .user_id;
-    let active: Vec<_> = api
+    let active = api
         .list_user_devices(uid)
         .await
-        .map_err(|e| format!("не удалось получить устройства: {e}"))?
-        .devices
-        .into_iter()
-        .filter(|d| d.revoked_at.is_none())
-        .collect();
+        .map_err(|e| format!("не удалось получить устройства: {e}"))?;
     if active.is_empty() {
         return Err("у участника нет доступных устройств".into());
     }
