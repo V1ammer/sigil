@@ -63,6 +63,44 @@ where
     Ok((bytes, mime))
 }
 
+/// Hardware-accelerated transcode via WebCodecs (in a worker). Fast path for
+/// large/4K/HEVC input. Returns `(bytes, mime)` of a fragmented H.264/AAC mp4,
+/// or `Err` when the browser lacks WebCodecs or can't decode the input codec —
+/// the caller then falls back to [`transcode_video`] (ffmpeg.wasm).
+pub async fn transcode_video_hw<F>(input: &[u8], on_progress: F) -> Result<(Vec<u8>, String), String>
+where
+    F: Fn(f64) + 'static,
+{
+    let f = win_fn("__sigilTranscodeVideoHW").ok_or("hw transcode helper missing")?;
+    let arr = js_sys::Uint8Array::from(input);
+
+    let cb = Closure::wrap(Box::new(move |p: JsValue| {
+        on_progress(p.as_f64().unwrap_or(0.0));
+    }) as Box<dyn FnMut(JsValue)>);
+
+    let promise = f
+        .call2(&JsValue::NULL, &arr, cb.as_ref().unchecked_ref())
+        .map_err(|e| format!("hw transcode call failed: {e:?}"))?
+        .dyn_into::<js_sys::Promise>()
+        .map_err(|_| "hw transcode did not return a promise".to_string())?;
+
+    let out = JsFuture::from(promise)
+        .await
+        .map_err(|e| format!("hw transcode failed: {e:?}"))?;
+    drop(cb);
+
+    let bytes = js_sys::Reflect::get(&out, &JsValue::from_str("bytes"))
+        .map_err(|_| "hw result missing bytes".to_string())?
+        .dyn_into::<js_sys::Uint8Array>()
+        .map_err(|_| "hw bytes not a Uint8Array".to_string())?
+        .to_vec();
+    let mime = js_sys::Reflect::get(&out, &JsValue::from_str("mime"))
+        .ok()
+        .and_then(|v| v.as_string())
+        .unwrap_or_else(|| "video/mp4; codecs=\"avc1.4d0028, mp4a.40.2\"".into());
+    Ok((bytes, mime))
+}
+
 /// Downscale + re-encode an image to JPEG (long side capped, EXIF stripped).
 /// Returns `(bytes, "image/jpeg")`.
 pub async fn compress_image(input: &[u8], mime: &str) -> Result<(Vec<u8>, String), String> {

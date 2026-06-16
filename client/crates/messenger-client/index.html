@@ -11,6 +11,9 @@
          FFmpeg class is imported lazily by the module script below; the 32MB
          core wasm is only fetched the first time a video is compressed. -->
     <link data-trunk rel="copy-dir" href="public/ffmpeg"/>
+    <!-- Hardware video transcode (WebCodecs) — fast path; ffmpeg.wasm is the
+         software fallback when the browser can't decode the input codec. -->
+    <link data-trunk rel="copy-dir" href="public/webcodecs"/>
   </head>
   <body class="h-full">
     <script>
@@ -139,6 +142,38 @@
       // Forced codec/level (Main@4.0 + AAC-LC) so MediaSource.isTypeSupported
       // passes on every platform.
       window.__sigilVideoMime = 'video/mp4; codecs="avc1.4D4028, mp4a.40.2"';
+
+      // Hardware path (WebCodecs, in a worker). Resolves { bytes, mime } or
+      // rejects (caller then falls back to the ffmpeg.wasm software path below).
+      window.__sigilTranscodeVideoHW = function (input, onProgress) {
+        return new Promise(function (resolve, reject) {
+          if (typeof VideoEncoder === "undefined" || typeof VideoDecoder === "undefined") {
+            reject(new Error("webcodecs-unavailable"));
+            return;
+          }
+          var url = new URL("webcodecs/transcode-worker.js", document.baseURI).href;
+          var w = new Worker(url);
+          w.onmessage = function (e) {
+            var d = e.data;
+            if (d.type === "progress") {
+              if (onProgress) onProgress(d.value);
+            } else if (d.type === "done") {
+              w.terminate();
+              resolve({ bytes: new Uint8Array(d.buffer), mime: d.mime });
+            } else if (d.type === "error") {
+              w.terminate();
+              reject(new Error(d.message));
+            }
+          };
+          w.onerror = function (ev) {
+            w.terminate();
+            reject(new Error("worker: " + (ev.message || "error")));
+          };
+          // Transfer the input buffer so it isn't copied across the thread boundary.
+          var ab = input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength);
+          w.postMessage({ buffer: ab, maxLong: VIDEO_MAX_LONG, bitrateK: VIDEO_BITRATE_K }, [ab]);
+        });
+      };
 
       // input: Uint8Array, onProgress: fn(0..1). Returns a Uint8Array (fragmented mp4).
       window.__sigilTranscodeVideo = async function (input, onProgress) {

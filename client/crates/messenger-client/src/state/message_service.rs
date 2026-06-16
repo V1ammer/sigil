@@ -1118,17 +1118,30 @@ impl MessageService {
                     }
                 }
             } else if want_media && payload.mime.starts_with("video/") && !is_native {
-                match crate::media_transcode::transcode_video(&payload.bytes, |p| {
-                    web_sys::console::log_1(
-                        &format!("[transcode] {:.0}%", p * 100.0).into(),
-                    );
+                // Fast path: hardware WebCodecs transcode (handles 4K/HEVC in
+                // seconds). Falls back to the ffmpeg.wasm software transcode when
+                // the browser can't decode the input codec, then to raw bytes.
+                let hw = crate::media_transcode::transcode_video_hw(&payload.bytes, |p| {
+                    web_sys::console::log_1(&format!("[transcode hw] {:.0}%", p * 100.0).into());
                 })
-                .await
-                {
+                .await;
+                match hw {
                     Ok((b, m)) => (std::borrow::Cow::Owned(b), m),
                     Err(e) => {
-                        tracing::warn!("video transcode failed, sending original: {e}");
-                        raw()
+                        web_sys::console::warn_1(
+                            &format!("[transcode] hw path failed ({e}); trying ffmpeg").into(),
+                        );
+                        match crate::media_transcode::transcode_video(&payload.bytes, |p| {
+                            web_sys::console::log_1(&format!("[transcode sw] {:.0}%", p * 100.0).into());
+                        })
+                        .await
+                        {
+                            Ok((b, m)) => (std::borrow::Cow::Owned(b), m),
+                            Err(e2) => {
+                                tracing::warn!("video transcode failed, sending original: {e2}");
+                                raw()
+                            }
+                        }
                     }
                 }
             } else if want_media
