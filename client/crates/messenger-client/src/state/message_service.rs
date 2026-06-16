@@ -106,6 +106,16 @@ pub fn current_user_id() -> Option<Uuid> {
     }))
 }
 
+/// The current device id, or `None` when not authenticated.
+pub fn current_device_id() -> Option<Uuid> {
+    SESSION_STATE.with(|c| c.borrow().as_ref().and_then(|s| {
+        match s.get_untracked() {
+            SessionState::Authenticated { identity, .. } => Some(identity.device_id),
+            _ => None,
+        }
+    }))
+}
+
 thread_local! {
     static SESSION_STATE: RefCell<Option<RwSignal<SessionState>>> = const { RefCell::new(None) };
     static USERS_STATE: RefCell<Option<UsersState>> = const { RefCell::new(None) };
@@ -2366,6 +2376,19 @@ impl MessageService {
         }
     }
 
+    /// Process an incoming MLS commit (membership change) to advance our epoch.
+    ///
+    /// Best-effort: errors (e.g. an already-applied commit seen again on a full
+    /// reload) are logged and ignored so they don't abort the rest of the pull.
+    async fn process_incoming_commit(group_id: Uuid, commit: &[u8]) {
+        let Some(rt) = take_mls_runtime().await else { return };
+        let res = rt.process_commit(group_id, commit).await;
+        MLS_CACHE.with(|c| *c.borrow_mut() = Some(rt));
+        if let Err(e) = res {
+            tracing::debug!(%group_id, error = %e, "process_commit skipped (already applied?)");
+        }
+    }
+
     /// Convert stored messages to DisplayMessages with MLS decryption.
     ///
     /// MLS control-plane frames (proposals, commits, welcomes) are dropped here
@@ -2384,7 +2407,17 @@ impl MessageService {
         // target message -> emoji -> set of users who currently react with it.
         // Messages arrive chronologically, so add/remove apply in order.
         let mut reactions: HashMap<Uuid, HashMap<String, HashSet<Uuid>>> = HashMap::new();
+        let own_device = current_device_id();
         for msg in stored {
+            // Membership commits (add/remove) must advance our local MLS epoch,
+            // in chronological order, or later application messages won't
+            // decrypt. Skip our own device's commits — we already merged those.
+            if msg.wire_format == "commit" {
+                if Some(msg.sender_device_id) != own_device {
+                    Self::process_incoming_commit(group_id, &msg.mls_ciphertext).await;
+                }
+                continue;
+            }
             if msg.wire_format != "application" {
                 continue;
             }
