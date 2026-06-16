@@ -412,6 +412,122 @@ async fn take_mls_runtime() -> Option<MlsRuntime> {
     }
 }
 
+/// Establish a real MLS group on the client and register it server-side.
+///
+/// Shared by group creation and (new) direct chats. Claims a KeyPackage for
+/// every active device of every member, builds the MLS group locally with the
+/// creator as founder, and posts the commit + per-device welcomes to
+/// `POST /v1/groups`. Members join later via the existing welcome path
+/// (`list_welcomes` → `join_via_welcome` → `ack`).
+///
+/// The local MLS GroupId equals the server group id (chosen here and stored by
+/// the server under it), so encryption and API addressing line up.
+///
+/// # Errors
+///
+/// Returns a user-facing message (Russian) on any failure — no group is created.
+pub async fn establish_group(
+    api: &ApiClient,
+    group_type: &str,
+    member_user_ids: &[Uuid],
+) -> Result<Uuid, String> {
+    use messenger_proto::mls::{CreateGroupRequest, MemberDeviceInit, WelcomePayload};
+
+    // Creator identity from the session — works from detached tasks.
+    let Some(state) = SESSION_STATE.with(|c| c.borrow().as_ref().copied()) else {
+        return Err("сессия не инициализирована".into());
+    };
+    let identity = match state.get_untracked() {
+        SessionState::Authenticated { identity, .. } => identity,
+        _ => return Err("не авторизован".into()),
+    };
+
+    let group_id = Uuid::now_v7();
+    let creator_uid = identity.user_id;
+    let creator_did = identity.device_id;
+
+    // member_devices begins with the creator as owner (founder leaf 0).
+    let mut member_devices = vec![MemberDeviceInit {
+        user_id: creator_uid,
+        device_id: creator_did,
+        leaf_index: 0,
+        role_in_chat: "owner".into(),
+    }];
+
+    // Claim a KeyPackage per active device of every (non-creator) member.
+    let mut keypackages: Vec<Vec<u8>> = Vec::new();
+    let mut recipient_devices: Vec<Uuid> = Vec::new();
+    let mut leaf: i32 = 1;
+    for &uid in member_user_ids {
+        if uid == creator_uid {
+            continue;
+        }
+        let devices = api
+            .list_user_devices(uid)
+            .await
+            .map_err(|e| format!("не удалось получить устройства участника: {e}"))?;
+        let active: Vec<_> = devices
+            .devices
+            .into_iter()
+            .filter(|d| d.revoked_at.is_none())
+            .collect();
+        if active.is_empty() {
+            return Err("у участника нет доступных устройств".into());
+        }
+        for d in active {
+            let resp = api
+                .claim_keypackage(uid, d.id)
+                .await
+                .map_err(|e| format!("не удалось получить ключ участника: {e}"))?;
+            keypackages.push(resp.key_package);
+            recipient_devices.push(d.id);
+            member_devices.push(MemberDeviceInit {
+                user_id: uid,
+                device_id: d.id,
+                leaf_index: leaf,
+                role_in_chat: "member".into(),
+            });
+            leaf += 1;
+        }
+    }
+
+    if keypackages.is_empty() {
+        return Err("нужен хотя бы один участник".into());
+    }
+
+    // Build the MLS group locally (creator = founder; members added).
+    let Some(rt) = take_mls_runtime().await else {
+        return Err("MLS не инициализирован".into());
+    };
+    let out = rt.create_group(&identity, group_id, &keypackages).await;
+    MLS_CACHE.with(|c| *c.borrow_mut() = Some(rt));
+    let out = out.map_err(|e| format!("создание MLS-группы не удалось: {e}"))?;
+
+    // OpenMLS emits ONE batched welcome covering all added members; replicate it
+    // per recipient device so each device gets a welcome row to consume.
+    let welcome_blob = out.welcomes.into_iter().next().unwrap_or_default();
+    let welcomes: Vec<WelcomePayload> = recipient_devices
+        .iter()
+        .map(|&rd| WelcomePayload {
+            recipient_device_id: rd,
+            welcome_ciphertext: welcome_blob.clone(),
+        })
+        .collect();
+
+    let req = CreateGroupRequest {
+        group_id,
+        group_type: group_type.to_string(),
+        initial_commit: out.initial_commit,
+        welcomes,
+        member_devices,
+    };
+    api.create_group(&req)
+        .await
+        .map_err(|e| format!("регистрация группы не удалась: {e}"))?;
+
+    Ok(group_id)
+}
+
 /// Wire up session/users state for use from detached async tasks.
 ///
 /// Must be called once at app startup, after `provide_session()` and

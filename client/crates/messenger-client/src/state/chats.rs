@@ -277,20 +277,38 @@ impl ChatsState {
         api: &ApiClient,
         username: &str,
     ) -> Result<Uuid, messenger_core::api::ApiError> {
-        let resp = api.create_direct_chat(username).await?;
-        // Cache the target username for this group before reload
-        self.display_name_cache
-            .update(|cache| {
-                cache.insert(resp.group_id, username.to_string());
+        use messenger_core::api::ApiError;
+
+        // Resolve username → user_id (404 → "no such user").
+        let target_uid = api.lookup_user_by_username(username).await?.user_id;
+        // Reject a chat with yourself (matches the old server-side 400).
+        if crate::state::message_service::current_user_id() == Some(target_uid) {
+            return Err(ApiError::Api {
+                status: 400,
+                body: messenger_proto::error::ApiErrorBody {
+                    code: "bad_request".into(),
+                    details: Some(serde_json::json!({ "reason": "yourself" })),
+                },
             });
+        }
+
+        // Build a real MLS group (2 members) — replaces the old no-MLS path,
+        // so direct chats are genuinely end-to-end encrypted. Establish errors
+        // are Russian user-facing strings; surface them via Crypto.
+        let group_id =
+            crate::state::message_service::establish_group(api, "direct", &[target_uid])
+                .await
+                .map_err(ApiError::Crypto)?;
+
+        // Cache the target username for this group before reload.
+        self.display_name_cache.update(|cache| {
+            cache.insert(group_id, username.to_string());
+        });
         self.persist_cache();
-        // The server dedups direct chats: if one already exists (even one the
-        // user "deleted"), it returns that group. Clear the deleted/hidden flag
-        // so it reappears instead of silently staying hidden.
-        self.update_prefs(resp.group_id, |p| p.archived = false);
-        // Reload chats from server to include the new group
+        self.update_prefs(group_id, |p| p.archived = false);
+        // Reload chats from server to include the new group.
         self.load_from_server(api).await?;
-        Ok(resp.group_id)
+        Ok(group_id)
     }
 
     /// Set (and persist) a chat's display name, updating the loaded list too.

@@ -488,6 +488,8 @@ fn humanize_create_chat_error(e: &messenger_core::api::ApiError, i18n: &I18n) ->
             }
         }
         ApiError::Transport(_) => i18n.t("error.network"),
+        // Establishment failures already carry a Russian user-facing message.
+        ApiError::Crypto(m) => m.clone(),
         _ => i18n.t("chat.create_direct.failed"),
     }
 }

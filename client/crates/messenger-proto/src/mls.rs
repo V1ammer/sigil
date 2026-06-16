@@ -29,6 +29,9 @@ pub struct MemberDeviceInit {
 /// inside the welcome via the ratchet-tree extension, so it isn't sent here.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CreateGroupRequest {
+    /// Client-chosen group id, equal to the MLS GroupId embedded in the commit
+    /// and welcomes. The server addresses the group by this same value.
+    pub group_id: Uuid,
     pub group_type: String, // "direct" | "group"
     #[serde(with = "serde_bytes")]
     pub initial_commit: Vec<u8>,

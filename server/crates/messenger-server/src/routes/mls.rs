@@ -54,6 +54,10 @@ use crate::state::AppState;
 /// Запрос на создание группы.
 #[derive(Deserialize)]
 pub struct CreateGroupRequest {
+    /// Client-chosen group id. Must equal the MLS GroupId embedded in
+    /// `initial_commit`/`welcomes` so the server's addressing matches every
+    /// client's local MLS state. Rejected if it already exists.
+    pub group_id: Uuid,
     pub group_type: String,
     #[serde(with = "serde_bytes")]
     pub initial_commit: Vec<u8>,
@@ -351,7 +355,12 @@ pub async fn create_group(
         .begin_with_config(Some(IsolationLevel::Serializable), Some(AccessMode::ReadWrite))
         .await?;
 
-    let group_id = Uuid::now_v7();
+    // Use the client-chosen id so the server addresses the group by the same
+    // value as the MLS GroupId. Reject collisions.
+    let group_id = req.group_id;
+    if mls_groups::Entity::find_by_id(group_id).one(&txn).await?.is_some() {
+        return Err(AppError::BadRequest("group already exists".into()));
+    }
 
     // 1. INSERT mls_groups
     mls_groups::ActiveModel {
