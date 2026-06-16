@@ -101,6 +101,29 @@ where
     Ok((bytes, mime))
 }
 
+/// Decode a poster frame from a playable video into a small JPEG (long side
+/// ~320px) for the message thumbnail. Returns `None` on any failure (caller
+/// falls back to the film-strip placeholder).
+pub async fn video_poster(input: &[u8], mime: &str) -> Option<Vec<u8>> {
+    let f = win_fn("__sigilVideoPoster")?;
+    let arr = js_sys::Uint8Array::from(input);
+    let promise = f
+        .call2(&JsValue::NULL, &arr, &JsValue::from_str(mime))
+        .ok()?
+        .dyn_into::<js_sys::Promise>()
+        .ok()?;
+    let out = JsFuture::from(promise).await.ok()?;
+    if out.is_null() || out.is_undefined() {
+        return None;
+    }
+    let bytes = out.dyn_into::<js_sys::Uint8Array>().ok()?.to_vec();
+    if bytes.is_empty() {
+        None
+    } else {
+        Some(bytes)
+    }
+}
+
 /// Downscale + re-encode an image to JPEG (long side capped, EXIF stripped).
 /// Returns `(bytes, "image/jpeg")`.
 pub async fn compress_image(input: &[u8], mime: &str) -> Result<(Vec<u8>, String), String> {

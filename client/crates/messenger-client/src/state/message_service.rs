@@ -1056,6 +1056,9 @@ impl MessageService {
                 mime: payload.mime.clone(),
                 name: payload.name.clone(),
                 size: payload.size,
+                // Poster isn't generated until after transcode; the optimistic
+                // bubble shows the placeholder, reconciled to the poster on send.
+                thumb: None,
                 caption: caption.clone(),
             }
         };
@@ -1168,6 +1171,16 @@ impl MessageService {
             };
         let display_size = media_bytes.len() as u64;
 
+        // Poster thumbnail for videos: a small JPEG of an early frame, embedded in
+        // the (E2E-encrypted) message so the bubble shows a frame instead of a
+        // film-strip placeholder. Generated from the transcoded bytes, which are
+        // always playable here. `None` on failure → placeholder fallback.
+        let video_thumb: Option<Vec<u8>> = if media_mime.starts_with("video/") {
+            crate::media_transcode::video_poster(media_bytes.as_ref(), &media_mime).await
+        } else {
+            None
+        };
+
         // Stream-friendly (chunked) encryption for playable media — video and
         // audio — so the player can start on the first chunk. Images and other
         // files stay whole-blob (nothing to stream).
@@ -1233,6 +1246,7 @@ impl MessageService {
                     mime: media_mime.clone(),
                     filename: payload.name.clone(),
                     size: display_size,
+                    thumb: video_thumb.clone(),
                     caption: caption.clone(),
                 },
                 MessageBody::File {
@@ -1241,6 +1255,7 @@ impl MessageService {
                     mime: media_mime.clone(),
                     name: payload.name.clone(),
                     size: display_size,
+                    thumb: video_thumb.clone(),
                     caption: caption.clone(),
                 },
             )
@@ -2328,6 +2343,7 @@ impl MessageService {
                 ref mime,
                 ref filename,
                 size,
+                ref thumb,
                 ref caption,
             } => (
                 MessageKind::File,
@@ -2337,6 +2353,7 @@ impl MessageService {
                     mime: mime.clone(),
                     name: filename.clone(),
                     size,
+                    thumb: thumb.clone(),
                     caption: caption.clone(),
                 },
             ),

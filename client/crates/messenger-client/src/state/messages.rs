@@ -53,6 +53,8 @@ pub enum MessageBody {
         mime: String,
         name: String,
         size: u64,
+        /// Optional poster thumbnail (JPEG) for video attachments.
+        thumb: Option<Vec<u8>>,
         caption: Option<String>,
     },
     System {

@@ -15,6 +15,7 @@ pub fn display_to_mock(msg: &DisplayMessage) -> mock::Message {
     let mut media_attachment_id: Option<String> = None;
     let mut media_decryption_key: Option<String> = None;
     let mut media_mime: Option<String> = None;
+    let mut media_thumb_url: Option<String> = None;
 
     let (msg_type, content, duration, waveform, transcription, file_name, file_size) =
         match &msg.body {
@@ -60,11 +61,16 @@ pub fn display_to_mock(msg: &DisplayMessage) -> mock::Message {
                 mime,
                 name,
                 size,
+                thumb,
                 caption,
             } => {
                 media_attachment_id = Some(attachment_id.to_string());
                 media_decryption_key = Some(b64.encode(decryption_key));
                 media_mime = Some(mime.clone());
+                // Video poster (if any) → a data URL the bubble shows immediately.
+                if let Some(t) = thumb {
+                    media_thumb_url = Some(format!("data:image/jpeg;base64,{}", b64.encode(t)));
+                }
                 // Video/audio files get an inline player instead of a download row.
                 let kind = if mime.starts_with("video/") {
                     "video"
@@ -127,7 +133,7 @@ pub fn display_to_mock(msg: &DisplayMessage) -> mock::Message {
         waveform,
         transcription,
         media_url: None,
-        thumbnail_url: None,
+        thumbnail_url: media_thumb_url,
         file_name,
         file_size,
         mime_type: media_mime,

@@ -127,6 +127,73 @@
             URL.revokeObjectURL(url);
           }
         };
+
+        // Grab a poster frame from a (playable) video as a small JPEG, for the
+        // message thumbnail. Decodes a frame near the start in a detached <video>
+        // and draws it to a canvas. Resolves a Uint8Array, or null on any failure
+        // (the bubble then falls back to the film-strip placeholder).
+        window.__sigilVideoPoster = function (input, mime) {
+          return new Promise(function (resolve) {
+            var url = null,
+              done = false;
+            var v = document.createElement("video");
+            v.muted = true;
+            v.playsInline = true;
+            v.preload = "auto";
+            function cleanup() {
+              if (url) URL.revokeObjectURL(url);
+              v.removeAttribute("src");
+              try { v.load(); } catch (_) {}
+            }
+            function fail() {
+              if (done) return;
+              done = true;
+              cleanup();
+              resolve(null);
+            }
+            function grab() {
+              if (done) return;
+              var w = v.videoWidth, h = v.videoHeight;
+              if (!w || !h) return fail();
+              try {
+                var maxL = 320;
+                var scale = Math.min(1, maxL / Math.max(w, h));
+                var ow = Math.max(2, Math.round(w * scale));
+                var oh = Math.max(2, Math.round(h * scale));
+                var c = document.createElement("canvas");
+                c.width = ow; c.height = oh;
+                c.getContext("2d").drawImage(v, 0, 0, ow, oh);
+                c.toBlob(
+                  function (b) {
+                    if (!b) return fail();
+                    b.arrayBuffer().then(function (ab) {
+                      done = true;
+                      cleanup();
+                      resolve(new Uint8Array(ab));
+                    });
+                  },
+                  "image/jpeg",
+                  0.7
+                );
+              } catch (_) { fail(); }
+            }
+            try {
+              url = URL.createObjectURL(new Blob([input], { type: mime || "video/mp4" }));
+              v.onloadedmetadata = function () {
+                // Seek slightly in — frame 0 is often black.
+                try {
+                  var d = isFinite(v.duration) ? v.duration : 1;
+                  v.currentTime = Math.min(0.1, d * 0.1);
+                } catch (_) { grab(); }
+              };
+              v.onseeked = grab;
+              v.onerror = fail;
+              setTimeout(fail, 8000);
+              v.src = url;
+              v.load();
+            } catch (_) { fail(); }
+          });
+        };
       })();
     </script>
     <script type="module">

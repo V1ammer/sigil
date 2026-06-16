@@ -88,6 +88,11 @@ pub enum AppMessageBody {
         filename: String,
         /// File size.
         size: u64,
+        /// Optional poster thumbnail (JPEG) — used for video attachments so the
+        /// bubble shows a frame instead of a placeholder. `default` keeps wire
+        /// compatibility with messages sent before this field existed.
+        #[serde(default)]
+        thumb: Option<Vec<u8>>,
         /// Optional caption typed alongside the attachment.
         #[serde(default)]
         caption: Option<String>,

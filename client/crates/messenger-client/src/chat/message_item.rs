@@ -655,6 +655,9 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
             let attachment_id = msg.attachment_id.clone();
             let decryption_key = msg.decryption_key.clone();
             let mime = msg.mime_type.clone().unwrap_or_else(|| "video/mp4".into());
+            // Poster frame (data URL) shown before the user taps play; falls back
+            // to the film-strip placeholder when the message carries no thumbnail.
+            let poster = msg.thumbnail_url.clone();
             let err: RwSignal<Option<String>> = RwSignal::new(None);
             // Click-to-load: don't download every video on render — only when the
             // user taps play. Streams chunk-by-chunk (MediaSource) when possible,
@@ -845,10 +848,20 @@ fn render_content(msg: Message, on_media_click: std::sync::Arc<Option<Box<dyn Fn
                                         class="relative h-full w-full flex items-center justify-center"
                                         on:click=move |_| started.set(true)
                                     >
-                                        <div class="flex flex-col items-center gap-2 text-muted-foreground">
-                                            <Icon name="film" class_name="h-8 w-8"/>
-                                            <span class="text-xs">{t(l, "message.video")}</span>
-                                        </div>
+                                        {match poster.clone() {
+                                            Some(url) => view! {
+                                                <img
+                                                    src=url
+                                                    class="absolute inset-0 h-full w-full object-cover"
+                                                />
+                                            }.into_any(),
+                                            None => view! {
+                                                <div class="flex flex-col items-center gap-2 text-muted-foreground">
+                                                    <Icon name="film" class_name="h-8 w-8"/>
+                                                    <span class="text-xs">{t(l, "message.video")}</span>
+                                                </div>
+                                            }.into_any(),
+                                        }}
                                         <div class="absolute inset-0 flex items-center justify-center">
                                             <div class="flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white">
                                                 <Icon name="play" class_name="h-6 w-6"/>
