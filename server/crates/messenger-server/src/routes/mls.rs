@@ -1558,6 +1558,36 @@ pub async fn update_message_state(
                 .insert(&state.db)
                 .await?;
             }
+
+            // Free any attachment blobs owned by this message. The message keeps
+            // its soft-delete tombstone, but the (now hidden) media must not
+            // linger on disk — otherwise deleted photos/videos pile up forever,
+            // since the GC only reclaims never-finalized uploads (message_id IS
+            // NULL). Best-effort: log and continue on failure.
+            let atts = messenger_entity::attachments::Entity::find()
+                .filter(messenger_entity::attachments::Column::MessageId.eq(message_id))
+                .all(&state.db)
+                .await
+                .unwrap_or_default();
+            for a in &atts {
+                if let Some(ref sref_str) = a.storage_ref {
+                    #[allow(clippy::cast_sign_loss)]
+                    let sref = crate::attachments::StoredRef::OnDisk {
+                        relative_path: std::path::PathBuf::from(sref_str),
+                        size: a.padded_size as u64,
+                    };
+                    if let Err(e) = state.storage.delete(&sref).await {
+                        tracing::warn!(attachment_id = %a.id, error = ?e, "delete: blob removal failed");
+                    }
+                }
+                if let Err(e) =
+                    messenger_entity::attachments::Entity::delete_by_id(a.id)
+                        .exec(&state.db)
+                        .await
+                {
+                    tracing::warn!(attachment_id = %a.id, error = ?e, "delete: attachment row removal failed");
+                }
+            }
         }
         _ => {
             return Err(AppError::BadRequest("kind must be 'edit' or 'delete'".into()));
