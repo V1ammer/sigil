@@ -205,6 +205,33 @@ pub fn format_duration(seconds: u32) -> String {
     format!("{}:{:02}", m, s)
 }
 
+/// Absolute calendar date — never relative. Use for FUTURE dates (e.g. invite
+/// expiry) where [`format_date`] would wrongly collapse anything `>= today` to
+/// "today". Shows the year only when it differs from the current year.
+#[must_use]
+pub fn format_date_absolute(timestamp_ms: f64, lang: Locale) -> String {
+    let date = js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(timestamp_ms));
+    let months_ru = [
+        "января", "февраля", "марта", "апреля", "мая", "июня",
+        "июля", "августа", "сентября", "октября", "ноября", "декабря",
+    ];
+    let months_en = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+    ];
+    let month = date.get_month() as usize;
+    let day = date.get_date();
+    let year = date.get_full_year();
+    let cur_year = js_sys::Date::new_0().get_full_year();
+    let show_year = i64::from(year) != i64::from(cur_year);
+    match lang {
+        Locale::Ru if show_year => format!("{} {} {}", day, months_ru[month], year),
+        Locale::Ru => format!("{} {}", day, months_ru[month]),
+        _ if show_year => format!("{} {}, {}", months_en[month], day, year),
+        _ => format!("{} {}", months_en[month], day),
+    }
+}
+
 /// Format a date to a readable string (Today, Yesterday, or "12 January").
 pub fn format_date(timestamp_ms: f64, lang: Locale) -> String {
     let date = js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(timestamp_ms));

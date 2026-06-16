@@ -17,7 +17,7 @@ use crate::components::input::Input;
 use crate::components::label::Label;
 use crate::components::select::{Select, SelectOption};
 use crate::components::separator::Separator;
-use crate::i18n::{format_date, t, I18n, Locale};
+use crate::i18n::{format_date_absolute, t, I18n, Locale};
 use crate::state::notifications::{NotificationsState, ToastKind};
 use crate::state::session::build_api_client;
 use crate::t;
@@ -356,7 +356,7 @@ pub fn AdminInvitesSettings() -> impl IntoView {
                                                     {format!("{}/{}", inv.uses_count, inv.max_uses)}
                                                 </td>
                                                 <td class="py-3 pr-4 text-muted-foreground">
-                                                    {format_date((inv.expires_at as f64) * 1000.0, lang)}
+                                                    {format_date_absolute((inv.expires_at as f64) * 1000.0, lang)}
                                                 </td>
                                                 <td class="py-3 pr-4">
                                                     {status_badge(status, lang)}
