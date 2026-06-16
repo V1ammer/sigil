@@ -100,8 +100,18 @@ impl SecretStore for WebCryptoSecretStore {
             .map_err(js_err)?
             .await
             .map_err(js_err)?;
-        let encrypted: Option<Vec<u8>> = val.and_then(|v| v.dyn_into::<js_sys::ArrayBuffer>().ok()).map(|b| {
-            js_sys::Uint8Array::new(&b).to_vec()
+        // Stored as a Uint8Array; IndexedDB returns it as one. Handle both shapes
+        // (a plain ArrayBuffer cast silently dropped every read).
+        let encrypted: Option<Vec<u8>> = val.and_then(|v| {
+            if v.is_undefined() || v.is_null() {
+                None
+            } else if let Ok(u8a) = v.clone().dyn_into::<js_sys::Uint8Array>() {
+                Some(u8a.to_vec())
+            } else if let Ok(buf) = v.dyn_into::<js_sys::ArrayBuffer>() {
+                Some(js_sys::Uint8Array::new(&buf).to_vec())
+            } else {
+                None
+            }
         });
         match encrypted {
             Some(blob) => self.decrypt(&blob).await.map(Some),
