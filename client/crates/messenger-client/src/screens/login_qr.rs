@@ -283,6 +283,24 @@ pub fn LoginQrScreen() -> impl IntoView {
                                             }
                                         }
 
+                                        // Carry over client-only chat labels + usernames
+                                        // the approver knows. The server is blind to both,
+                                        // so without this every existing chat would show a
+                                        // raw UUID until (for groups) a re-broadcast or
+                                        // (for direct chats) never. Update the live stores
+                                        // (they also persist to localStorage), so labels
+                                        // appear the moment the chat list first renders.
+                                        if let Some(chats) = crate::state::message_service::chats_handle() {
+                                            for (gid, label) in &payload.display_names {
+                                                chats.set_display_name(*gid, label);
+                                            }
+                                        }
+                                        if let Some(users) = crate::state::message_service::users_handle() {
+                                            for (uid, name) in &payload.usernames {
+                                                users.remember_username(*uid, name);
+                                            }
+                                        }
+
                                         // Inherit the account's role from the bootstrap
                                         // blob (the approving device put it there), so an
                                         // admin's new device gets admin instead of user.

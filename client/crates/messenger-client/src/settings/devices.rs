@@ -46,6 +46,26 @@ use crate::state::notifications::{NotificationsState, ToastKind};
 use crate::state::session::{build_api_client, load_server_url, use_session, SessionState, UserRole};
 use crate::t;
 
+/// Load a `Uuid → String` map persisted in localStorage as JSON
+/// `Vec<(String, String)>` (the format used by the users + chats stores).
+/// Returns an empty map if absent or malformed.
+fn load_uuid_string_map(key: &str) -> std::collections::HashMap<Uuid, String> {
+    let Some(storage) = web_sys::window()
+        .and_then(|w| w.local_storage().ok())
+        .flatten()
+    else {
+        return std::collections::HashMap::new();
+    };
+    let Ok(Some(json)) = storage.get_item(key) else {
+        return std::collections::HashMap::new();
+    };
+    serde_json::from_str::<Vec<(String, String)>>(&json)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|(id, v)| id.parse::<Uuid>().ok().map(|id| (id, v)))
+        .collect()
+}
+
 /// Current step in the provisioning approve flow.
 #[derive(Clone, Debug, PartialEq)]
 enum ProvisioningStep {
@@ -339,6 +359,10 @@ pub fn DevicesSettings() -> impl IntoView {
                         key_package_bundle: kp_bundle_bytes,
                         role: account_role.clone(),
                         avatar: crate::state::avatar_store::load_own_avatar(identity.user_id),
+                        // Client-only labels the new device can't recover on its
+                        // own (server is blind to usernames + group names).
+                        display_names: load_uuid_string_map("messenger_chat_display_names"),
+                        usernames: load_uuid_string_map("messenger_user_usernames"),
                     };
 
                     // Encrypt under the new device's temp X25519 pub key (from QR).

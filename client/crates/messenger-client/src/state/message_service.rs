@@ -180,6 +180,12 @@ pub fn chats_handle() -> Option<crate::state::chats::ChatsState> {
     CHATS_STATE.with(|c| c.borrow().clone())
 }
 
+/// The globally registered `UsersState` — same rationale as [`service_handle`].
+#[must_use]
+pub fn users_handle() -> Option<crate::state::users::UsersState> {
+    USERS_STATE.with(|c| c.borrow().clone())
+}
+
 /// Typing-indicator state, for code paths outside the leptos owner (the WS loop).
 pub fn typing_handle() -> Option<crate::state::typing::TypingState> {
     TYPING_STATE.with(|c| *c.borrow())

@@ -32,6 +32,17 @@ pub struct BootstrapPayload {
     /// new device has no other way to learn its own.
     #[serde(default)]
     pub avatar: Option<String>,
+    /// Per-chat display labels the approver knows (group_id → label). For direct
+    /// chats this is the peer's username, for groups the custom title — both live
+    /// ONLY client-side (the server is blind to usernames and group names), so
+    /// without this every existing chat on the new device shows a raw UUID.
+    #[serde(default)]
+    pub display_names: std::collections::HashMap<Uuid, String>,
+    /// Plaintext usernames the approver knows (user_id → username), used to label
+    /// message senders and resolve future direct chats. Same rationale: the
+    /// server never learns usernames, so a new device can't recover these alone.
+    #[serde(default)]
+    pub usernames: std::collections::HashMap<Uuid, String>,
 }
 
 /// Check if the frontend is running inside a Tauri WebView.
