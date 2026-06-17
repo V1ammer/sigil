@@ -250,12 +250,26 @@ impl WsManager {
                 // with that member, pull the new device into the MLS tree right
                 // now instead of waiting for the next ~45s heal poll — that wait
                 // is why a freshly re-provisioned device sees "group not found"
-                // on send until the owner heals it. Reset the rate-limit so the
-                // heal actually runs, then kick it.
+                // on send until the owner heals it.
+                //
+                // The new device may not have published its KeyPackages yet when
+                // this fires (provisioning approve happens before its first sync),
+                // so the first heal can't add it. Retry for a short window,
+                // resetting the rate-limit each time, until every owned group is
+                // fully healed (or we give up).
                 spawn_local(async move {
-                    crate::state::message_service::reset_heal_rate_limit();
-                    if let Some(api) = crate::state::session::build_api_client() {
-                        crate::state::message_service::heal_owned_groups(&api).await;
+                    for _ in 0..8u8 {
+                        crate::state::message_service::reset_heal_rate_limit();
+                        let done = match crate::state::session::build_api_client() {
+                            Some(api) => {
+                                crate::state::message_service::heal_owned_groups(&api).await
+                            }
+                            None => true,
+                        };
+                        if done {
+                            break;
+                        }
+                        gloo_timers::future::TimeoutFuture::new(3_000).await;
                     }
                 });
             }

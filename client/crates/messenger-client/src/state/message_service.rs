@@ -935,23 +935,32 @@ pub fn reset_heal_rate_limit() {
 /// time retroactive adds are unreliable (the approver may not be locally joined).
 /// Owner-only so there's a single healer per group; epoch races just fail the
 /// commit and retry next pass. Rate-limited; no-op until MLS is ready.
-pub async fn heal_owned_groups(api: &ApiClient) {
+pub async fn heal_owned_groups(api: &ApiClient) -> bool {
     use messenger_proto::mls::{MemberChange, PostCommitRequest, WelcomePayload};
     use std::collections::HashSet;
     const CHECK_INTERVAL_MS: f64 = 45_000.0;
 
     let now = js_sys::Date::now();
     if now - LAST_HEAL_CHECK.with(std::cell::Cell::get) < CHECK_INTERVAL_MS {
-        return;
+        return true;
     }
     LAST_HEAL_CHECK.with(|c| c.set(now));
 
-    let Ok(identity) = session_identity() else { return };
+    let Ok(identity) = session_identity() else { return true };
     if !is_mls_initialized() {
         LAST_HEAL_CHECK.with(|c| c.set(0.0));
-        return;
+        return false;
     }
-    let Ok(groups) = api.list_groups(None).await else { return };
+    let Ok(groups) = api.list_groups(None).await else {
+        LAST_HEAL_CHECK.with(|c| c.set(0.0));
+        return false;
+    };
+
+    // Whether every owned group ended fully healed. False if a device is still
+    // missing (e.g. a freshly re-provisioned device that hasn't published its
+    // KeyPackages yet) — the caller (and the next sync pass) should retry soon
+    // instead of waiting out the full rate-limit window.
+    let mut all_complete = true;
 
     for g in groups.groups {
         // Only the owner adds members (server enforces this too).
@@ -990,8 +999,9 @@ pub async fn heal_owned_groups(api: &ApiClient) {
         // for this pass (nothing claimed yet → nothing wasted) and retry soon.
         let Some(rt) = take_mls_runtime().await else {
             LAST_HEAL_CHECK.with(|c| c.set(0.0));
-            return;
+            return false;
         };
+        let want = missing.len();
         let result = async {
             // Claim a KeyPackage per missing device now that we hold the runtime.
             // Best-effort: a device we can't claim (e.g. exhausted pool) is skipped.
@@ -1012,7 +1022,7 @@ pub async fn heal_owned_groups(api: &ApiClient) {
                 }
             }
             if keypackages.is_empty() {
-                return Ok(());
+                return Ok(0usize);
             }
             // No local MLS state for this group (we own it server-side but never
             // joined locally) -> can't add anyone; skip quietly.
@@ -1045,9 +1055,16 @@ pub async fn heal_owned_groups(api: &ApiClient) {
             rt.merge_pending(g.id)
                 .await
                 .map_err(|e| format!("merge: {e}"))?;
-            Ok::<(), String>(())
+            Ok::<usize, String>(recipients.len())
         }
         .await;
+        // Partial heal (some missing device had no claimable KeyPackage yet —
+        // typically a just-re-provisioned device) or an outright error means
+        // this group isn't fully healed; signal the caller to retry soon.
+        match &result {
+            Ok(added) if *added >= want => {}
+            _ => all_complete = false,
+        }
         // On rejection (epoch race / stale local state) drop the pending commit,
         // otherwise it blocks every future propose_add with `PendingCommit`. The
         // next pass retries once incoming commits have caught the epoch up.
@@ -1059,6 +1076,14 @@ pub async fn heal_owned_groups(api: &ApiClient) {
             tracing::warn!(group = %g.id, "self-heal add skipped: {e}");
         }
     }
+
+    // If anything is still missing, clear the rate-limit so the next sync pass
+    // (or a KeyChange-driven retry) tries again within seconds rather than after
+    // the full 45s — the missing device will publish its KeyPackages shortly.
+    if !all_complete {
+        LAST_HEAL_CHECK.with(|c| c.set(0.0));
+    }
+    all_complete
 }
 
 /// Keep our KeyPackage pool healthy so peers can always start a chat with us.
