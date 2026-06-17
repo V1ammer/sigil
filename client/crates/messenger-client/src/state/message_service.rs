@@ -946,42 +946,54 @@ pub async fn heal_owned_groups(api: &ApiClient) {
             .map(|d| d.device_id)
             .collect();
 
-        // Collect active member devices missing from the tree, claiming a
-        // KeyPackage for each. Best-effort: a device we can't claim is skipped.
-        let mut keypackages: Vec<Vec<u8>> = Vec::new();
-        let mut changes: Vec<MemberChange> = Vec::new();
-        let mut recipients: Vec<Uuid> = Vec::new();
+        // Find (user, device) pairs missing from the tree WITHOUT claiming yet —
+        // claiming consumes a KeyPackage, so it must happen only once we actually
+        // hold the runtime (below), or a busy runtime would burn packages for an
+        // add we then abandon.
+        let mut missing: Vec<(Uuid, Uuid)> = Vec::new();
         for m in &members.members {
             if m.left_at_epoch.is_some() {
                 continue;
             }
             let Ok(active) = api.list_user_devices(m.user_id).await else { continue };
             for d in active {
-                if in_tree.contains(&d.id) {
-                    continue;
-                }
-                if let Ok(resp) = api.claim_keypackage(m.user_id, d.id).await {
-                    keypackages.push(resp.key_package);
-                    recipients.push(d.id);
-                    changes.push(MemberChange {
-                        kind: "add".into(),
-                        user_id: m.user_id,
-                        device_id: d.id,
-                        leaf_index: None,
-                        role_in_chat: Some("member".into()),
-                    });
+                if !in_tree.contains(&d.id) {
+                    missing.push((m.user_id, d.id));
                 }
             }
         }
-        if keypackages.is_empty() {
+        if missing.is_empty() {
             continue;
         }
 
+        // Acquire the runtime BEFORE claiming. If it's held by another task, bail
+        // for this pass (nothing claimed yet → nothing wasted) and retry soon.
         let Some(rt) = take_mls_runtime().await else {
             LAST_HEAL_CHECK.with(|c| c.set(0.0));
             return;
         };
         let result = async {
+            // Claim a KeyPackage per missing device now that we hold the runtime.
+            // Best-effort: a device we can't claim (e.g. exhausted pool) is skipped.
+            let mut keypackages: Vec<Vec<u8>> = Vec::new();
+            let mut changes: Vec<MemberChange> = Vec::new();
+            let mut recipients: Vec<Uuid> = Vec::new();
+            for (uid, did) in &missing {
+                if let Ok(resp) = api.claim_keypackage(*uid, *did).await {
+                    keypackages.push(resp.key_package);
+                    recipients.push(*did);
+                    changes.push(MemberChange {
+                        kind: "add".into(),
+                        user_id: *uid,
+                        device_id: *did,
+                        leaf_index: None,
+                        role_in_chat: Some("member".into()),
+                    });
+                }
+            }
+            if keypackages.is_empty() {
+                return Ok(());
+            }
             // No local MLS state for this group (we own it server-side but never
             // joined locally) -> can't add anyone; skip quietly.
             let pc = rt
