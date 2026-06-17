@@ -1011,6 +1011,12 @@ pub async fn heal_owned_groups(api: &ApiClient) {
             Ok::<(), String>(())
         }
         .await;
+        // On rejection (epoch race / stale local state) drop the pending commit,
+        // otherwise it blocks every future propose_add with `PendingCommit`. The
+        // next pass retries once incoming commits have caught the epoch up.
+        if result.is_err() {
+            let _ = rt.clear_pending_commit(g.id).await;
+        }
         MLS_CACHE.with(|c| *c.borrow_mut() = Some(rt));
         if let Err(e) = result {
             tracing::warn!(group = %g.id, "self-heal add skipped: {e}");
