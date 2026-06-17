@@ -70,7 +70,7 @@ impl SyncService {
                     // 1c. Pull any member device that's missing from a group we
                     // own into its MLS tree (e.g. a device added to the account
                     // after the chat was created).
-                    crate::state::message_service::heal_owned_groups(&api).await;
+                    crate::state::message_service::heal_member_devices(&api).await;
                 }
 
                 // 2. Refresh chat list

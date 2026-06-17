@@ -1035,7 +1035,26 @@ pub async fn post_commit(
                 let is_self_device = change.user_id == ctx.user.id;
                 let is_privileged =
                     matches!(membership.role_in_chat.as_str(), "owner" | "admin");
-                if !is_self_device && !is_privileged {
+                // Adding a device whose user is ALREADY an active member is a
+                // device-add of an existing participant (e.g. healing a member's
+                // re-provisioned device), NOT adding a new member — so any active
+                // member may do it, not just the owner. This lets a co-member
+                // (e.g. the peer in a direct chat) pull a re-logged device back
+                // into the group without the chat owner being online. The device
+                // is still verified to belong to that user in step 8.
+                let adds_existing_member_device = !is_self_device
+                    && !is_privileged
+                    && mls_group_members::Entity::find()
+                        .filter(
+                            Condition::all()
+                                .add(mls_group_members::Column::GroupId.eq(group_id))
+                                .add(mls_group_members::Column::UserId.eq(change.user_id))
+                                .add(mls_group_members::Column::LeftAtEpoch.is_null()),
+                        )
+                        .one(&txn)
+                        .await?
+                        .is_some();
+                if !is_self_device && !is_privileged && !adds_existing_member_device {
                     return Err(AppError::Forbidden);
                 }
             }

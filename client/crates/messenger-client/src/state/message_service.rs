@@ -919,7 +919,7 @@ thread_local! {
         RefCell::new(std::collections::HashMap::new());
 }
 
-/// Clear the self-heal rate-limit so the next `heal_owned_groups` call runs
+/// Clear the self-heal rate-limit so the next `heal_member_devices` call runs
 /// immediately instead of waiting out the ~45s window. Used when a WS
 /// `KeyChange` tells us a member just added a device — we want the owner to pull
 /// it into the group right away, not on the next idle poll.
@@ -927,15 +927,22 @@ pub fn reset_heal_rate_limit() {
     LAST_HEAL_CHECK.with(|c| c.set(0.0));
 }
 
-/// Self-heal the membership of groups this device OWNS: add any active device of
-/// a member that isn't yet in the MLS tree.
+/// Self-heal group membership: for every group this device is a MEMBER of, add
+/// any active device of an existing member that isn't yet in the MLS tree.
 ///
 /// This is what makes a device added to the account AFTER a chat was created
-/// (e.g. a 2nd phone provisioned later) actually join existing chats — provision-
-/// time retroactive adds are unreliable (the approver may not be locally joined).
-/// Owner-only so there's a single healer per group; epoch races just fail the
-/// commit and retry next pass. Rate-limited; no-op until MLS is ready.
-pub async fn heal_owned_groups(api: &ApiClient) -> bool {
+/// (e.g. a 2nd phone provisioned later, or a re-provisioned device after logout)
+/// actually join existing chats — provision-time retroactive adds are unreliable
+/// (the approver may not be locally joined).
+///
+/// NOT owner-only: adding a device of an ALREADY-active member is a device-add of
+/// an existing participant, not a new member, so any co-member may do it (the
+/// server authorizes this too). That means a re-logged device gets pulled back in
+/// by ANY co-member who is online — e.g. the peer in a direct chat — instead of
+/// depending on the specific chat owner being foregrounded. Concurrent healers
+/// just race on the epoch; the loser's commit fails and the next pass is a no-op
+/// once the device is already in. Rate-limited; no-op until MLS is ready.
+pub async fn heal_member_devices(api: &ApiClient) -> bool {
     use messenger_proto::mls::{MemberChange, PostCommitRequest, WelcomePayload};
     use std::collections::HashSet;
     const CHECK_INTERVAL_MS: f64 = 45_000.0;
@@ -963,10 +970,9 @@ pub async fn heal_owned_groups(api: &ApiClient) -> bool {
     let mut all_complete = true;
 
     for g in groups.groups {
-        // Only the owner adds members (server enforces this too).
-        if g.role_in_chat != "owner" {
-            continue;
-        }
+        // Heal every group we're a member of, not just ones we own: pulling a
+        // co-member's missing device into the tree is a device-add of an existing
+        // participant, which any member may commit (server authorizes it).
         let Ok(members) = api.list_group_members(g.id).await else { continue };
         let in_tree: HashSet<Uuid> = members
             .devices

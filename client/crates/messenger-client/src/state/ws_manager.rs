@@ -262,7 +262,7 @@ impl WsManager {
                         crate::state::message_service::reset_heal_rate_limit();
                         let done = match crate::state::session::build_api_client() {
                             Some(api) => {
-                                crate::state::message_service::heal_owned_groups(&api).await
+                                crate::state::message_service::heal_member_devices(&api).await
                             }
                             None => true,
                         };
