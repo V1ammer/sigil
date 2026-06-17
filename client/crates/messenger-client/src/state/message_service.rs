@@ -450,7 +450,10 @@ fn preview_from_body(body: &MessageBody) -> String {
 ///
 /// Returns `None` only if the runtime was never initialized at all.
 async fn take_mls_runtime() -> Option<MlsRuntime> {
-    if MLS_CACHE.with(|c| c.borrow().is_none()) {
+    // Only bail when MLS was NEVER initialized. A transiently-empty slot means
+    // another task currently holds the runtime — poll below until it's returned,
+    // don't treat that as "not initialized".
+    if !MLS_READY.with(std::cell::Cell::get) {
         return None;
     }
     let mut attempts = 0u32;
@@ -1220,6 +1223,13 @@ pub fn init_message_service_context(
 // cannot be stored directly in MessageService (which goes into Leptos context).
 thread_local! {
     static MLS_CACHE: RefCell<Option<MlsRuntime>> = const { RefCell::new(None) };
+    /// Whether the MLS runtime was EVER installed. Distinct from
+    /// `MLS_CACHE.is_some()`, which is transiently false while a task holds the
+    /// runtime across awaits (it's `take()`n out and put back). Checking the slot
+    /// directly conflated "not initialized" with "currently busy", so rapid-fire
+    /// sends raced and failed with "MLS not initialized". This flag stays true
+    /// once init runs, so contention is waited out, not mistaken for un-init.
+    static MLS_READY: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// Reactive message operations handle.
@@ -1242,8 +1252,9 @@ impl MessageService {
     /// Must be called once after session restore. Safe to call multiple times
     /// (subsequent calls are no-ops once MLS is set).
     pub async fn init_mls(&self, device_id: Uuid) {
-        let already_initialized = MLS_CACHE.with(|c| c.borrow().is_some());
-        if already_initialized {
+        // Gate on the readiness flag, not the slot: the slot is transiently empty
+        // while a task holds the runtime, but that doesn't mean we must re-init.
+        if MLS_READY.with(std::cell::Cell::get) {
             web_sys::console::log_1(&"[init_mls] already initialized".into());
             return;
         }
@@ -1254,6 +1265,7 @@ impl MessageService {
                 let local: Arc<dyn messenger_storage::traits::MessengerLocalStore> = local.into();
                 let runtime = MlsRuntime::new(local, device_id);
                 MLS_CACHE.with(|c| *c.borrow_mut() = Some(runtime));
+                MLS_READY.with(|c| c.set(true));
                 web_sys::console::log_1(&"[init_mls] runtime installed in MLS_CACHE".into());
             }
             Err(e) => {
@@ -3465,7 +3477,9 @@ fn size_bucket_for(size: u64) -> u32 {
 /// Used by `SyncService` to decide whether to attempt welcome processing.
 #[must_use]
 pub fn is_mls_initialized() -> bool {
-    MLS_CACHE.with(|c| c.borrow().is_some())
+    // The readiness flag, not the slot: the slot is transiently empty while a
+    // task holds the runtime, but MLS is still initialized.
+    MLS_READY.with(std::cell::Cell::get)
 }
 
 /// Join a group via a welcome message using the cached MLS runtime.
