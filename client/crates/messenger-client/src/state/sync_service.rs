@@ -13,6 +13,14 @@ use crate::state::session::build_api_client;
 /// Sync loop interval (seconds).
 const SYNC_INTERVAL_SECS: u64 = 30;
 
+/// Number of initial sync passes that run at the fast interval after login,
+/// before settling into `SYNC_INTERVAL_SECS`. ~10 passes × 3s ≈ 30s of fast
+/// polling — long enough to cover MLS init + the owner's heal-welcome.
+const INITIAL_FAST_PASSES: u32 = 10;
+
+/// Interval (seconds) between the initial fast-ramp passes.
+const INITIAL_FAST_INTERVAL_SECS: u64 = 3;
+
 /// Background sync service handle.
 #[derive(Clone)]
 pub struct SyncService {
@@ -42,9 +50,18 @@ impl SyncService {
         spawn_local(async move {
             tracing::debug!("sync service started");
 
+            // Fast initial ramp: right after login the MLS runtime may still be
+            // initializing and the owner's heal-welcome may land a few seconds
+            // later, so a single immediate pass can miss both — and the old code
+            // then slept a full 30s, which is exactly the lag the user saw
+            // (group names blank, can't send/receive for ~30s). Poll welcomes +
+            // chat list every few seconds for the first stretch, then settle
+            // into the normal interval.
+            let mut passes: u32 = 0;
+
             while running.load(Ordering::SeqCst) {
                 // 1. Sync welcomes
-                Self::sync_welcomes().await;
+                process_pending_welcomes().await;
 
                 // 1b. Keep the KeyPackage pool topped up (and ensure a
                 // last-resort exists) so peers can always start a chat with us.
@@ -74,8 +91,15 @@ impl SyncService {
                     ),
                 }
 
-                // 4. Sleep for the interval
-                gloo_timers::future::TimeoutFuture::new((SYNC_INTERVAL_SECS * 1000) as u32).await;
+                // 4. Sleep for the interval — short for the first few passes
+                // (fast ramp), then the steady-state interval.
+                passes = passes.saturating_add(1);
+                let delay_secs = if passes < INITIAL_FAST_PASSES {
+                    INITIAL_FAST_INTERVAL_SECS
+                } else {
+                    SYNC_INTERVAL_SECS
+                };
+                gloo_timers::future::TimeoutFuture::new((delay_secs * 1000) as u32).await;
             }
 
             tracing::debug!("sync service stopped");
@@ -85,70 +109,6 @@ impl SyncService {
     /// Stop the background sync loop.
     pub fn stop(&self) {
         self.running.store(false, Ordering::SeqCst);
-    }
-
-    /// Process pending welcomes — join new groups and ack.
-    async fn sync_welcomes() {
-        let api = match build_api_client() {
-            Some(c) => c,
-            None => return,
-        };
-
-        // Thread-local handles, not use_context — this runs in a detached
-        // spawn_local loop where the leptos owner may be gone.
-        let msg_svc = crate::state::message_service::service_handle();
-        let chats = crate::state::message_service::chats_handle();
-
-        match api.list_welcomes(None).await {
-            Ok(resp) if !resp.welcomes.is_empty() => {
-                tracing::debug!(count = resp.welcomes.len(), "processing welcomes");
-
-                let mls_ready = msg_svc.as_ref().map_or(false, |_| {
-                    crate::state::message_service::is_mls_initialized()
-                });
-
-                for welcome in &resp.welcomes {
-                    // Only ack (drop) a welcome once we've ACTUALLY joined. If MLS
-                    // isn't ready yet, or the join fails, leave it on the server so
-                    // the next sync retries — acking a failed join silently loses
-                    // the group with no way to recover.
-                    let mut joined = false;
-                    if mls_ready {
-                        if let Some(ref svc) = msg_svc {
-                            // The MlsRuntime is thread-local — we join via the cached runtime
-                            joined = crate::state::message_service::join_welcome(
-                                welcome.id,
-                                &welcome.welcome_ciphertext,
-                            )
-                            .await;
-                            if joined {
-                                tracing::debug!(welcome_id = ?welcome.id, "joined via welcome");
-                                // Introduce ourselves: deliver our avatar to
-                                // the freshly joined group.
-                                let _ = svc.broadcast_avatar(welcome.group_id).await;
-                            } else {
-                                tracing::warn!(welcome_id = ?welcome.id, "failed to join via welcome");
-                            }
-                        }
-                    }
-
-                    if joined {
-                        let _ = api.ack_welcome(welcome.id).await;
-                    }
-                }
-
-                // Refresh chat list after processing welcomes
-                if let Some(ref c) = chats {
-                    if let Some(api) = build_api_client() {
-                        let _ = c.load_from_server(&api).await;
-                    }
-                }
-            }
-            Ok(_) => {} // no welcomes
-            Err(e) => {
-                tracing::warn!(error = %e, "failed to list welcomes");
-            }
-        }
     }
 
     /// Refresh the chat list from the server.
@@ -189,5 +149,76 @@ impl SyncService {
 impl Default for SyncService {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Pull pending welcomes from the server, join each group, and ack on success.
+///
+/// Module-level (not tied to a `SyncService` instance) so the WebSocket
+/// `NewWelcome` push can join immediately instead of waiting for the next
+/// 30s poll — that wait was why a freshly QR-provisioned device (or a fresh
+/// web login) saw group names and could send/receive only ~30s after login:
+/// joining is the gate for the GroupName application message and for owning
+/// MLS state.
+pub async fn process_pending_welcomes() {
+    let api = match build_api_client() {
+        Some(c) => c,
+        None => return,
+    };
+
+    // Thread-local handles, not use_context — this runs in a detached
+    // spawn_local loop where the leptos owner may be gone.
+    let msg_svc = crate::state::message_service::service_handle();
+    let chats = crate::state::message_service::chats_handle();
+
+    match api.list_welcomes(None).await {
+        Ok(resp) if !resp.welcomes.is_empty() => {
+            tracing::debug!(count = resp.welcomes.len(), "processing welcomes");
+
+            let mls_ready = msg_svc
+                .as_ref()
+                .map_or(false, |_| crate::state::message_service::is_mls_initialized());
+
+            for welcome in &resp.welcomes {
+                // Only ack (drop) a welcome once we've ACTUALLY joined. If MLS
+                // isn't ready yet, or the join fails, leave it on the server so
+                // the next sync retries — acking a failed join silently loses
+                // the group with no way to recover.
+                let mut joined = false;
+                if mls_ready {
+                    if let Some(ref svc) = msg_svc {
+                        // The MlsRuntime is thread-local — we join via the cached runtime
+                        joined = crate::state::message_service::join_welcome(
+                            welcome.id,
+                            &welcome.welcome_ciphertext,
+                        )
+                        .await;
+                        if joined {
+                            tracing::debug!(welcome_id = ?welcome.id, "joined via welcome");
+                            // Introduce ourselves: deliver our avatar to
+                            // the freshly joined group.
+                            let _ = svc.broadcast_avatar(welcome.group_id).await;
+                        } else {
+                            tracing::warn!(welcome_id = ?welcome.id, "failed to join via welcome");
+                        }
+                    }
+                }
+
+                if joined {
+                    let _ = api.ack_welcome(welcome.id).await;
+                }
+            }
+
+            // Refresh chat list after processing welcomes
+            if let Some(ref c) = chats {
+                if let Some(api) = build_api_client() {
+                    let _ = c.load_from_server(&api).await;
+                }
+            }
+        }
+        Ok(_) => {} // no welcomes
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to list welcomes");
+        }
     }
 }

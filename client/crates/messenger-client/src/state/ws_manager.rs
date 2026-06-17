@@ -234,6 +234,15 @@ impl WsManager {
             }
             ServerFrame::NewWelcome { welcome_id, group_id } => {
                 tracing::debug!(%welcome_id, %group_id, "ws new welcome");
+                // Join right now instead of waiting for the next 30s poll.
+                // This is the gate for everything that needs group membership:
+                // the chat's GroupName application message, and the ability to
+                // send/receive — a freshly QR-provisioned device (or fresh web
+                // login) otherwise saw the chat name and could write only after
+                // the next sync tick.
+                spawn_local(async move {
+                    crate::state::sync_service::process_pending_welcomes().await;
+                });
             }
             ServerFrame::KeyChange { .. } => {}
             ServerFrame::Typing { group_id, user_id, started } => {
