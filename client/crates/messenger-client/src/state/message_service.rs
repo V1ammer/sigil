@@ -903,6 +903,119 @@ pub async fn maybe_rekey_group(api: &ApiClient, group_id: Uuid) {
 thread_local! {
     /// `Date.now()` of the last KeyPackage pool check, to rate-limit it.
     static LAST_KP_CHECK: std::cell::Cell<f64> = const { std::cell::Cell::new(0.0) };
+    /// `Date.now()` of the last owned-group self-heal pass, to rate-limit it.
+    static LAST_HEAL_CHECK: std::cell::Cell<f64> = const { std::cell::Cell::new(0.0) };
+}
+
+/// Self-heal the membership of groups this device OWNS: add any active device of
+/// a member that isn't yet in the MLS tree.
+///
+/// This is what makes a device added to the account AFTER a chat was created
+/// (e.g. a 2nd phone provisioned later) actually join existing chats — provision-
+/// time retroactive adds are unreliable (the approver may not be locally joined).
+/// Owner-only so there's a single healer per group; epoch races just fail the
+/// commit and retry next pass. Rate-limited; no-op until MLS is ready.
+pub async fn heal_owned_groups(api: &ApiClient) {
+    use messenger_proto::mls::{MemberChange, PostCommitRequest, WelcomePayload};
+    use std::collections::HashSet;
+    const CHECK_INTERVAL_MS: f64 = 45_000.0;
+
+    let now = js_sys::Date::now();
+    if now - LAST_HEAL_CHECK.with(std::cell::Cell::get) < CHECK_INTERVAL_MS {
+        return;
+    }
+    LAST_HEAL_CHECK.with(|c| c.set(now));
+
+    let Ok(identity) = session_identity() else { return };
+    if !is_mls_initialized() {
+        LAST_HEAL_CHECK.with(|c| c.set(0.0));
+        return;
+    }
+    let Ok(groups) = api.list_groups(None).await else { return };
+
+    for g in groups.groups {
+        // Only the owner adds members (server enforces this too).
+        if g.role_in_chat != "owner" {
+            continue;
+        }
+        let Ok(members) = api.list_group_members(g.id).await else { continue };
+        let in_tree: HashSet<Uuid> = members
+            .devices
+            .iter()
+            .filter(|d| d.removed_at_epoch.is_none())
+            .map(|d| d.device_id)
+            .collect();
+
+        // Collect active member devices missing from the tree, claiming a
+        // KeyPackage for each. Best-effort: a device we can't claim is skipped.
+        let mut keypackages: Vec<Vec<u8>> = Vec::new();
+        let mut changes: Vec<MemberChange> = Vec::new();
+        let mut recipients: Vec<Uuid> = Vec::new();
+        for m in &members.members {
+            if m.left_at_epoch.is_some() {
+                continue;
+            }
+            let Ok(active) = api.list_user_devices(m.user_id).await else { continue };
+            for d in active {
+                if in_tree.contains(&d.id) {
+                    continue;
+                }
+                if let Ok(resp) = api.claim_keypackage(m.user_id, d.id).await {
+                    keypackages.push(resp.key_package);
+                    recipients.push(d.id);
+                    changes.push(MemberChange {
+                        kind: "add".into(),
+                        user_id: m.user_id,
+                        device_id: d.id,
+                        leaf_index: None,
+                        role_in_chat: Some("member".into()),
+                    });
+                }
+            }
+        }
+        if keypackages.is_empty() {
+            continue;
+        }
+
+        let Some(rt) = take_mls_runtime().await else {
+            LAST_HEAL_CHECK.with(|c| c.set(0.0));
+            return;
+        };
+        let result = async {
+            // No local MLS state for this group (we own it server-side but never
+            // joined locally) -> can't add anyone; skip quietly.
+            let pc = rt
+                .propose_add(g.id, &identity, &keypackages)
+                .await
+                .map_err(|e| format!("propose_add: {e}"))?;
+            let welcome = pc.welcomes.into_iter().next().unwrap_or_default();
+            let welcomes: Vec<WelcomePayload> = recipients
+                .iter()
+                .map(|&d| WelcomePayload {
+                    recipient_device_id: d,
+                    welcome_ciphertext: welcome.clone(),
+                })
+                .collect();
+            let req = PostCommitRequest {
+                expected_epoch: pc.epoch as i64,
+                commit: pc.commit,
+                welcomes,
+                member_changes: changes,
+            };
+            api.post_commit(g.id, &req)
+                .await
+                .map_err(|e| format!("post_commit: {e}"))?;
+            rt.merge_pending(g.id)
+                .await
+                .map_err(|e| format!("merge: {e}"))?;
+            Ok::<(), String>(())
+        }
+        .await;
+        MLS_CACHE.with(|c| *c.borrow_mut() = Some(rt));
+        if let Err(e) = result {
+            tracing::warn!(group = %g.id, "self-heal add skipped: {e}");
+        }
+    }
 }
 
 /// Keep our KeyPackage pool healthy so peers can always start a chat with us.

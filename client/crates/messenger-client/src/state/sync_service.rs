@@ -50,6 +50,10 @@ impl SyncService {
                 // last-resort exists) so peers can always start a chat with us.
                 if let Some(api) = crate::state::session::build_api_client() {
                     crate::state::message_service::ensure_keypackages(&api).await;
+                    // 1c. Pull any member device that's missing from a group we
+                    // own into its MLS tree (e.g. a device added to the account
+                    // after the chat was created).
+                    crate::state::message_service::heal_owned_groups(&api).await;
                 }
 
                 // 2. Refresh chat list
