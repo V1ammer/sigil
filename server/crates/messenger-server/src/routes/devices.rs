@@ -266,7 +266,7 @@ pub async fn list_user_devices(
 // ─── Helpers ───
 
 /// Находит пользователей, которые имеют общие группы с `user_id`.
-async fn find_contacts(state: &AppState, user_id: Uuid) -> Vec<Uuid> {
+pub(crate) async fn find_contacts(state: &AppState, user_id: Uuid) -> Vec<Uuid> {
     // Найти все group_id, где user_id — активный member
     let Ok(group_ids) = mls_group_members::Entity::find()
         .select_only()

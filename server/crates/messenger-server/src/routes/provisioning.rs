@@ -341,6 +341,30 @@ pub async fn approve_request(
 
     txn.commit().await?;
 
+    // Tell the user's group co-members AND the user's own other devices that a
+    // new device appeared, so a group owner re-runs self-heal immediately
+    // (adds the device into existing groups) instead of waiting for the next
+    // ~45s heal poll — that wait is exactly why a freshly re-provisioned device
+    // shows "group not found" on send until it's pulled into each group. The
+    // co-members cover cross-user chats; including the user themselves covers a
+    // chat the user OWNS (so their other device, the owner, heals too).
+    {
+        let state_clone = state.clone();
+        let uid = ctx.user.id;
+        tokio::spawn(async move {
+            let mut contacts = crate::routes::devices::find_contacts(&state_clone, uid).await;
+            contacts.push(uid);
+            crate::routes::ws::notify_key_change(
+                &state_clone,
+                &contacts,
+                uid,
+                new_device_id,
+                "device_added",
+            )
+            .await;
+        });
+    }
+
     let resp = ApproveProvisioningResponse {
         device_id: new_device_id,
     };

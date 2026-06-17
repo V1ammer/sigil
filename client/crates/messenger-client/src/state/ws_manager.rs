@@ -244,7 +244,21 @@ impl WsManager {
                     crate::state::sync_service::process_pending_welcomes().await;
                 });
             }
-            ServerFrame::KeyChange { .. } => {}
+            ServerFrame::KeyChange { user_id, device_id, event } => {
+                tracing::debug!(%user_id, %device_id, %event, "ws key change");
+                // A member just added (or revoked) a device. If we own a group
+                // with that member, pull the new device into the MLS tree right
+                // now instead of waiting for the next ~45s heal poll — that wait
+                // is why a freshly re-provisioned device sees "group not found"
+                // on send until the owner heals it. Reset the rate-limit so the
+                // heal actually runs, then kick it.
+                spawn_local(async move {
+                    crate::state::message_service::reset_heal_rate_limit();
+                    if let Some(api) = crate::state::session::build_api_client() {
+                        crate::state::message_service::heal_owned_groups(&api).await;
+                    }
+                });
+            }
             ServerFrame::Typing { group_id, user_id, started } => {
                 // Reciprocal privacy: only surface peers' typing if the user
                 // has the indicator enabled (same toggle that gates sending).

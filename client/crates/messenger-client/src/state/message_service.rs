@@ -919,6 +919,14 @@ thread_local! {
         RefCell::new(std::collections::HashMap::new());
 }
 
+/// Clear the self-heal rate-limit so the next `heal_owned_groups` call runs
+/// immediately instead of waiting out the ~45s window. Used when a WS
+/// `KeyChange` tells us a member just added a device — we want the owner to pull
+/// it into the group right away, not on the next idle poll.
+pub fn reset_heal_rate_limit() {
+    LAST_HEAL_CHECK.with(|c| c.set(0.0));
+}
+
 /// Self-heal the membership of groups this device OWNS: add any active device of
 /// a member that isn't yet in the MLS tree.
 ///
