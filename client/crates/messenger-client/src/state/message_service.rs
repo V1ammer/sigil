@@ -1009,7 +1009,12 @@ pub async fn heal_owned_groups(api: &ApiClient) {
                 })
                 .collect();
             let req = PostCommitRequest {
-                expected_epoch: pc.epoch as i64,
+                // The server validates against ITS counter, not our local MLS
+                // epoch — and the creator's local epoch runs one ahead of the
+                // server's recorded `current_epoch` (the initial add-members
+                // commit is merged locally but stored as epoch 0 server-side).
+                // Use the authoritative value from `list_groups`.
+                expected_epoch: g.current_epoch,
                 commit: pc.commit,
                 welcomes,
                 member_changes: changes,
