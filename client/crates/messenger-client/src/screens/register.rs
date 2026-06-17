@@ -269,44 +269,58 @@ pub fn RegisterScreen() -> impl IntoView {
             persist_auth_credentials(resp.device_id, &device_secret);
             js_log("[register] auth configured");
 
-            // Step 9: Publish initial KeyPackages (native only — too slow on WASM)
-            #[cfg(feature = "native")]
-            {
-                use messenger_core::mls::keypackage::generate_keypackage;
-                use openmls_rust_crypto::OpenMlsRustCrypto;
-
-                let mls_provider = OpenMlsRustCrypto::default();
-                // Generate 5 initial key packages (1 last-resort + 4 regular).
-                let mut key_packages = Vec::new();
-                let to_upload = |kp: messenger_core::mls::keypackage::GeneratedKeyPackage| {
-                    messenger_proto::keypackages::KeyPackageUpload {
-                        key_package: kp.key_package_bytes,
-                        init_key_hash: kp.init_key_hash,
-                        expires_at: kp.expires_at,
-                        is_last_resort: kp.is_last_resort,
-                    }
-                };
-                // Last-resort KP
-                if let Ok(kp) = generate_keypackage(&mls_provider, &identity, 2_592_000, true) {
-                    key_packages.push(to_upload(kp));
+            // Step 9: Publish an initial KeyPackage pool right away so a peer can
+            // start a chat the moment this account exists (otherwise the first
+            // claim races the background sync and fails with "no device keys").
+            //
+            // Generated through the DEVICE MLS runtime so the private bundles are
+            // persisted in the device provider — a throwaway provider would yield
+            // packages a peer can claim but this device can't join with
+            // (NoMatchingKeyPackage). This also runs on wasm (the APK is wasm):
+            // a few extra seconds during account creation beats a failed first
+            // chat. Then mark the last-resort + reconcile flags so the sync loop
+            // doesn't duplicate the last-resort or purge this fresh, in-sync pool.
+            if let Ok(local) = messenger_storage::init_storage("default").await {
+                let local: std::sync::Arc<dyn messenger_storage::traits::MessengerLocalStore> =
+                    local.into();
+                let runtime =
+                    messenger_core::mls::group::MlsRuntime::new(local, resp.device_id);
+                let to_upload =
+                    |kp: messenger_core::mls::keypackage::GeneratedKeyPackage| {
+                        messenger_proto::keypackages::KeyPackageUpload {
+                            key_package: kp.key_package_bytes,
+                            init_key_hash: kp.init_key_hash,
+                            expires_at: kp.expires_at,
+                            is_last_resort: kp.is_last_resort,
+                        }
+                    };
+                let mut uploads = Vec::new();
+                if let Ok(kp) = runtime.generate_keypackage(&identity, 2_592_000, true).await {
+                    uploads.push(to_upload(kp));
                 }
-                // Regular KPs (7-day lifetime)
                 for _ in 0..4 {
-                    if let Ok(kp) = generate_keypackage(&mls_provider, &identity, 604_800, false) {
-                        key_packages.push(to_upload(kp));
+                    if let Ok(kp) = runtime.generate_keypackage(&identity, 604_800, false).await {
+                        uploads.push(to_upload(kp));
                     }
                 }
-                if !key_packages.is_empty() {
+                let published = !uploads.is_empty();
+                if published {
                     let _ = api
-                        .publish_keypackages(&PublishKeyPackagesRequest {
-                            key_packages,
-                        })
+                        .publish_keypackages(
+                            &messenger_proto::keypackages::PublishKeyPackagesRequest {
+                                key_packages: uploads,
+                            },
+                        )
                         .await;
                 }
-            }
-            #[cfg(not(feature = "native"))]
-            {
-                js_log("[register] WASM: skipping keypackages publish (MLS too slow on WASM)");
+                if let Some(s) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
+                    if published {
+                        let _ = s.set_item("ms_lastresort_published_v1", "1");
+                    }
+                    // Fresh account: the server pool == this device's local pool,
+                    // so the one-time reconcile would only churn — skip it.
+                    let _ = s.set_item("ms_kp_reconciled_v1", "1");
+                }
             }
 
             // Step 10: Persist chosen avatar + display name locally (delivery
