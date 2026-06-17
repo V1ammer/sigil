@@ -85,7 +85,13 @@ impl SyncService {
                 // the current one (covers chats created after the avatar
                 // was set and welcome joins that bypassed the MLS hook).
                 match crate::state::message_service::service_handle() {
-                    Some(svc) => svc.ensure_avatar_broadcasts().await,
+                    Some(svc) => {
+                        svc.ensure_avatar_broadcasts().await;
+                        // Owner re-announces each group's name so devices that
+                        // joined late (welcome / self-heal) stop showing a bare
+                        // UUID for the chat.
+                        svc.ensure_name_broadcasts().await;
+                    }
                     None => web_sys::console::log_1(
                         &"[avatar] ensure skipped: no MessageService handle".into(),
                     ),

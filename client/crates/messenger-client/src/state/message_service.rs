@@ -911,6 +911,12 @@ thread_local! {
     static LAST_KP_CHECK: std::cell::Cell<f64> = const { std::cell::Cell::new(0.0) };
     /// `Date.now()` of the last owned-group self-heal pass, to rate-limit it.
     static LAST_HEAL_CHECK: std::cell::Cell<f64> = const { std::cell::Cell::new(0.0) };
+    /// Group name last re-announced per owned group (group_id → name), so the
+    /// owner re-broadcasts a group's name to late joiners exactly once per
+    /// change instead of every sync. Session-local: re-announcing once after a
+    /// relaunch is cheap and self-correcting.
+    static NAME_ANNOUNCED: RefCell<std::collections::HashMap<Uuid, String>> =
+        RefCell::new(std::collections::HashMap::new());
 }
 
 /// Self-heal the membership of groups this device OWNS: add any active device of
@@ -2414,6 +2420,50 @@ impl MessageService {
             web_sys::console::log_1(
                 &format!("[avatar] ensure: re-announce to {group_id}: {ok}").into(),
             );
+        }
+    }
+
+    /// Make sure every GROUP this device owns has re-broadcast its name to the
+    /// members. A device that joined late (welcome / owner self-heal) never
+    /// receives the original `GroupUpdate{name}` — application messages aren't
+    /// replayed to members who weren't in the group when they were sent — so it
+    /// shows the bare group UUID forever. The owner re-announces the name here
+    /// (rate-limited per change), and the late joiner applies it on receipt.
+    /// Direct chats are skipped: their "name" is the peer's username, which is
+    /// per-viewer and not a shared group name.
+    pub async fn ensure_name_broadcasts(&self) {
+        let Some(api) = build_api_client() else { return };
+        let Some(chats) = chats_handle() else { return };
+        let Ok(groups) = api.list_groups(None).await else { return };
+        let cache = chats.display_name_cache.get_untracked();
+        for g in groups.groups {
+            // Only the owner is authoritative for a group's name; direct chats
+            // carry no shared name.
+            if g.role_in_chat != "owner" || g.group_type == "direct" {
+                continue;
+            }
+            let Some(name) = cache.get(&g.id) else { continue };
+            // Skip the UUID placeholder — that isn't a real name, and we never
+            // want to broadcast it.
+            if name.is_empty() || name.parse::<Uuid>().is_ok() {
+                continue;
+            }
+            let already = NAME_ANNOUNCED.with(|c| c.borrow().get(&g.id).cloned());
+            if already.as_deref() == Some(name.as_str()) {
+                continue;
+            }
+            if self
+                .send_group_update(g.id, Some(name.clone()), None)
+                .await
+                .is_some()
+            {
+                NAME_ANNOUNCED.with(|c| {
+                    c.borrow_mut().insert(g.id, name.clone());
+                });
+                web_sys::console::log_1(
+                    &format!("[name] ensure: re-announce '{name}' to {}", g.id).into(),
+                );
+            }
         }
     }
 
